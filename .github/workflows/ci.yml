@@ -1,0 +1,57 @@
+name: Public source CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-source-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Privacy, tests, and macOS build
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out full public history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install public verification tools
+        run: brew install gitleaks trufflehog xcodegen
+
+      - name: Enforce public-source boundary
+        run: scripts/ci/public-source-gate.sh
+
+      - name: Scan history and tracked worktree
+        run: scripts/ci/scan-secrets.sh
+
+      - name: Cache native speech libraries
+        uses: actions/cache@v4
+        with:
+          path: Vendor
+          key: ${{ runner.os }}-${{ runner.arch }}-sherpa-${{ hashFiles('scripts/fetch-sherpa-onnx.sh') }}
+
+      - name: Fetch native speech libraries
+        run: scripts/fetch-sherpa-onnx.sh
+
+      - name: Test ResponsayCore
+        run: swift test --package-path Packages/ResponsayCore
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build macOS tests without signing
+        run: >-
+          xcodebuild -quiet build-for-testing
+          -scheme ResponsayMac
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO

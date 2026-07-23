@@ -20,6 +20,8 @@ Changes flow from this repository to internal consumers. Do not copy an internal
 4. Run the relevant tests before opening a pull request.
 
 ```bash
+scripts/ci/public-source-gate.sh
+scripts/ci/scan-secrets.sh
 swift test --package-path Packages/ResponsayCore
 scripts/fetch-sherpa-onnx.sh
 xcodegen generate
@@ -31,5 +33,7 @@ Microphone, accessibility, global-hotkey, insertion, Keychain, and screen-record
 ## Security gate
 
 Maintainers run Gitleaks and TruffleHog against the Git history and worktree before publication and after security-sensitive changes. Raw scanner reports remain outside the repository because they can contain candidate secrets or identifying paths.
+
+The public-source gate intentionally accepts only the documented public paths. Adding a new top-level file, workflow, script, or documentation path therefore requires an explicit review and allowlist change; this is a publication boundary, not a general lint rule.
 
 Never commit API keys, passwords, signing private keys, provisioning profiles, notarization credentials, real user transcripts, or captured private documents. Test credentials must be unmistakably synthetic.

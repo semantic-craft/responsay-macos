@@ -10,8 +10,8 @@ regex = '''(/Users/[A-Za-z0-9._-]+|/Volumes/[A-Za-z0-9._ -]+|[A-Za-z]:\\Users\\[
 
 [[rules.allowlists]]
 paths = [
-  '''^\.gitleaks\.toml$''',
-  '''^Packages/ResponsayCore/Sources/ResponsayCore/Hotword/DictationLexicalProfile\.swift$'''
+  '''(^|/)\.gitleaks\.toml$''',
+  '''(^|/)Packages/ResponsayCore/Sources/ResponsayCore/Hotword/DictationLexicalProfile\.swift$'''
 ]
 
 [[rules]]
@@ -20,4 +20,9 @@ description = "Fixed Apple signing identity or team metadata"
 regex = '''(?i)(DEVELOPMENT_TEAM|TeamIdentifier|com\.apple\.developer\.team-identifier|Developer ID Application|Apple Development)[^\r\n]{0,160}'''
 
 [[rules.allowlists]]
-paths = ['''^\.gitleaks\.toml$''']
+paths = [
+  '''(^|/)\.gitleaks\.toml$''',
+  '''(^|/)docs/RELEASING\.md$''',
+  '''(^|/)scripts/ci/public-source-gate\.sh$''',
+  '''(^|/)scripts/release-macos\.sh$'''
+]

@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
+TAG="${1:-}"
+TEMP_BASE="${TMPDIR:-/tmp}"
+TEMP_BASE="${TEMP_BASE%/}"
+WORK_DIR="$(mktemp -d "${TEMP_BASE}/responsay-release.XXXXXX")"
+DERIVED_DATA="${WORK_DIR}/DerivedData"
+KEYCHAIN_PATH="${WORK_DIR}/release.keychain-db"
+NOTARY_DIR="${WORK_DIR}/notary"
+OUTPUT_DIR="${ROOT}/build/release"
+
+cleanup() {
+  security delete-keychain "${KEYCHAIN_PATH}" >/dev/null 2>&1 || true
+  case "${WORK_DIR}" in
+    "${TEMP_BASE}"/responsay-release.*)
+      /bin/rm -rf -- "${WORK_DIR}"
+      ;;
+  esac
+}
+trap cleanup EXIT HUP INT TERM
+
+fail() {
+  printf 'release: %s\n' "$1" >&2
+  exit 1
+}
+
+require_tool() {
+  command -v "$1" >/dev/null 2>&1 || fail "required tool is missing: $1"
+}
+
+require_env() {
+  local name="$1"
+  [[ -n "${!name:-}" ]] || fail "required environment secret is missing: ${name}"
+}
+
+redact_log() {
+  sed -E \
+    -e 's#/Users/[^/[:space:]]+#/Users/[REDACTED]#g' \
+    -e 's/[A-F0-9]{40}/[SIGNING_IDENTITY]/g' \
+    -e 's/[A-Z0-9]{10}/[TEAM_ID]/g' \
+    "$1" | tail -n 160
+}
+
+notarize() {
+  local artifact="$1"
+  local label="$2"
+  local result="${NOTARY_DIR}/${label}.json"
+  local diagnostics="${NOTARY_DIR}/${label}.stderr"
+  local attempt
+
+  for attempt in 1 2 3; do
+    if xcrun notarytool submit "${artifact}" \
+      --key "${NOTARY_DIR}/AuthKey.p8" \
+      --key-id "${RESPONSAY_ASC_KEY_ID}" \
+      --issuer "${RESPONSAY_ASC_ISSUER_ID}" \
+      --wait \
+      --timeout 30m \
+      --output-format json \
+      >"${result}" 2>"${diagnostics}"; then
+      if grep -Eq '"status"[[:space:]]*:[[:space:]]*"Accepted"' "${result}"; then
+        printf 'release: Apple notarization accepted %s.\n' "${label}"
+        return 0
+      fi
+    fi
+    if (( attempt < 3 )); then
+      sleep 10
+    fi
+  done
+
+  printf 'release: Apple notarization failed for %s. Sanitized diagnostics follow.\n' "${label}" >&2
+  redact_log "${diagnostics}" >&2
+  return 1
+}
+
+for tool in base64 codesign git hdiutil security shasum xcodebuild xcodegen xcrun; do
+  require_tool "${tool}"
+done
+for name in \
+  RESPONSAY_DEVELOPER_ID_P12_BASE64 \
+  RESPONSAY_DEVELOPER_ID_P12_PASSWORD \
+  RESPONSAY_APPLE_TEAM_ID \
+  RESPONSAY_ASC_KEY_P8_BASE64 \
+  RESPONSAY_ASC_KEY_ID \
+  RESPONSAY_ASC_ISSUER_ID; do
+  require_env "${name}"
+done
+
+[[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "release tag must look like v1.2.3"
+[[ "${RESPONSAY_APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "Apple Team ID has an invalid format"
+
+cd "${ROOT}"
+scripts/ci/public-source-gate.sh
+
+VERSION="$(sed -n 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"\([^"]*\)".*/\1/p' project.yml | head -1)"
+BUILD_NUMBER="$(sed -n 's/^[[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*"\([^"]*\)".*/\1/p' project.yml | head -1)"
+[[ "${TAG}" == "v${VERSION}" ]] || fail "tag does not match MARKETING_VERSION"
+[[ -n "${BUILD_NUMBER}" ]] || fail "CURRENT_PROJECT_VERSION is missing"
+
+mkdir -p "${NOTARY_DIR}" "${OUTPUT_DIR}"
+DMG_NAME="Responsay-${VERSION}.dmg"
+DMG_PATH="${OUTPUT_DIR}/${DMG_NAME}"
+SHA_PATH="${DMG_PATH}.sha256"
+APPCAST_PATH="${OUTPUT_DIR}/appcast.xml"
+[[ ! -e "${DMG_PATH}" && ! -e "${SHA_PATH}" && ! -e "${APPCAST_PATH}" ]] || fail "release output already exists; use a clean runner checkout"
+
+printf '%s' "${RESPONSAY_DEVELOPER_ID_P12_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/developer-id.p12"
+printf '%s' "${RESPONSAY_ASC_KEY_P8_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/AuthKey.p8"
+chmod 600 "${NOTARY_DIR}/developer-id.p12" "${NOTARY_DIR}/AuthKey.p8"
+
+KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security import "${NOTARY_DIR}/developer-id.p12" \
+  -k "${KEYCHAIN_PATH}" \
+  -P "${RESPONSAY_DEVELOPER_ID_P12_PASSWORD}" \
+  -T /usr/bin/codesign \
+  -T /usr/bin/security >/dev/null
+security set-key-partition-list \
+  -S apple-tool:,apple:,codesign: \
+  -s \
+  -k "${KEYCHAIN_PASSWORD}" \
+  "${KEYCHAIN_PATH}" >/dev/null
+security list-keychains -d user -s "${KEYCHAIN_PATH}"
+
+IDENTITY_RECORD="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep 'Developer ID Application' | head -1 || true)"
+[[ "${IDENTITY_RECORD}" == *"(${RESPONSAY_APPLE_TEAM_ID})"* ]] || fail "Developer ID certificate does not match the configured Apple Team ID"
+IDENTITY_HASH="$(awk '{print $2}' <<< "${IDENTITY_RECORD}")"
+[[ "${IDENTITY_HASH}" =~ ^[A-F0-9]{40}$ ]] || fail "Developer ID signing identity was not imported"
+
+xcodegen generate >/dev/null
+BUILD_LOG="${WORK_DIR}/xcodebuild.log"
+if ! xcodebuild \
+  -scheme ResponsayMac \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath "${DERIVED_DATA}" \
+  build \
+  CODE_SIGN_IDENTITY="${IDENTITY_HASH}" \
+  DEVELOPMENT_TEAM="${RESPONSAY_APPLE_TEAM_ID}" \
+  >"${BUILD_LOG}" 2>&1; then
+  printf 'release: Xcode build failed. Sanitized diagnostics follow.\n' >&2
+  redact_log "${BUILD_LOG}" >&2
+  exit 1
+fi
+
+APP_PATH="${DERIVED_DATA}/Build/Products/Release/Responsay.app"
+[[ -d "${APP_PATH}" ]] || fail "Xcode did not produce Responsay.app"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP_PATH}/Contents/Info.plist")" == "${VERSION}" ]] || fail "built app version mismatch"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${APP_PATH}/Contents/Info.plist")" == "${BUILD_NUMBER}" ]] || fail "built app number mismatch"
+
+codesign --force --deep --options runtime --timestamp \
+  --sign "${IDENTITY_HASH}" \
+  --entitlements "${ROOT}/macOS/Responsay.entitlements" \
+  "${APP_PATH}"
+codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+
+SIGNATURE_INFO="${WORK_DIR}/signature.txt"
+codesign -d --verbose=4 "${APP_PATH}" 2>"${SIGNATURE_INFO}"
+grep -Fq "TeamIdentifier=${RESPONSAY_APPLE_TEAM_ID}" "${SIGNATURE_INFO}" || fail "built app Team ID mismatch"
+
+APP_ZIP="${WORK_DIR}/Responsay-app.zip"
+ditto -c -k --keepParent "${APP_PATH}" "${APP_ZIP}"
+notarize "${APP_ZIP}" app
+xcrun stapler staple "${APP_PATH}"
+xcrun stapler validate "${APP_PATH}"
+/usr/sbin/spctl --assess --type execute --context context:primary-signature --verbose=2 "${APP_PATH}"
+
+DMG_STAGE="${WORK_DIR}/dmg-root"
+mkdir -p "${DMG_STAGE}"
+ditto "${APP_PATH}" "${DMG_STAGE}/Responsay.app"
+ln -s /Applications "${DMG_STAGE}/Applications"
+hdiutil create \
+  -volname 'Responsay Installer' \
+  -srcfolder "${DMG_STAGE}" \
+  -format UDZO \
+  "${DMG_PATH}" >/dev/null
+codesign --force --timestamp --sign "${IDENTITY_HASH}" "${DMG_PATH}"
+notarize "${DMG_PATH}" dmg
+xcrun stapler staple "${DMG_PATH}"
+xcrun stapler validate "${DMG_PATH}"
+/usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "${DMG_PATH}"
+
+(
+  cd "${OUTPUT_DIR}"
+  shasum -a 256 "${DMG_NAME}" >"${DMG_NAME}.sha256"
+)
+
+if [[ -n "${RESPONSAY_SPARKLE_ED_KEY_BASE64:-}" ]]; then
+  GENERATE_APPCAST="$(find "${DERIVED_DATA}/SourcePackages/artifacts" -path '*/Sparkle/bin/generate_appcast' -type f -print -quit)"
+  [[ -x "${GENERATE_APPCAST}" ]] || fail "Sparkle generate_appcast tool was not resolved"
+  APPCAST_DIR="${WORK_DIR}/appcast"
+  mkdir -p "${APPCAST_DIR}"
+  cp "${DMG_PATH}" "${APPCAST_DIR}/${DMG_NAME}"
+  APPCAST_LOG="${WORK_DIR}/generate-appcast.log"
+  if ! printf '%s' "${RESPONSAY_SPARKLE_ED_KEY_BASE64}" | /usr/bin/base64 -D | \
+    "${GENERATE_APPCAST}" \
+      --ed-key-file - \
+      --download-url-prefix "https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/" \
+      "${APPCAST_DIR}" \
+      >"${APPCAST_LOG}" 2>&1; then
+    printf 'release: Sparkle appcast generation failed. Sanitized diagnostics follow.\n' >&2
+    redact_log "${APPCAST_LOG}" >&2
+    exit 1
+  fi
+  [[ -f "${APPCAST_DIR}/appcast.xml" ]] || fail "Sparkle did not produce appcast.xml"
+  cp "${APPCAST_DIR}/appcast.xml" "${APPCAST_PATH}"
+else
+  printf 'release: Sparkle private key not configured; appcast generation was skipped.\n'
+fi
+
+printf 'release: created signed and notarized %s\n' "${DMG_PATH}"
+printf 'release: created checksum %s\n' "${SHA_PATH}"
+[[ -f "${APPCAST_PATH}" ]] && printf 'release: created Sparkle feed %s\n' "${APPCAST_PATH}"
