@@ -1,0 +1,112 @@
+name: Responsay
+options:
+  bundleIdPrefix: com.semanticcraft
+  createIntermediateGroups: true
+  developmentLanguage: zh-Hans
+settings:
+  base:
+    MARKETING_VERSION: "1.5.8"
+    CURRENT_PROJECT_VERSION: "141"
+    SWIFT_VERSION: "6.0"
+packages:
+  ResponsayCore:
+    path: Packages/ResponsayCore
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: "2.4.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: "2.9.4"
+targets:
+  ResponsayMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: macOS
+        excludes:
+          - "Info.plist"
+          - "Responsay.entitlements"
+    dependencies:
+      - package: ResponsayCore
+      - package: ResponsayCore
+        product: ResponsaySpeech
+      - package: KeyboardShortcuts
+      - package: Sparkle
+      - framework: Vendor/sherpa-onnx.xcframework
+        embed: false
+      - framework: Vendor/onnxruntime.xcframework
+        embed: false
+    info:
+      path: macOS/Info.plist
+      properties:
+        CFBundleDisplayName: "法言"   # 用户可见名（Finder/菜单栏/权限弹窗）；codename/bundle id 仍 Responsay
+        # Version must follow the build settings; without these keys XcodeGen writes
+        # its default 1.0/1 into the generated Info.plist and the bump never lands.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSUIElement: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.semanticcraft.responsay.mac.smoke
+            CFBundleURLSchemes:
+              - responsay
+        NSMicrophoneUsageDescription: "法言需要访问麦克风，以把语音转换为文字。"
+        NSSpeechRecognitionUsageDescription: "法言需要使用语音识别，将语音转换为文字。"
+        SUFeedURL: "https://responsay.com/appcast.xml"
+        SUPublicEDKey: "3Ze0A+sHbvkQ8CLlDUIcYvm7BJS4IJLU1rNEX66F9R4=" # gitleaks:allow -- public Sparkle verification key
+        SUEnableAutomaticChecks: true
+        CFBundleLocalizations:
+          - zh-Hans
+          - en
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+        PRODUCT_NAME: Responsay
+        PRODUCT_MODULE_NAME: ResponsayMac
+        PRODUCT_BUNDLE_IDENTIFIER: com.semanticcraft.responsay.mac
+        # sherpa-onnx offline ASR (SenseVoice). Static xcframework vendored via
+        # scripts/fetch-sherpa-onnx.sh; bridging header exposes its C API to Swift.
+        SWIFT_OBJC_BRIDGING_HEADER: macOS/Speech/SherpaOnnx/SherpaOnnx-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/Vendor/sherpa-onnx.xcframework/macos-arm64_x86_64/Headers/sherpa-onnx/c-api
+          - $(SRCROOT)/macOS/OCR/PaddleOCR
+        OTHER_LDFLAGS:
+          - -lc++
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_ENTITLEMENTS: macOS/Responsay.entitlements
+  ResponsayMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/ResponsayMacTests
+    dependencies:
+      - target: ResponsayMac
+      - package: KeyboardShortcuts
+      - package: ResponsayCore
+      - package: ResponsayCore
+        product: ResponsaySpeech
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.semanticcraft.responsay.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Responsay.app/Contents/MacOS/Responsay"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        # Same sherpa-onnx C-API header path as the app, so @testable builds that
+        # pull in the bridging header can resolve c-api.h.
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/Vendor/sherpa-onnx.xcframework/macos-arm64_x86_64/Headers/sherpa-onnx/c-api
+          - $(SRCROOT)/macOS/OCR/PaddleOCR
+schemes:
+  ResponsayMac:
+    build:
+      targets:
+        ResponsayMac: all
+    test:
+      targets:
+        - ResponsayMacTests

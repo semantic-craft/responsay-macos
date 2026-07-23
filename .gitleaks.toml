@@ -1,0 +1,23 @@
+title = "Responsay public-source preflight"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "public-source-local-path-review"
+description = "User- or volume-specific absolute path"
+regex = '''(/Users/[A-Za-z0-9._-]+|/Volumes/[A-Za-z0-9._ -]+|[A-Za-z]:\\Users\\[A-Za-z0-9._ -]+)'''
+
+[[rules.allowlists]]
+paths = [
+  '''^\.gitleaks\.toml$''',
+  '''^Packages/ResponsayCore/Sources/ResponsayCore/Hotword/DictationLexicalProfile\.swift$'''
+]
+
+[[rules]]
+id = "public-source-apple-signing-review"
+description = "Fixed Apple signing identity or team metadata"
+regex = '''(?i)(DEVELOPMENT_TEAM|TeamIdentifier|com\.apple\.developer\.team-identifier|Developer ID Application|Apple Development)[^\r\n]{0,160}'''
+
+[[rules.allowlists]]
+paths = ['''^\.gitleaks\.toml$''']

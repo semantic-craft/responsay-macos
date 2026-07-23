@@ -1,0 +1,140 @@
+import Foundation
+
+enum ASREngine: String, CaseIterable {
+    case apple = "apple"
+    case cloudOpenAI = "cloud-openai"
+    case cloudMimo = "cloud-mimo"
+    /// Google Gemini batch ASR (整段识别) via native :generateContent (BYOK-direct).
+    case cloudGemini = "cloud-gemini"
+    /// In-process offline ASR via sherpa-onnx + SenseVoice (no backend, no Python).
+    case sensevoiceLocal = "offline-sensevoice"
+    /// In-process offline ASR via sherpa-onnx + Qwen3-ASR (multilingual, in-process).
+    case qwen3LocalASR = "offline-qwen3-asr"
+    /// In-process offline ASR via sherpa-onnx + FireRedASR2 AED (quality tier).
+    case fireRedASR2AEDLocal = "offline-fireredasr2-aed"
+    /// In-process offline ASR via sherpa-onnx + Fun-ASR Nano (Alibaba Tongyi, LLM-based, broad dialect coverage).
+    case funAsrNanoLocal = "offline-funasr-nano"
+    /// 千问3-ASR-Flash 实时 (OmniRealtime WebSocket): the first 真·边说边推 engine — streams
+    /// mic frames while the hotkey is held (Manual turn mode), shows `text+stash` partials in
+    /// the capsule, and on release commits → the `completed` 整段 transcript feeds skills +
+    /// insertion. Input streams; output stays whole-segment. Shares the 千问极速版 key.
+    case cloudQwenASRFlashRealtime = "cloud-qwen-asr-flash-realtime"
+    /// 火山引擎大模型录音文件极速版: record locally, then on stop upload the WAV once
+    /// to the `volc.bigasr.auc_turbo` HTTP endpoint for one final transcript.
+    case cloudVolcengineFlash = "cloud-volcengine-flash"
+    /// 火山引擎大模型流式语音识别 (流式输入模式, `bigmodel_nostream`, #580): record locally, then on
+    /// stop replay the clip over the streaming WebSocket for one clean final — lower
+    /// stop-to-final latency than the submit/query 录音文件 path. Shares the 火山
+    /// (`volcengine-flash`) key. Final-only for now; live typewriter preview is a follow-up.
+    case cloudVolcengineRealtime = "cloud-volcengine-realtime"
+    /// User-supplied OpenAI-Whisper-compatible endpoint (BYOK — ADR-0023).
+    case customOpenAI = "custom-openai"
+
+    static let defaultsKey = "asrEngine"
+    private static let legacyMimoTokenPlanRawValue = "mimo-token-plan"
+
+    /// Engines offered in Settings. Fast final-only cloud paths stay grouped
+    /// first, followed by other cloud providers and local/offline engines.
+    static var selectableCases: [ASREngine] {
+        [
+            .cloudQwenASRFlashRealtime,
+            .cloudVolcengineRealtime,
+            .cloudMimo,
+            .cloudOpenAI,
+            .cloudGemini,
+            .customOpenAI,
+            .apple,
+            .sensevoiceLocal,
+            .qwen3LocalASR,
+            .funAsrNanoLocal,
+        ]
+    }
+
+    static var selected: ASREngine {
+        selected(defaults: .standard)
+    }
+
+    static func selected(defaults: UserDefaults) -> ASREngine {
+        if let engine = fromStoredValue(defaults.string(forKey: defaultsKey)) {
+            switch engine {
+            // 2026-07-04: the 豆包标准版 2.0 HTTP submit/query engine retired in favor
+            // of its lower-latency WSS streaming sibling. It shares the same key card.
+            case .cloudVolcengineFlash:
+                return .cloudVolcengineRealtime
+            // FireRedASR2 retired 2026-06-17 (no clear advantage over SenseVoice); a stored
+            // selection migrates to the comparable offline AED. Case/spec/recognizer stay for compat.
+            case .fireRedASR2AEDLocal:
+                return .sensevoiceLocal
+            default:
+                return engine
+            }
+        }
+        // Cold-start default = 千问极速实时 live 边说边推 (2026-07-04).
+        // When no Qwen key is configured, `ASRFallback` transcribes the capture via Apple without
+        // mutating this selection (#389), so fresh installs aren't broken.
+        return .cloudQwenASRFlashRealtime
+    }
+
+    /// Resolves persisted raw values, including legacy names kept only for
+    /// settings/backward compatibility.
+    static func fromStoredValue(_ raw: String?) -> ASREngine? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        if trimmed == legacyMimoTokenPlanRawValue {
+            return .cloudMimo
+        }
+        return ASREngine(rawValue: trimmed)
+    }
+
+    var title: String {
+        switch self {
+        case .apple: "Apple 系统原生"
+        case .cloudOpenAI: "OpenAI"
+        case .cloudMimo: "小米Mimo"
+        case .cloudGemini: "Google Gemini"
+        case .cloudQwenASRFlashRealtime: "阿里云百炼 · 千问极速实时"
+        case .cloudVolcengineFlash: "火山引擎 · 豆包标准版 2.0"
+        case .cloudVolcengineRealtime: "火山引擎 · 豆包流式"
+        case .sensevoiceLocal: "SenseVoice"
+        case .qwen3LocalASR: "Qwen3-ASR"
+        case .fireRedASR2AEDLocal: "FireRedASR2 AED"
+        case .funAsrNanoLocal: "Fun-ASR Nano"
+        case .customOpenAI: "自定义 OpenAI 兼容"
+        }
+    }
+
+    /// Offline whole-utterance AED models that emit NO punctuation themselves, so the 如实输入
+    /// path may restore it on-device (CT-Transformer). Apple and the streaming Zipformer already
+    /// punctuate; cloud engines punctuate server-side — none of those should be re-punctuated.
+    var lacksNativePunctuation: Bool {
+        switch self {
+        case .sensevoiceLocal, .qwen3LocalASR, .fireRedASR2AEDLocal:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// The corresponding provider ID in `ProviderCatalog` for BYOK settings.
+    var associatedProviderId: String? {
+        switch self {
+        case .cloudOpenAI: return "openai"
+        case .cloudMimo: return "mimo"
+        case .cloudGemini: return "gemini"
+        case .cloudQwenASRFlashRealtime: return "qwen-asr-flash"
+        case .cloudVolcengineFlash: return "volcengine-flash"
+        // Shares the 火山 key card + readiness with the whole-clip engine (same account/key).
+        case .cloudVolcengineRealtime: return "volcengine-flash"
+        case .customOpenAI: return "custom"
+        case .apple, .sensevoiceLocal, .qwen3LocalASR,
+                .fireRedASR2AEDLocal, .funAsrNanoLocal:
+            return nil
+        }
+    }
+
+    static func cloudEngine(forProviderId providerId: String) -> ASREngine? {
+        ASRProviderRoute.from(providerID: providerId)?.cloudEngine
+    }
+}

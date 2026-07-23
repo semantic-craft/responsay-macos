@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Developer ID distribution entitlements (Hardened Runtime).
+
+	  Responsay is NOT sandboxed on purpose: it injects text into other apps via the
+	  Accessibility API and captures screen regions for OCR. App Sandbox would forbid
+	  both, so this app ships via Developer ID + notarization, not the Mac App Store.
+
+	  Only the microphone needs an explicit Hardened Runtime entitlement. Accessibility,
+	  Screen Recording, and Speech Recognition are gated by TCC consent at runtime
+	  (the System Settings prompts), not by entitlements. Outbound network for cloud
+	  BYOK engines needs no entitlement on a non-sandboxed app.
+	-->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

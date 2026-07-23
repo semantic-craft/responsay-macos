@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Xcode and Swift build output
+DerivedData/
+build/
+.build/
+.build-*/
+*.xcodeproj
+*.xcuserstate
+*.xcresult
+xcuserdata/
+macOS/Info.plist
+
+# Downloaded native libraries and models
+Vendor/
+/models/
+*.onnx
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+Secrets.plist
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+
+# Local scratch and tool output
+.scratch/
+.codegraph/
+.wrangler/
+*.log
