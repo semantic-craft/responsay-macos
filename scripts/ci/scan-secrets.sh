@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Non-interactive SSH sessions on developer Macs often omit Homebrew from PATH.
+# Resolve the two mandatory scanners from standard Homebrew prefixes without
+# depending on a user's interactive shell configuration.
+for tool_directory in /opt/homebrew/bin /usr/local/bin; do
+  if [[ -d "${tool_directory}" ]]; then
+    PATH="${tool_directory}:${PATH}"
+  fi
+done
+export PATH
+
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 TEMP_BASE="${TMPDIR:-/tmp}"
 TEMP_BASE="${TEMP_BASE%/}"
