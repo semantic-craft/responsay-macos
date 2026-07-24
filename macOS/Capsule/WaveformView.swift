@@ -14,7 +14,7 @@ struct WaveformView: View {
     var isRecording: Bool = true
     var style: Style = .pill
     /// Explicit bar colour. nil → the default (skin accent for `.pill`, system red for `.notch`).
-    /// The Capsule System passes a skin-independent wine so a green/blue skin never tints the pill.
+    /// The Capsule System passes its (skin-driven) accent so the pill matches the capsule tokens.
     var tint: Color? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

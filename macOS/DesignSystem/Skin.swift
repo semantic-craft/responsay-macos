@@ -8,7 +8,8 @@ import AppKit
 /// `SkinMetrics`); only the colour world changes. Each token auto-adapts light/dark via an
 /// `NSColor` dynamic provider, so the *skin* is the runtime choice and light/dark stays
 /// system-driven. Default = **荔园红** (`.shenda`); also ships **胡佛红** (`.stanford`) /
-/// **珞珈青** (`.wuda`) / **嘉庚蓝** (`.xiada`) / **香槟橙** (`.illinois`) / **纽约紫** (`.nyu`).
+/// **珞珈青** (`.wuda`) / **嘉庚蓝** (`.xiada`) / **香槟橙（藏蓝）** (`.illinois`) /
+/// **香槟橙（燃橙）** (`.illinoisflame`) / **纽约紫** (`.nyu`).
 /// Names/colours match rime-law-next 法墨输入法 (canonical values: that repo's
 /// `packages/rime-law-config/skins/colors.md`). Upstream defines the 8 candidate-window tokens
 /// (accent/accentDeep/onAccent/card/card2/ink/ink2/ink3); the remaining app-chrome tokens
@@ -24,6 +25,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
     case wuda
     case xiada
     case illinois
+    case illinoisflame
     case nyu
 
     var id: String { rawValue }
@@ -44,35 +46,38 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .shenda:   "荔园红"
-        case .stanford: "胡佛红"
-        case .wuda:     "珞珈青"
-        case .xiada:    "嘉庚蓝"
-        case .illinois: "香槟橙"
-        case .nyu:      "纽约紫"
+        case .shenda:        "荔园红"
+        case .stanford:      "胡佛红"
+        case .wuda:          "珞珈青"
+        case .xiada:         "嘉庚蓝"
+        case .illinois:      "香槟橙（藏蓝）"
+        case .illinoisflame: "香槟橙（燃橙）"
+        case .nyu:           "纽约紫"
         }
     }
 
     /// One-line tagline shown on the step-1 skin card.
     var tagline: String {
         switch self {
-        case .shenda:   "暖纸 + 品红 · 默认"
-        case .stanford: "冷灰 + Cardinal"
-        case .wuda:     "素纸 + 青绿"
-        case .xiada:    "海韵白 + 湛蓝"
-        case .illinois: "暖橙 + 藏蓝"
-        case .nyu:      "月白 + 紫罗兰"
+        case .shenda:        "暖纸 + 品红 · 默认"
+        case .stanford:      "冷灰 + Cardinal"
+        case .wuda:          "素纸 + 青绿"
+        case .xiada:         "海韵白 + 湛蓝"
+        case .illinois:      "香槟纸 + 藏蓝撞橙"
+        case .illinoisflame: "香槟纸 + 焦糖燃橙"
+        case .nyu:           "月白 + 紫罗兰"
         }
     }
 
     var palette: SkinPalette {
         switch self {
-        case .shenda:   Self.shenda_
-        case .stanford: Self.stanford_
-        case .wuda:     Self.wuda_
-        case .xiada:    Self.xiada_
-        case .illinois: Self.illinois_
-        case .nyu:      Self.nyu_
+        case .shenda:        Self.shenda_
+        case .stanford:      Self.stanford_
+        case .wuda:          Self.wuda_
+        case .xiada:         Self.xiada_
+        case .illinois:      Self.illinois_
+        case .illinoisflame: Self.illinoisflame_
+        case .nyu:           Self.nyu_
         }
     }
 
@@ -150,25 +155,51 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         paperGrain:  dyn(0x2C405A, 0x869AB0, lightA: 0.03, darkA: 0.025)
     )
 
-    // 香槟橙 / illinois — 伊利诺伊大学厄巴纳-香槟分校 (Illini Orange #FF5F05 + Illini Blue #13294B).
-    // 系列首个暖色皮肤：亮橙 accent 落在象牙纸上，品牌藏蓝进 onAccent + ink（橙底·藏蓝字，对比达 AA），
-    // 暗色是「藏蓝夜幕 + 橙灯」。8 core tokens 逐字节照搬 colors.md；chrome 按暖橙/藏蓝家族推导。
+    // 香槟橙（藏蓝）/ illinois — 伊利诺伊大学厄巴纳-香槟分校 (Illini Orange + Illini Blue)。
+    // 「Block-I 正章」(FAMO 2026-07-22 重设计)：暖香槟纸上，**accent = Illini Blue 藏蓝 + 橙字
+    // onAccent**，正如校徽 Block-I 的橙压蓝撞色。**本皮肤为双色互补有意特例**：浅色 accent=藏蓝、
+    // 深色=橙（夜幕橙灯），故 accent 随明暗翻转、破「暗色 accent 同色相提亮」不变式；其余守
+    // accentDeep_dark = accent_light 铁律。8 core tokens 逐字节照搬 colors.md；chrome 按香槟纸/
+    // 藏蓝夜幕家族推导。
     private static let illinois_ = SkinPalette(
-        accent:      dyn(0xFF5F05, 0xFF7A2E),
-        accentDeep:  dyn(0xCC4A00, 0xFF5F05),
-        accentSoft:  dyn(0xA78571, 0x8B7372),
-        onAccent:    dyn(0x13294B, 0x13294B),
-        bg:          dyn(0xE8DFCD, 0x161A27),
-        sidebar:     dyn(0xE0D7C4, 0x1A1E2A),
-        card:        dyn(0xFEFBF7, 0x1E2334),
-        card2:       dyn(0xFBEEE1, 0x191D2B),
+        accent:      dyn(0x13294B, 0xFF7A2E),
+        accentDeep:  dyn(0xCC4A00, 0x13294B),
+        accentSoft:  dyn(0x7C7566, 0x8B7372),
+        onAccent:    dyn(0xFF7A2E, 0x13294B),
+        bg:          dyn(0xE8D8C5, 0x161A27),
+        sidebar:     dyn(0xE0CFBA, 0x1A1E2A),
+        card:        dyn(0xFCF4E9, 0x1E2334),
+        card2:       dyn(0xFBE7D4, 0x262E44),
         field:       dyn(0xFFFFFF, 0x0F1320),
-        ink:         dyn(0x13294B, 0xECEAE6),
-        ink2:        dyn(0x707372, 0x9AA0B0),
-        ink3:        dyn(0x8E9090, 0x6A7185),
-        hair:        dyn(0x13294B, 0xECEAE6, lightA: 0.10, darkA: 0.10),
-        hairStrong:  dyn(0x13294B, 0xECEAE6, lightA: 0.17, darkA: 0.16),
+        ink:         dyn(0x13294B, 0xECE6DC),
+        ink2:        dyn(0x6E5A3A, 0x9AA0B0),
+        ink3:        dyn(0x9A8A6E, 0x6A7185),
+        hair:        dyn(0x13294B, 0xECE6DC, lightA: 0.10, darkA: 0.10),
+        hairStrong:  dyn(0x13294B, 0xECE6DC, lightA: 0.17, darkA: 0.16),
         paperGrain:  dyn(0x6E4A2E, 0xF0C49A, lightA: 0.035, darkA: 0.03)
+    )
+
+    // 香槟橙（燃橙）/ illinoisflame — 「焦糖燃橙」(FAMO 2026-07-24 grilling 重设计定案)。
+    // 橙自己当主角：压暗到能承米白字的焦糖橙 accent，香槟纸、全暖单色、通身不用藏蓝；与
+    // illinois（藏蓝）并存为同校双皮肤。守 accentDeep_dark = accent_light 铁律 (#C24A00)；
+    // 深色循「亮胶囊承深字」：accent #FF6E24 + onAccent 深咖 #2B1707（对比浅 4.5:1 / 深 6.1:1，AA）。
+    // 8 core tokens 逐字节照搬 colors.md；chrome 按焦糖/咖啡暖色家族推导。
+    private static let illinoisflame_ = SkinPalette(
+        accent:      dyn(0xC24A00, 0xFF6E24),
+        accentDeep:  dyn(0x9A3A00, 0xC24A00),
+        accentSoft:  dyn(0xB0815A, 0x9B6C4D),
+        onAccent:    dyn(0xFFF4E8, 0x2B1707),
+        bg:          dyn(0xE6D7C1, 0x1A120B),
+        sidebar:     dyn(0xDECEB6, 0x201710),
+        card:        dyn(0xFDF6EC, 0x241A12),
+        card2:       dyn(0xF6E9D4, 0x2C2117),
+        field:       dyn(0xFFFFFF, 0x140E08),
+        ink:         dyn(0x3A2A1B, 0xF1E5D7),
+        ink2:        dyn(0x7B6248, 0xB49C85),
+        ink3:        dyn(0xAB9174, 0x7F6C59),
+        hair:        dyn(0x3A2A1B, 0xF1E5D7, lightA: 0.10, darkA: 0.10),
+        hairStrong:  dyn(0x3A2A1B, 0xF1E5D7, lightA: 0.17, darkA: 0.16),
+        paperGrain:  dyn(0x6E4A2E, 0xF0C49A, lightA: 0.04, darkA: 0.03)
     )
 
     // 纽约紫 / nyu — 纽约大学 (accent = 官方 NYU Violet #57068C，逐字节一致；暗色循全系统「暗色 accent
@@ -191,6 +222,23 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         hairStrong:  dyn(0x2A2333, 0xEAE5F1, lightA: 0.17, darkA: 0.16),
         paperGrain:  dyn(0x3C2C5A, 0xB49ADA, lightA: 0.035, darkA: 0.028)
     )
+
+    // MARK: - Raw hexes for the Capsule System
+
+    /// Hex pairs the Capsule System re-derives with its own per-appearance alphas
+    /// (`DynamicColor.make` needs raw hexes; a `Color` can't carry a different opacity per
+    /// light/dark). Values duplicate the palette entries above — keep in sync.
+    var capsuleHex: (accentLight: UInt32, accentDark: UInt32, inkLight: UInt32) {
+        switch self {
+        case .shenda:        (0xA82C53, 0xE06A8E, 0x2A2622)
+        case .stanford:      (0x8C1515, 0xB83A4B, 0x2E2D29)
+        case .wuda:          (0x2A8367, 0x3CA081, 0x282D2A)
+        case .xiada:         (0x1D4A8C, 0x4879C5, 0x242A36)
+        case .illinois:      (0x13294B, 0xFF7A2E, 0x13294B)
+        case .illinoisflame: (0xC24A00, 0xFF6E24, 0x3A2A1B)
+        case .nyu:           (0x57068C, 0xA274DA, 0x2A2333)
+        }
+    }
 
     // MARK: - Dynamic colour plumbing (shared with SettingsTheme via DynamicColor)
 
