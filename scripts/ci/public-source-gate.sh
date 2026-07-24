@@ -28,6 +28,12 @@ allowed_path() {
     scripts/fetch-sherpa-onnx.sh|scripts/release-macos.sh|scripts/ci/public-source-gate.sh|scripts/ci/scan-secrets.sh)
       return 0
       ;;
+    scripts/architecture-lint.mjs|scripts/architecture-lint.test.mjs|scripts/diag-privacy-guard.mjs|scripts/diag-privacy-guard.test.mjs)
+      return 0
+      ;;
+    scripts/lint/no-architecture-regressions.sh|scripts/lint/no-diag-raw-text.sh|scripts/lint/brand-identity-consistency.sh)
+      return 0
+      ;;
     *)
       return 1
       ;;
