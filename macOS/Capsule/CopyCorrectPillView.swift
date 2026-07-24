@@ -7,7 +7,8 @@ import ResponsayCore
 /// 「已复制：… · 📋」pill so 复制 and 纠正 stop fighting — 复制 is always the primary action, 纠正
 /// appears only when `vm.correctionOffer != nil`.
 ///
-/// Warm-paper/wine `CapsuleSystemTheme` (skin-independent), matching `CorrectionChipView`. Every
+/// Skin-driven `CapsuleSystemTheme` (paper + accent follow the active skin), matching
+/// `CorrectionChipView`. Every
 /// button is `.plain` — an AppKit-backed style crashes in this borderless non-key panel (1.3.22).
 struct CopyCorrectPillView: View {
     var vm: QuickCaptureViewModel

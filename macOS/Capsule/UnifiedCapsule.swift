@@ -9,13 +9,13 @@ import ResponsayCore
 ///
 /// Pure presentational: it takes value inputs (never a view model), so both
 /// `QuickCaptureViewModel` (dictation) and `VoiceAssistantViewModel` (ask) drive the same
-/// anatomy through thin adapters. Colours come from `CapsuleSystemTheme` — **skin-independent**
-/// warm paper + wine, dark-first, never pure black/blue.
+/// anatomy through thin adapters. Colours come from `CapsuleSystemTheme` — **skin-driven**
+/// (paper + accent follow the active `Skin`), dark-first, never pure black/blue.
 ///
 /// Anatomy (one row, fixed slots → listening and thinking are both 184×46, so the pill never
 /// jumps on the most-watched transition): `[ ✕ 36 · waveform 84 · ✓ 36 ]`, gap 8, pad 6, r23.
 /// **No timer, no live transcript inside the pill** — the silhouette never grows mid-capture.
-/// Processing swaps to a same-width **thinking pill** with a left→right wine fill.
+/// Processing swaps to a same-width **thinking pill** with a left→right accent fill.
 ///
 /// The ✕ / ✓ affordances mirror the hotkey controls: ✕ cancels a live capture, ✓ finishes it.
 /// Host panels stay non-activating so focus remains in the user's target app.
@@ -205,7 +205,7 @@ struct UnifiedCapsule: View {
 
     // MARK: - Pieces
 
-    /// A 36pt circular control button (tappable). `glow` adds the wine halo under the ✓.
+    /// A 36pt circular control button (tappable). `glow` adds the accent halo under the ✓.
     /// `help` doubles as the instant hover label; `tipLeading` picks which slot it floats over.
     @ViewBuilder
     private func controlButton(systemName: String, fg: Color, bg: Color, glyphSize: CGFloat,
@@ -262,7 +262,7 @@ struct UnifiedCapsule: View {
     }
 }
 
-// MARK: - Thinking pill (same width as listening, left→right wine fill)
+// MARK: - Thinking pill (same width as listening, left→right accent fill)
 
 private struct CapsuleThinkingPill: View {
     let label: String
@@ -297,7 +297,7 @@ private struct CapsuleThinkingPill: View {
     }
 }
 
-// MARK: - Floating ask-identity label (pulse dot + soft wine halo)
+// MARK: - Floating ask-identity label (pulse dot + soft accent halo)
 
 private struct CapsuleAskLabel: View {
     let text: String
@@ -331,7 +331,7 @@ private struct CapsuleAskLabel: View {
 }
 
 /// 联网搜索模型署名 chip(设计稿 ask-anything-capsule · Variant B):9pt 单字纹章 + 模型名,
-/// 嵌在浮标签里,让用户一眼看出是哪个 AI 在联网搜索。skin-independent — 只用胶囊暖纸 + 酒红。
+/// 嵌在浮标签里,让用户一眼看出是哪个 AI 在联网搜索。取色随当前皮肤(胶囊纸面 + 皮肤强调色)。
 private struct CapsuleSourceChip: View {
     let source: CapsuleSearchSource
 
@@ -356,7 +356,7 @@ private struct CapsuleSourceChip: View {
     }
 }
 
-// MARK: - Wine pulse dot (ask label)
+// MARK: - Accent pulse dot (ask label)
 
 private struct CapsulePulseDot: View {
     let reduceMotion: Bool
