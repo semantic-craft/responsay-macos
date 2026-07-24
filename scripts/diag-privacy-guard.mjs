@@ -7,6 +7,12 @@
 // blind to identical keys in unrelated dictionaries (e.g. a network request body), so it
 // does not false-positive on `["text": request.text]`.
 //
+// Known blind spot: the scan matches on field NAMES, not on what they hold. Raw text
+// logged under an unlisted key (`fields: ["payload": question]`) or assembled by a helper
+// (`fields: diag.fields(…)`) passes. Catching those needs real data-flow analysis; this
+// net only guarantees that the named keys below cannot carry user text. Review new Diag
+// call sites on their merits — a green lint is not proof that a field is a descriptor.
+//
 // Pure core (`scanDiagRawText`) is unit-tested in diag-privacy-guard.test.mjs; run
 // directly (`node scripts/diag-privacy-guard.mjs`) to scan the macOS sources and exit
 // non-zero on any violation. `scripts/lint/no-diag-raw-text.sh` is the lint-suite entry.

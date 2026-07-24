@@ -72,6 +72,14 @@ export function overLineCap(path, lineCount) {
   return lineCount > MAX_LINES && !LINE_CAP_GRANDFATHER.includes(path);
 }
 
+/// Line count matching `wc -l` semantics for newline-terminated files: the empty string
+/// after a trailing newline is not a line. Counting it would make a 400-line file read as
+/// 401 and fail the advertised cap.
+export function countLines(source) {
+  const parts = source.split("\n");
+  return parts[parts.length - 1] === "" ? parts.length - 1 : parts.length;
+}
+
 /// 1-based line numbers of non-`//`-comment lines that match `regex`.
 export function scanForPattern(source, regex) {
   const out = [];
@@ -109,7 +117,7 @@ function main() {
   const lineCapRoots = ["macOS", "Packages/ResponsayCore/Sources"].map((d) => join(repoRoot, d));
   for (const root of lineCapRoots) {
     for (const file of swiftFilesUnder(root)) {
-      const lines = readFileSync(file, "utf8").split("\n").length;
+      const lines = countLines(readFileSync(file, "utf8"));
       if (overLineCap(rel(file), lines)) {
         findings.push(`${rel(file)}: ${lines} lines > ${MAX_LINES} (split it, or add it to LINE_CAP_GRANDFATHER with a reason)`);
       }

@@ -16,21 +16,28 @@ value() { # extract the string literal assigned to a given AppBrand constant
   grep -E "let $1 = \"" "$APPBRAND" | sed -E 's/.*= "([^"]*)".*/\1/' | head -1
 }
 
-require_in_project() { # the AppBrand value must appear in project.yml
-  local label="$1" val="$2"
+# The AppBrand value must be the value of the specific setting that carries it. A plain
+# whole-file search would pass on a near miss: the app bundle ID is a prefix of both the
+# test bundle ID and the URL name, so a drifted value could still be "found" elsewhere.
+require_setting() { # label, value, ERE with VALUE standing in for the escaped value
+  local label="$1" val="$2" pattern="$3"
   if [[ -z "$val" ]]; then echo "FAIL: AppBrand.$label not found"; fail=1; return; fi
-  if grep -qF -- "$val" "$PROJECT"; then
+  local escaped="${val//./\\.}"
+  if grep -qE -- "${pattern//VALUE/${escaped}}" "$PROJECT"; then
     echo "ok: $label = $val"
   else
-    echo "DRIFT: AppBrand.$label = '$val' is absent from project.yml"; fail=1
+    echo "DRIFT: AppBrand.$label = '$val' is not the value of its project.yml setting"; fail=1
   fi
 }
 
 # iOSBundleIdentifier is intentionally not checked: this repository ships macOS only, so
 # project.yml has no iOS target to agree with. AppBrand keeps the constant for ResponsayCore.
-require_in_project macOSBundleIdentifier "$(value macOSBundleIdentifier)"
-require_in_project urlScheme             "$(value urlScheme)"
-require_in_project displayName           "$(value displayName)"
+require_setting macOSBundleIdentifier "$(value macOSBundleIdentifier)" \
+  '^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER:[[:space:]]*VALUE[[:space:]]*$'
+require_setting urlScheme "$(value urlScheme)" \
+  '^[[:space:]]*-[[:space:]]*VALUE[[:space:]]*$'
+require_setting displayName "$(value displayName)" \
+  '^[[:space:]]*CFBundleDisplayName:[[:space:]]*"VALUE"'
 
 # Legacy identities must NEVER appear in the generated app identity (they exist only for
 # local cleanup scripts, the rename inventory, and tests).

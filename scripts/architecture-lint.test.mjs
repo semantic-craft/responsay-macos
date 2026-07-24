@@ -4,6 +4,7 @@ import {
   MAX_LINES,
   LINE_CAP_GRANDFATHER,
   overLineCap,
+  countLines,
   scanForPattern,
   PRINT_RE,
   FATAL_ERROR_RE,
@@ -28,6 +29,15 @@ test("completed split targets are no longer line-cap grandfathered", () => {
   ]) {
     assert.equal(overLineCap(path, MAX_LINES + 1), true, `${path} should obey the 400-line cap`);
   }
+});
+
+test("countLines does not count the empty string after a trailing newline", () => {
+  assert.equal(countLines("a\nb\nc\n"), 3, "newline-terminated file matches wc -l");
+  assert.equal(countLines("a\nb\nc"), 3, "file without a trailing newline still has 3 lines");
+  assert.equal(countLines(""), 0);
+  const exactlyAtCap = "x\n".repeat(MAX_LINES);
+  assert.equal(overLineCap("macOS/AtCap.swift", countLines(exactlyAtCap)), false,
+    "a file of exactly MAX_LINES must not trip the cap");
 });
 
 test("PRINT_RE matches a bare print( but not a method .print( call", () => {
