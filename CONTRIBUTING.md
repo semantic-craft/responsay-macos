@@ -22,6 +22,9 @@ Changes flow from this repository to internal consumers. Do not copy an internal
 ```bash
 scripts/ci/public-source-gate.sh
 scripts/ci/scan-secrets.sh
+scripts/lint/no-architecture-regressions.sh
+scripts/lint/no-diag-raw-text.sh
+scripts/lint/brand-identity-consistency.sh
 swift test --package-path Packages/ResponsayCore
 scripts/fetch-sherpa-onnx.sh
 xcodegen generate
@@ -29,6 +32,8 @@ xcodebuild build-for-testing -scheme ResponsayMac -destination 'platform=macOS'
 ```
 
 Microphone, accessibility, global-hotkey, insertion, Keychain, and screen-recording behavior still requires a real-Mac check.
+
+The three lints are regression nets, not style checks. `no-architecture-regressions.sh` blocks new oversized Swift files, `print(` in production, `fatalError(` in the audio paths, and references to the retired backend stack. `no-diag-raw-text.sh` is a privacy guard: a `Diag.{tts,asr,llm}(…)` call must log descriptors, never user text. `brand-identity-consistency.sh` keeps `AppBrand.swift` and `project.yml` in agreement. Their scanners are unit-tested with `node --test scripts/*.test.mjs`.
 
 ## Security gate
 
