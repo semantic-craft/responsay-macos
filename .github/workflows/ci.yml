@@ -35,6 +35,13 @@ jobs:
       - name: Scan history and tracked worktree
         run: scripts/ci/scan-secrets.sh
 
+      - name: Run source lints
+        run: |
+          node --test scripts/architecture-lint.test.mjs scripts/diag-privacy-guard.test.mjs
+          scripts/lint/no-architecture-regressions.sh
+          scripts/lint/no-diag-raw-text.sh
+          scripts/lint/brand-identity-consistency.sh
+
       - name: Cache native speech libraries
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
