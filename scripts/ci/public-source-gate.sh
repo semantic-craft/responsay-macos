@@ -13,7 +13,7 @@ reject() {
 
 allowed_path() {
   case "$1" in
-    .github/workflows/ci.yml|.github/workflows/release.yml)
+    .github/dependabot.yml|.github/workflows/ci.yml|.github/workflows/codeql.yml|.github/workflows/release.yml)
       return 0
       ;;
     .gitignore|.gitleaks.toml|CONTRIBUTING.md|LICENSE|README.md|THIRD_PARTY_NOTICES.md|project.yml)
