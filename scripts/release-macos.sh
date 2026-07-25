@@ -43,16 +43,31 @@ redact_log() {
     "$1" | tail -n 160
 }
 
+# First value for a key in notarytool JSON. Its history is newest-first, so the first
+# match is the most recent submission. Avoids a jq dependency for two scalar reads.
+json_first_value() {
+  grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$1" | head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+}
+
 notarize() {
   local artifact="$1"
   local label="$2"
   local result="${NOTARY_DIR}/${label}.json"
+  local info="${NOTARY_DIR}/${label}-info.json"
   local diagnostics="${NOTARY_DIR}/${label}.stderr"
   local attempt
   local -a credential_args
 
   if (( LOCAL_MODE )); then
-    credential_args=(--keychain-profile "${NOTARY_PROFILE}")
+    if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
+      credential_args=(
+        --key "${RESPONSAY_ASC_KEY_PATH}"
+        --key-id "${RESPONSAY_ASC_KEY_ID}"
+        --issuer "${RESPONSAY_ASC_ISSUER_ID}"
+      )
+    else
+      credential_args=(--keychain-profile "${NOTARY_PROFILE}")
+    fi
   else
     credential_args=(
       --key "${NOTARY_DIR}/AuthKey.p8"
@@ -61,25 +76,103 @@ notarize() {
     )
   fi
 
+  # `--wait` holds one long connection open for the whole notarization and drops on a
+  # flaky link, so upload and waiting are separated: submit, then poll. A dropped poll
+  # costs one cheap query instead of re-uploading.
+  #
+  # The upload itself is retried, but a timeout can also mean the bytes arrived and only
+  # the reply was lost. Before re-uploading, look for a submission of the same artifact
+  # that just appeared, and adopt it — otherwise every retry queues another duplicate.
+  local artifact_name submission_id=""
+  artifact_name="$(basename "${artifact}")"
+
   for attempt in 1 2 3; do
     if xcrun notarytool submit "${artifact}" \
       "${credential_args[@]}" \
-      --wait \
-      --timeout 30m \
       --output-format json \
       >"${result}" 2>"${diagnostics}"; then
-      if grep -Eq '"status"[[:space:]]*:[[:space:]]*"Accepted"' "${result}"; then
-        printf 'release: Apple notarization accepted %s.\n' "${label}"
-        return 0
-      fi
+      submission_id="$(json_first_value "${result}" id)"
+      [[ -n "${submission_id}" ]] && break
     fi
-    if (( attempt < 3 )); then
-      sleep 10
+
+    printf 'release: notarization upload attempt %d for %s did not complete.\n' "${attempt}" "${label}" >&2
+    sleep 15
+    if xcrun notarytool history "${credential_args[@]}" --output-format json \
+      >"${info}" 2>/dev/null; then
+      if [[ "$(json_first_value "${info}" name)" == "${artifact_name}" ]]; then
+        submission_id="$(json_first_value "${info}" id)"
+        if [[ -n "${submission_id}" ]]; then
+          printf 'release: the upload had in fact registered; adopting submission %s.\n' "${submission_id}" >&2
+          break
+        fi
+      fi
     fi
   done
 
-  printf 'release: Apple notarization failed for %s. Sanitized diagnostics follow.\n' "${label}" >&2
-  redact_log "${diagnostics}" >&2
+  if [[ -z "${submission_id}" ]]; then
+    printf 'release: could not upload %s for notarization. Sanitized diagnostics follow.\n' "${label}" >&2
+    redact_log "${diagnostics}" >&2
+    return 1
+  fi
+  printf 'release: %s uploaded for notarization (%s); waiting for Apple.\n' "${label}" "${submission_id}"
+
+  # Apple usually answers in a few minutes, but the queue can stall for far longer. Waiting
+  # is cheaper than starting over: a re-run means another build and another upload, and the
+  # submission would still be sitting in the same queue.
+  local status=""
+  local unreachable=0
+  local -i poll_seconds=20
+  local -i max_polls=${RESPONSAY_NOTARY_POLLS:-360}
+  for attempt in $(seq 1 "${max_polls}"); do
+    if (( attempt > 1 && attempt % 15 == 1 )); then
+      printf 'release: still waiting on %s (%d minutes elapsed).\n' \
+        "${label}" "$(( (attempt - 1) * poll_seconds / 60 ))"
+    fi
+    if xcrun notarytool info "${submission_id}" \
+      "${credential_args[@]}" \
+      --output-format json \
+      >"${info}" 2>"${diagnostics}"; then
+      unreachable=0
+      status="$(sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${info}" | head -1)"
+      case "${status}" in
+        Accepted)
+          printf 'release: Apple notarization accepted %s.\n' "${label}"
+          return 0
+          ;;
+        "In Progress")
+          ;;
+        *)
+          printf 'release: Apple notarization returned %s for %s. Log follows.\n' "${status}" "${label}" >&2
+          xcrun notarytool log "${submission_id}" "${credential_args[@]}" 2>/dev/null | head -60 >&2 || true
+          return 1
+          ;;
+      esac
+    else
+      # A credential fault never heals by waiting, and the keychain item can disappear
+      # mid-run. Treating that as a flaky network burns the whole timeout for nothing.
+      if grep -qiE 'no keychain password item|unable to authenticate|invalid credential|not authorized' \
+        "${diagnostics}" 2>/dev/null; then
+        printf 'release: notarization credentials stopped working while waiting on %s.\n' "${submission_id}" >&2
+        redact_log "${diagnostics}" >&2
+        return 1
+      fi
+      unreachable=$((unreachable + 1))
+      if (( unreachable == 1 )); then
+        printf 'release: cannot reach the notary service; still waiting on %s.\n' "${submission_id}" >&2
+      fi
+      if (( unreachable >= 15 )); then
+        printf 'release: %d consecutive status queries failed; this is not a brief glitch.\n' "${unreachable}" >&2
+        redact_log "${diagnostics}" >&2
+        return 1
+      fi
+    fi
+    sleep "${poll_seconds}"
+  done
+
+  printf 'release: gave up waiting for notarization of %s after %d minutes.\n' \
+    "${label}" "$(( max_polls * poll_seconds / 60 ))" >&2
+  printf 'release: the submission may still finish. Check with:\n' >&2
+  printf '  xcrun notarytool info %s --keychain-profile %s\n' "${submission_id}" "${NOTARY_PROFILE:-<profile>}" >&2
   return 1
 }
 
@@ -96,7 +189,16 @@ LOCAL_MODE=0
 
 if (( LOCAL_MODE )); then
   NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-responsay-notary}"
-  printf 'release: local mode — signing with the login keychain, notarizing via profile %s.\n' "${NOTARY_PROFILE}"
+  # An App Store Connect key file is preferred when given: it is a plain file, so it
+  # cannot vanish mid-run the way a keychain credential item can.
+  if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
+    [[ -f "${RESPONSAY_ASC_KEY_PATH}" ]] || fail "RESPONSAY_ASC_KEY_PATH does not point at a file"
+    require_env RESPONSAY_ASC_KEY_ID
+    require_env RESPONSAY_ASC_ISSUER_ID
+    printf 'release: local mode — signing with the login keychain, notarizing with an App Store Connect key.\n'
+  else
+    printf 'release: local mode — signing with the login keychain, notarizing via profile %s.\n' "${NOTARY_PROFILE}"
+  fi
 else
   for name in \
     RESPONSAY_DEVELOPER_ID_P12_BASE64 \
@@ -137,8 +239,10 @@ if (( LOCAL_MODE )); then
   if [[ -n "${RESPONSAY_APPLE_TEAM_ID:-}" && "${TEAM_ID}" != "${RESPONSAY_APPLE_TEAM_ID}" ]]; then
     fail "the Developer ID identity in the keychain does not match RESPONSAY_APPLE_TEAM_ID"
   fi
-  xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 ||
-    fail "notarytool profile ${NOTARY_PROFILE} is not set up. Create it once with: xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" --apple-id <apple-id> --team-id ${TEAM_ID}"
+  if [[ -z "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
+    xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 ||
+      fail "notarytool profile ${NOTARY_PROFILE} is not set up. Create it once with: xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" --apple-id <apple-id> --team-id ${TEAM_ID}"
+  fi
 else
   TEAM_ID="${RESPONSAY_APPLE_TEAM_ID}"
   printf '%s' "${RESPONSAY_DEVELOPER_ID_P12_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/developer-id.p12"
@@ -176,8 +280,7 @@ if ! xcodebuild \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "${DERIVED_DATA}" \
   build \
-  CODE_SIGN_IDENTITY="${IDENTITY_HASH}" \
-  DEVELOPMENT_TEAM="${TEAM_ID}" \
+  CODE_SIGNING_ALLOWED=NO \
   >"${BUILD_LOG}" 2>&1; then
   printf 'release: Xcode build failed. Sanitized diagnostics follow.\n' >&2
   redact_log "${BUILD_LOG}" >&2
@@ -189,7 +292,34 @@ APP_PATH="${DERIVED_DATA}/Build/Products/Release/Responsay.app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP_PATH}/Contents/Info.plist")" == "${VERSION}" ]] || fail "built app version mismatch"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${APP_PATH}/Contents/Info.plist")" == "${BUILD_NUMBER}" ]] || fail "built app number mismatch"
 
-codesign --force --deep --options runtime --timestamp \
+# Sign inside-out: every nested bundle on its own, deepest first, then the app last.
+# `--deep` looks equivalent but Apple documents it as unsuitable for distribution — it
+# applies the outer options to nested code that has its own requirements, and Sparkle
+# ships an Updater.app plus two XPC services that must each carry their own signature.
+while IFS= read -r nested; do
+  printf 'release: signing %s\n' "${nested#"${APP_PATH}"/}"
+  codesign --force --options runtime --timestamp --sign "${IDENTITY_HASH}" "${nested}"
+done < <(
+  {
+    find "${APP_PATH}/Contents" \
+      \( -name '*.framework' -o -name '*.xpc' -o -name '*.app' -o -name '*.dylib' \) -print
+    # Helper executables that live inside a framework without being a bundle of their own.
+    # Sparkle ships Autoupdate this way; signing the enclosing framework does not cover it,
+    # and notarization rejects it as unsigned.
+    find "${APP_PATH}/Contents/Frameworks" -type f -perm +111 -print 2>/dev/null |
+      while IFS= read -r candidate; do
+        case "$(/usr/bin/file -b "${candidate}")" in
+          *Mach-O*) printf '%s\n' "${candidate}" ;;
+        esac
+      done
+  } |
+    sort -u |
+    awk '{ print gsub(/\//, "/"), $0 }' |
+    sort -rn |
+    cut -d' ' -f2-
+)
+
+codesign --force --options runtime --timestamp \
   --sign "${IDENTITY_HASH}" \
   --entitlements "${ROOT}/macOS/Responsay.entitlements" \
   "${APP_PATH}"
