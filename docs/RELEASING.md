@@ -8,32 +8,77 @@ environment secrets instead.
 Local is the simpler path and the default: `scripts/release-macos.sh` uses it whenever no
 signing secrets are present in the environment.
 
+## Network prerequisite
+
+`notarytool` splits its traffic: status queries go to `appstoreconnect.apple.com`, but the
+upload itself goes to **Amazon S3**. Behind a proxy that routes `amazonaws.com` poorly, the
+queries succeed and every upload fails with `HTTPClientError.connectTimeout` — and a
+partially registered submission then sits at `In Progress` forever, with no log to read.
+
+Check before releasing:
+
+```bash
+curl -o /dev/null -sS -w "%{http_code}\n" --max-time 15 https://s3.amazonaws.com/
+```
+
+Any real HTTP status (`307`, `403`, …) is fine. `000` means the connection failed; fix the
+proxy rule — for example `DOMAIN-SUFFIX,amazonaws.com,PROXY` — before going further.
+
 ## Local release
 
-One-time setup — store an app-specific password for `notarytool`, so later releases need
-no password at all:
+Credentials come from one of two places. An App Store Connect API key is a plain file, so
+it cannot disappear mid-run; a keychain profile is more convenient but has been observed
+vanishing from the login keychain during a long release.
+
+With an API key (preferred):
+
+```bash
+RESPONSAY_ASC_KEY_PATH=~/path/AuthKey_XXXXXXXXXX.p8 \
+RESPONSAY_ASC_KEY_ID=XXXXXXXXXX \
+RESPONSAY_ASC_ISSUER_ID=<issuer-uuid> \
+scripts/release-macos.sh v1.5.9
+```
+
+Create the key under App Store Connect → Users and Access → Integrations; the issuer UUID
+is on the same page. Or, with a keychain profile stored once:
 
 ```bash
 xcrun notarytool store-credentials "responsay-notary" --apple-id <apple-id> --team-id <team-id>
+scripts/release-macos.sh v1.5.9
 ```
 
-Omit `--password`; the tool prompts for it, keeping it out of shell history. Generate the
-app-specific password at appleid.apple.com. The Apple ID must belong to the team that owns
-the Developer ID certificate.
+Omit `--password`; the tool prompts for it, keeping it out of shell history. The Apple ID
+must belong to the team that owns the Developer ID certificate.
 
-Then each release is:
+Either way the script finds the `Developer ID Application` identity in the login keychain,
+reads the team from it, builds, signs every nested bundle from the inside out, notarizes,
+staples, verifies with Gatekeeper, writes the DMG and its checksum to `build/release/`, and
+signs a Sparkle `appcast.xml` with the EdDSA key in the keychain. Nothing is exported and
+no secret is configured anywhere.
+
+## Publishing what the script produced
+
+The build is not the release. Three things have to happen afterwards, and until the last
+one lands no installed copy learns that an update exists.
+
+1. Create the release in `responsay-releases` for that tag and upload the DMG and its
+   `.sha256`. Download it back and confirm the size and checksum match the appcast.
+2. Add the new `<item>` to `public/appcast.xml` in the `responsay-site` repository. Insert
+   it above the existing items rather than replacing the file: `generate_appcast` prunes
+   entries whose DMG is not in the working directory, which would silently drop the
+   published history.
+3. Deploy that site. **Its Cloudflare Pages project has no Git provider**, so pushing the
+   commit changes nothing on its own:
 
 ```bash
-git tag v1.5.9 && scripts/release-macos.sh v1.5.9
+npm run build && npx wrangler pages deploy dist --project-name responsay --branch main
 ```
 
-The script finds the `Developer ID Application` identity in the login keychain, reads the
-team from it, builds, signs, notarizes, staples, verifies with Gatekeeper, writes the DMG
-and its checksum to `build/release/`, and signs a Sparkle `appcast.xml` using the EdDSA key
-in the keychain. Nothing is exported and no secret is configured anywhere.
+Then confirm the live feed actually moved:
 
-Upload the DMG to the `responsay-releases` release for that tag, then commit the new
-`appcast.xml` there — that is what makes existing installs see the update.
+```bash
+curl -sS https://responsay.com/appcast.xml | grep -m1 -A2 '<item>'
+```
 
 ## Hosted release
 
