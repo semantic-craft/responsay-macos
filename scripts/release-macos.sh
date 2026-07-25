@@ -223,7 +223,10 @@ BUILD_NUMBER="$(sed -n 's/^[[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*"\([^
 [[ -n "${BUILD_NUMBER}" ]] || fail "CURRENT_PROJECT_VERSION is missing"
 
 mkdir -p "${NOTARY_DIR}" "${OUTPUT_DIR}"
-DMG_NAME="Responsay-${VERSION}.dmg"
+# The name is deliberately constant. The site's download button is a permanent redirect to
+# `releases/latest/download/Responsay.dmg`, which resolves by filename — a versioned name
+# makes that link 404 the moment a release lands.
+DMG_NAME="Responsay.dmg"
 DMG_PATH="${OUTPUT_DIR}/${DMG_NAME}"
 SHA_PATH="${DMG_PATH}.sha256"
 APPCAST_PATH="${OUTPUT_DIR}/appcast.xml"
