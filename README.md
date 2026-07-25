@@ -61,7 +61,7 @@ xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 
 每个 pull request、`main` 推送和正式发布都会运行固定路径白名单、Gitleaks、TruffleHog 和补充的确定性检查。扫描原始报告只写入 runner 的临时目录，日志仅公开通过/失败状态，任务结束时立即删除，不作为 artifact 上传。
 
-正式发布在 GitHub hosted macOS runner 上分为两个阶段：不带密钥的源码/测试预检，以及通过 `public-release` Environment 审批后才取得签名、公证密钥的发布阶段。配置和操作说明见 [docs/RELEASING.md](docs/RELEASING.md)。
+正式发布在维护者本机进行，签名与公证凭证只存在于该机器的登录钥匙串，不导出、不进入 CI。操作说明见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 第三方软件
 
