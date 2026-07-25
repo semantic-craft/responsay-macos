@@ -1,6 +1,44 @@
 # Releasing Responsay for macOS
 
-The public repository owns the public macOS release. Builds run on GitHub's hosted `macos-26` runner; no maintainer machine or internal repository is required.
+There are two ways to cut a release, and they share one script. A local release signs with
+the certificate already in the maintainer's login keychain. A hosted release runs on
+GitHub's `macos-26` runner, which has no keychain, so it receives the same material as
+environment secrets instead.
+
+Local is the simpler path and the default: `scripts/release-macos.sh` uses it whenever no
+signing secrets are present in the environment.
+
+## Local release
+
+One-time setup — store an app-specific password for `notarytool`, so later releases need
+no password at all:
+
+```bash
+xcrun notarytool store-credentials "responsay-notary" --apple-id <apple-id> --team-id <team-id>
+```
+
+Omit `--password`; the tool prompts for it, keeping it out of shell history. Generate the
+app-specific password at appleid.apple.com. The Apple ID must belong to the team that owns
+the Developer ID certificate.
+
+Then each release is:
+
+```bash
+git tag v1.5.9 && scripts/release-macos.sh v1.5.9
+```
+
+The script finds the `Developer ID Application` identity in the login keychain, reads the
+team from it, builds, signs, notarizes, staples, verifies with Gatekeeper, writes the DMG
+and its checksum to `build/release/`, and signs a Sparkle `appcast.xml` using the EdDSA key
+in the keychain. Nothing is exported and no secret is configured anywhere.
+
+Upload the DMG to the `responsay-releases` release for that tag, then commit the new
+`appcast.xml` there — that is what makes existing installs see the update.
+
+## Hosted release
+
+Use this when the release should not depend on a maintainer's machine. It needs the
+secrets below and is otherwise the same build.
 
 ## Trust boundary
 
