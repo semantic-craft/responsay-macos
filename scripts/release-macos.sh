@@ -49,12 +49,21 @@ notarize() {
   local result="${NOTARY_DIR}/${label}.json"
   local diagnostics="${NOTARY_DIR}/${label}.stderr"
   local attempt
+  local -a credential_args
+
+  if (( LOCAL_MODE )); then
+    credential_args=(--keychain-profile "${NOTARY_PROFILE}")
+  else
+    credential_args=(
+      --key "${NOTARY_DIR}/AuthKey.p8"
+      --key-id "${RESPONSAY_ASC_KEY_ID}"
+      --issuer "${RESPONSAY_ASC_ISSUER_ID}"
+    )
+  fi
 
   for attempt in 1 2 3; do
     if xcrun notarytool submit "${artifact}" \
-      --key "${NOTARY_DIR}/AuthKey.p8" \
-      --key-id "${RESPONSAY_ASC_KEY_ID}" \
-      --issuer "${RESPONSAY_ASC_ISSUER_ID}" \
+      "${credential_args[@]}" \
       --wait \
       --timeout 30m \
       --output-format json \
@@ -77,18 +86,31 @@ notarize() {
 for tool in base64 codesign git hdiutil security shasum xcodebuild xcodegen xcrun; do
   require_tool "${tool}"
 done
-for name in \
-  RESPONSAY_DEVELOPER_ID_P12_BASE64 \
-  RESPONSAY_DEVELOPER_ID_P12_PASSWORD \
-  RESPONSAY_APPLE_TEAM_ID \
-  RESPONSAY_ASC_KEY_P8_BASE64 \
-  RESPONSAY_ASC_KEY_ID \
-  RESPONSAY_ASC_ISSUER_ID; do
-  require_env "${name}"
-done
+
+# Two credential sources. A hosted runner has no keychain, so CI injects the signing
+# certificate and an App Store Connect key as environment secrets. On a maintainer's Mac
+# both already live in the login keychain, so nothing needs to be exported: set no
+# secrets and the release signs with the identity that is already there.
+LOCAL_MODE=0
+[[ -z "${RESPONSAY_DEVELOPER_ID_P12_BASE64:-}" ]] && LOCAL_MODE=1
+
+if (( LOCAL_MODE )); then
+  NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-responsay-notary}"
+  printf 'release: local mode — signing with the login keychain, notarizing via profile %s.\n' "${NOTARY_PROFILE}"
+else
+  for name in \
+    RESPONSAY_DEVELOPER_ID_P12_BASE64 \
+    RESPONSAY_DEVELOPER_ID_P12_PASSWORD \
+    RESPONSAY_APPLE_TEAM_ID \
+    RESPONSAY_ASC_KEY_P8_BASE64 \
+    RESPONSAY_ASC_KEY_ID \
+    RESPONSAY_ASC_ISSUER_ID; do
+    require_env "${name}"
+  done
+  [[ "${RESPONSAY_APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "Apple Team ID has an invalid format"
+fi
 
 [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "release tag must look like v1.2.3"
-[[ "${RESPONSAY_APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "Apple Team ID has an invalid format"
 
 cd "${ROOT}"
 scripts/ci/public-source-gate.sh
@@ -105,30 +127,46 @@ SHA_PATH="${DMG_PATH}.sha256"
 APPCAST_PATH="${OUTPUT_DIR}/appcast.xml"
 [[ ! -e "${DMG_PATH}" && ! -e "${SHA_PATH}" && ! -e "${APPCAST_PATH}" ]] || fail "release output already exists; use a clean runner checkout"
 
-printf '%s' "${RESPONSAY_DEVELOPER_ID_P12_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/developer-id.p12"
-printf '%s' "${RESPONSAY_ASC_KEY_P8_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/AuthKey.p8"
-chmod 600 "${NOTARY_DIR}/developer-id.p12" "${NOTARY_DIR}/AuthKey.p8"
+if (( LOCAL_MODE )); then
+  # The certificate is already in the login keychain. Find it there and read the team
+  # from the identity itself, so a local release needs no configuration at all.
+  IDENTITY_RECORD="$(security find-identity -v -p codesigning | grep 'Developer ID Application' | head -1 || true)"
+  [[ -n "${IDENTITY_RECORD}" ]] || fail "no Developer ID Application identity found in the login keychain"
+  TEAM_ID="$(sed -E 's/.*\(([A-Z0-9]{10})\).*/\1/' <<< "${IDENTITY_RECORD}")"
+  [[ "${TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "could not read the team from the Developer ID identity"
+  if [[ -n "${RESPONSAY_APPLE_TEAM_ID:-}" && "${TEAM_ID}" != "${RESPONSAY_APPLE_TEAM_ID}" ]]; then
+    fail "the Developer ID identity in the keychain does not match RESPONSAY_APPLE_TEAM_ID"
+  fi
+  xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 ||
+    fail "notarytool profile ${NOTARY_PROFILE} is not set up. Create it once with: xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" --apple-id <apple-id> --team-id ${TEAM_ID}"
+else
+  TEAM_ID="${RESPONSAY_APPLE_TEAM_ID}"
+  printf '%s' "${RESPONSAY_DEVELOPER_ID_P12_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/developer-id.p12"
+  printf '%s' "${RESPONSAY_ASC_KEY_P8_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/AuthKey.p8"
+  chmod 600 "${NOTARY_DIR}/developer-id.p12" "${NOTARY_DIR}/AuthKey.p8"
 
-KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
-security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
-security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-security import "${NOTARY_DIR}/developer-id.p12" \
-  -k "${KEYCHAIN_PATH}" \
-  -P "${RESPONSAY_DEVELOPER_ID_P12_PASSWORD}" \
-  -T /usr/bin/codesign \
-  -T /usr/bin/security >/dev/null
-security set-key-partition-list \
-  -S apple-tool:,apple:,codesign: \
-  -s \
-  -k "${KEYCHAIN_PASSWORD}" \
-  "${KEYCHAIN_PATH}" >/dev/null
-security list-keychains -d user -s "${KEYCHAIN_PATH}"
+  KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+  security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+  security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+  security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+  security import "${NOTARY_DIR}/developer-id.p12" \
+    -k "${KEYCHAIN_PATH}" \
+    -P "${RESPONSAY_DEVELOPER_ID_P12_PASSWORD}" \
+    -T /usr/bin/codesign \
+    -T /usr/bin/security >/dev/null
+  security set-key-partition-list \
+    -S apple-tool:,apple:,codesign: \
+    -s \
+    -k "${KEYCHAIN_PASSWORD}" \
+    "${KEYCHAIN_PATH}" >/dev/null
+  security list-keychains -d user -s "${KEYCHAIN_PATH}"
 
-IDENTITY_RECORD="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep 'Developer ID Application' | head -1 || true)"
-[[ "${IDENTITY_RECORD}" == *"(${RESPONSAY_APPLE_TEAM_ID})"* ]] || fail "Developer ID certificate does not match the configured Apple Team ID"
+  IDENTITY_RECORD="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep 'Developer ID Application' | head -1 || true)"
+  [[ "${IDENTITY_RECORD}" == *"(${TEAM_ID})"* ]] || fail "Developer ID certificate does not match the configured Apple Team ID"
+fi
+
 IDENTITY_HASH="$(awk '{print $2}' <<< "${IDENTITY_RECORD}")"
-[[ "${IDENTITY_HASH}" =~ ^[A-F0-9]{40}$ ]] || fail "Developer ID signing identity was not imported"
+[[ "${IDENTITY_HASH}" =~ ^[A-F0-9]{40}$ ]] || fail "Developer ID signing identity was not resolved"
 
 xcodegen generate >/dev/null
 BUILD_LOG="${WORK_DIR}/xcodebuild.log"
@@ -139,7 +177,7 @@ if ! xcodebuild \
   -derivedDataPath "${DERIVED_DATA}" \
   build \
   CODE_SIGN_IDENTITY="${IDENTITY_HASH}" \
-  DEVELOPMENT_TEAM="${RESPONSAY_APPLE_TEAM_ID}" \
+  DEVELOPMENT_TEAM="${TEAM_ID}" \
   >"${BUILD_LOG}" 2>&1; then
   printf 'release: Xcode build failed. Sanitized diagnostics follow.\n' >&2
   redact_log "${BUILD_LOG}" >&2
@@ -159,7 +197,7 @@ codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 
 SIGNATURE_INFO="${WORK_DIR}/signature.txt"
 codesign -d --verbose=4 "${APP_PATH}" 2>"${SIGNATURE_INFO}"
-grep -Fq "TeamIdentifier=${RESPONSAY_APPLE_TEAM_ID}" "${SIGNATURE_INFO}" || fail "built app Team ID mismatch"
+grep -Fq "TeamIdentifier=${TEAM_ID}" "${SIGNATURE_INFO}" || fail "built app Team ID mismatch"
 
 APP_ZIP="${WORK_DIR}/Responsay-app.zip"
 ditto -c -k --keepParent "${APP_PATH}" "${APP_ZIP}"
@@ -188,19 +226,41 @@ xcrun stapler validate "${DMG_PATH}"
   shasum -a 256 "${DMG_NAME}" >"${DMG_NAME}.sha256"
 )
 
-if [[ -n "${RESPONSAY_SPARKLE_ED_KEY_BASE64:-}" ]]; then
+# Where the DMG will be downloaded from. Locally the artifact goes to the releases
+# repository that serves the live Sparkle feed; in CI it is attached to this repository's
+# release. Override with RESPONSAY_DOWNLOAD_URL_PREFIX when hosting moves.
+if (( LOCAL_MODE )); then
+  DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-releases/releases/download/${TAG}/"
+else
+  DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/"
+fi
+DOWNLOAD_URL_PREFIX="${RESPONSAY_DOWNLOAD_URL_PREFIX:-${DEFAULT_URL_PREFIX}}"
+
+if (( LOCAL_MODE )) || [[ -n "${RESPONSAY_SPARKLE_ED_KEY_BASE64:-}" ]]; then
   GENERATE_APPCAST="$(find "${DERIVED_DATA}/SourcePackages/artifacts" -path '*/Sparkle/bin/generate_appcast' -type f -print -quit)"
   [[ -x "${GENERATE_APPCAST}" ]] || fail "Sparkle generate_appcast tool was not resolved"
   APPCAST_DIR="${WORK_DIR}/appcast"
   mkdir -p "${APPCAST_DIR}"
   cp "${DMG_PATH}" "${APPCAST_DIR}/${DMG_NAME}"
   APPCAST_LOG="${WORK_DIR}/generate-appcast.log"
-  if ! printf '%s' "${RESPONSAY_SPARKLE_ED_KEY_BASE64}" | /usr/bin/base64 -D | \
+  if (( LOCAL_MODE )); then
+    # No key file: generate_appcast reads the EdDSA private key from the login keychain,
+    # which is where Sparkle's generate_keys put it.
+    appcast_ok=0
     "${GENERATE_APPCAST}" \
-      --ed-key-file - \
-      --download-url-prefix "https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/" \
+      --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
       "${APPCAST_DIR}" \
-      >"${APPCAST_LOG}" 2>&1; then
+      >"${APPCAST_LOG}" 2>&1 && appcast_ok=1
+  else
+    appcast_ok=0
+    printf '%s' "${RESPONSAY_SPARKLE_ED_KEY_BASE64}" | /usr/bin/base64 -D | \
+      "${GENERATE_APPCAST}" \
+        --ed-key-file - \
+        --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
+        "${APPCAST_DIR}" \
+        >"${APPCAST_LOG}" 2>&1 && appcast_ok=1
+  fi
+  if (( ! appcast_ok )); then
     printf 'release: Sparkle appcast generation failed. Sanitized diagnostics follow.\n' >&2
     redact_log "${APPCAST_LOG}" >&2
     exit 1
