@@ -7,12 +7,10 @@ TEMP_BASE="${TMPDIR:-/tmp}"
 TEMP_BASE="${TEMP_BASE%/}"
 WORK_DIR="$(mktemp -d "${TEMP_BASE}/responsay-release.XXXXXX")"
 DERIVED_DATA="${WORK_DIR}/DerivedData"
-KEYCHAIN_PATH="${WORK_DIR}/release.keychain-db"
 NOTARY_DIR="${WORK_DIR}/notary"
 OUTPUT_DIR="${ROOT}/build/release"
 
 cleanup() {
-  security delete-keychain "${KEYCHAIN_PATH}" >/dev/null 2>&1 || true
   case "${WORK_DIR}" in
     "${TEMP_BASE}"/responsay-release.*)
       /bin/rm -rf -- "${WORK_DIR}"
@@ -58,22 +56,14 @@ notarize() {
   local attempt
   local -a credential_args
 
-  if (( LOCAL_MODE )); then
-    if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
-      credential_args=(
-        --key "${RESPONSAY_ASC_KEY_PATH}"
-        --key-id "${RESPONSAY_ASC_KEY_ID}"
-        --issuer "${RESPONSAY_ASC_ISSUER_ID}"
-      )
-    else
-      credential_args=(--keychain-profile "${NOTARY_PROFILE}")
-    fi
-  else
+  if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
     credential_args=(
-      --key "${NOTARY_DIR}/AuthKey.p8"
+      --key "${RESPONSAY_ASC_KEY_PATH}"
       --key-id "${RESPONSAY_ASC_KEY_ID}"
       --issuer "${RESPONSAY_ASC_ISSUER_ID}"
     )
+  else
+    credential_args=(--keychain-profile "${NOTARY_PROFILE}")
   fi
 
   # `--wait` holds one long connection open for the whole notarization and drops on a
@@ -176,40 +166,22 @@ notarize() {
   return 1
 }
 
-for tool in base64 codesign git hdiutil security shasum xcodebuild xcodegen xcrun; do
+for tool in codesign git hdiutil security shasum xcodebuild xcodegen xcrun; do
   require_tool "${tool}"
 done
 
-# Two credential sources. A hosted runner has no keychain, so CI injects the signing
-# certificate and an App Store Connect key as environment secrets. On a maintainer's Mac
-# both already live in the login keychain, so nothing needs to be exported: set no
-# secrets and the release signs with the identity that is already there.
-LOCAL_MODE=0
-[[ -z "${RESPONSAY_DEVELOPER_ID_P12_BASE64:-}" ]] && LOCAL_MODE=1
-
-if (( LOCAL_MODE )); then
-  NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-responsay-notary}"
-  # An App Store Connect key file is preferred when given: it is a plain file, so it
-  # cannot vanish mid-run the way a keychain credential item can.
-  if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
-    [[ -f "${RESPONSAY_ASC_KEY_PATH}" ]] || fail "RESPONSAY_ASC_KEY_PATH does not point at a file"
-    require_env RESPONSAY_ASC_KEY_ID
-    require_env RESPONSAY_ASC_ISSUER_ID
-    printf 'release: local mode — signing with the login keychain, notarizing with an App Store Connect key.\n'
-  else
-    printf 'release: local mode — signing with the login keychain, notarizing via profile %s.\n' "${NOTARY_PROFILE}"
-  fi
+# Signing material is never configured: the Developer ID certificate and Sparkle's EdDSA
+# key already live in the maintainer's login keychain, and the release uses them there.
+NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-responsay-notary}"
+# An App Store Connect key file is preferred when given: it is a plain file, so it cannot
+# vanish mid-run the way a keychain credential item can.
+if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
+  [[ -f "${RESPONSAY_ASC_KEY_PATH}" ]] || fail "RESPONSAY_ASC_KEY_PATH does not point at a file"
+  require_env RESPONSAY_ASC_KEY_ID
+  require_env RESPONSAY_ASC_ISSUER_ID
+  printf 'release: signing with the login keychain, notarizing with an App Store Connect key.\n'
 else
-  for name in \
-    RESPONSAY_DEVELOPER_ID_P12_BASE64 \
-    RESPONSAY_DEVELOPER_ID_P12_PASSWORD \
-    RESPONSAY_APPLE_TEAM_ID \
-    RESPONSAY_ASC_KEY_P8_BASE64 \
-    RESPONSAY_ASC_KEY_ID \
-    RESPONSAY_ASC_ISSUER_ID; do
-    require_env "${name}"
-  done
-  [[ "${RESPONSAY_APPLE_TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "Apple Team ID has an invalid format"
+  printf 'release: signing with the login keychain, notarizing via profile %s.\n' "${NOTARY_PROFILE}"
 fi
 
 [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "release tag must look like v1.2.3"
@@ -232,44 +204,18 @@ SHA_PATH="${DMG_PATH}.sha256"
 APPCAST_PATH="${OUTPUT_DIR}/appcast.xml"
 [[ ! -e "${DMG_PATH}" && ! -e "${SHA_PATH}" && ! -e "${APPCAST_PATH}" ]] || fail "release output already exists; use a clean runner checkout"
 
-if (( LOCAL_MODE )); then
-  # The certificate is already in the login keychain. Find it there and read the team
-  # from the identity itself, so a local release needs no configuration at all.
-  IDENTITY_RECORD="$(security find-identity -v -p codesigning | grep 'Developer ID Application' | head -1 || true)"
-  [[ -n "${IDENTITY_RECORD}" ]] || fail "no Developer ID Application identity found in the login keychain"
-  TEAM_ID="$(sed -E 's/.*\(([A-Z0-9]{10})\).*/\1/' <<< "${IDENTITY_RECORD}")"
-  [[ "${TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "could not read the team from the Developer ID identity"
-  if [[ -n "${RESPONSAY_APPLE_TEAM_ID:-}" && "${TEAM_ID}" != "${RESPONSAY_APPLE_TEAM_ID}" ]]; then
-    fail "the Developer ID identity in the keychain does not match RESPONSAY_APPLE_TEAM_ID"
-  fi
-  if [[ -z "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
-    xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 ||
-      fail "notarytool profile ${NOTARY_PROFILE} is not set up. Create it once with: xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" --apple-id <apple-id> --team-id ${TEAM_ID}"
-  fi
-else
-  TEAM_ID="${RESPONSAY_APPLE_TEAM_ID}"
-  printf '%s' "${RESPONSAY_DEVELOPER_ID_P12_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/developer-id.p12"
-  printf '%s' "${RESPONSAY_ASC_KEY_P8_BASE64}" | /usr/bin/base64 -D >"${NOTARY_DIR}/AuthKey.p8"
-  chmod 600 "${NOTARY_DIR}/developer-id.p12" "${NOTARY_DIR}/AuthKey.p8"
-
-  KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
-  security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-  security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
-  security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-  security import "${NOTARY_DIR}/developer-id.p12" \
-    -k "${KEYCHAIN_PATH}" \
-    -P "${RESPONSAY_DEVELOPER_ID_P12_PASSWORD}" \
-    -T /usr/bin/codesign \
-    -T /usr/bin/security >/dev/null
-  security set-key-partition-list \
-    -S apple-tool:,apple:,codesign: \
-    -s \
-    -k "${KEYCHAIN_PASSWORD}" \
-    "${KEYCHAIN_PATH}" >/dev/null
-  security list-keychains -d user -s "${KEYCHAIN_PATH}"
-
-  IDENTITY_RECORD="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | grep 'Developer ID Application' | head -1 || true)"
-  [[ "${IDENTITY_RECORD}" == *"(${TEAM_ID})"* ]] || fail "Developer ID certificate does not match the configured Apple Team ID"
+# The certificate is already in the login keychain. Find it there and read the team from
+# the identity itself, so a release needs no configuration at all.
+IDENTITY_RECORD="$(security find-identity -v -p codesigning | grep 'Developer ID Application' | head -1 || true)"
+[[ -n "${IDENTITY_RECORD}" ]] || fail "no Developer ID Application identity found in the login keychain"
+TEAM_ID="$(sed -E 's/.*\(([A-Z0-9]{10})\).*/\1/' <<< "${IDENTITY_RECORD}")"
+[[ "${TEAM_ID}" =~ ^[A-Z0-9]{10}$ ]] || fail "could not read the team from the Developer ID identity"
+if [[ -n "${RESPONSAY_APPLE_TEAM_ID:-}" && "${TEAM_ID}" != "${RESPONSAY_APPLE_TEAM_ID}" ]]; then
+  fail "the Developer ID identity in the keychain does not match RESPONSAY_APPLE_TEAM_ID"
+fi
+if [[ -z "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
+  xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 ||
+    fail "notarytool profile ${NOTARY_PROFILE} is not set up. Create it once with: xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" --apple-id <apple-id> --team-id ${TEAM_ID}"
 fi
 
 IDENTITY_HASH="$(awk '{print $2}' <<< "${IDENTITY_RECORD}")"
@@ -359,46 +305,31 @@ xcrun stapler validate "${DMG_PATH}"
   shasum -a 256 "${DMG_NAME}" >"${DMG_NAME}.sha256"
 )
 
-# Where the DMG will be downloaded from. Local and hosted builds now agree: the artifact is
-# attached to this repository's own release. Override with RESPONSAY_DOWNLOAD_URL_PREFIX
-# when hosting moves.
+# Where the DMG will be downloaded from: this repository's own release. Override with
+# RESPONSAY_DOWNLOAD_URL_PREFIX when hosting moves.
 DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/"
 DOWNLOAD_URL_PREFIX="${RESPONSAY_DOWNLOAD_URL_PREFIX:-${DEFAULT_URL_PREFIX}}"
 
-if (( LOCAL_MODE )) || [[ -n "${RESPONSAY_SPARKLE_ED_KEY_BASE64:-}" ]]; then
-  GENERATE_APPCAST="$(find "${DERIVED_DATA}/SourcePackages/artifacts" -path '*/Sparkle/bin/generate_appcast' -type f -print -quit)"
-  [[ -x "${GENERATE_APPCAST}" ]] || fail "Sparkle generate_appcast tool was not resolved"
-  APPCAST_DIR="${WORK_DIR}/appcast"
-  mkdir -p "${APPCAST_DIR}"
-  cp "${DMG_PATH}" "${APPCAST_DIR}/${DMG_NAME}"
-  APPCAST_LOG="${WORK_DIR}/generate-appcast.log"
-  if (( LOCAL_MODE )); then
-    # No key file: generate_appcast reads the EdDSA private key from the login keychain,
-    # which is where Sparkle's generate_keys put it.
-    appcast_ok=0
-    "${GENERATE_APPCAST}" \
-      --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
-      "${APPCAST_DIR}" \
-      >"${APPCAST_LOG}" 2>&1 && appcast_ok=1
-  else
-    appcast_ok=0
-    printf '%s' "${RESPONSAY_SPARKLE_ED_KEY_BASE64}" | /usr/bin/base64 -D | \
-      "${GENERATE_APPCAST}" \
-        --ed-key-file - \
-        --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
-        "${APPCAST_DIR}" \
-        >"${APPCAST_LOG}" 2>&1 && appcast_ok=1
-  fi
-  if (( ! appcast_ok )); then
-    printf 'release: Sparkle appcast generation failed. Sanitized diagnostics follow.\n' >&2
-    redact_log "${APPCAST_LOG}" >&2
-    exit 1
-  fi
-  [[ -f "${APPCAST_DIR}/appcast.xml" ]] || fail "Sparkle did not produce appcast.xml"
-  cp "${APPCAST_DIR}/appcast.xml" "${APPCAST_PATH}"
-else
-  printf 'release: Sparkle private key not configured; appcast generation was skipped.\n'
+GENERATE_APPCAST="$(find "${DERIVED_DATA}/SourcePackages/artifacts" -path '*/Sparkle/bin/generate_appcast' -type f -print -quit)"
+[[ -x "${GENERATE_APPCAST}" ]] || fail "Sparkle generate_appcast tool was not resolved"
+APPCAST_DIR="${WORK_DIR}/appcast"
+mkdir -p "${APPCAST_DIR}"
+cp "${DMG_PATH}" "${APPCAST_DIR}/${DMG_NAME}"
+APPCAST_LOG="${WORK_DIR}/generate-appcast.log"
+# No key file is passed: generate_appcast reads the EdDSA private key from the login
+# keychain, which is where Sparkle's generate_keys put it.
+appcast_ok=0
+"${GENERATE_APPCAST}" \
+  --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
+  "${APPCAST_DIR}" \
+  >"${APPCAST_LOG}" 2>&1 && appcast_ok=1
+if (( ! appcast_ok )); then
+  printf 'release: Sparkle appcast generation failed. Sanitized diagnostics follow.\n' >&2
+  redact_log "${APPCAST_LOG}" >&2
+  exit 1
 fi
+[[ -f "${APPCAST_DIR}/appcast.xml" ]] || fail "Sparkle did not produce appcast.xml"
+cp "${APPCAST_DIR}/appcast.xml" "${APPCAST_PATH}"
 
 printf 'release: created signed and notarized %s\n' "${DMG_PATH}"
 printf 'release: created checksum %s\n' "${SHA_PATH}"
