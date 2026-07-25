@@ -359,14 +359,10 @@ xcrun stapler validate "${DMG_PATH}"
   shasum -a 256 "${DMG_NAME}" >"${DMG_NAME}.sha256"
 )
 
-# Where the DMG will be downloaded from. Locally the artifact goes to the releases
-# repository that serves the live Sparkle feed; in CI it is attached to this repository's
-# release. Override with RESPONSAY_DOWNLOAD_URL_PREFIX when hosting moves.
-if (( LOCAL_MODE )); then
-  DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-releases/releases/download/${TAG}/"
-else
-  DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/"
-fi
+# Where the DMG will be downloaded from. Local and hosted builds now agree: the artifact is
+# attached to this repository's own release. Override with RESPONSAY_DOWNLOAD_URL_PREFIX
+# when hosting moves.
+DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/"
 DOWNLOAD_URL_PREFIX="${RESPONSAY_DOWNLOAD_URL_PREFIX:-${DEFAULT_URL_PREFIX}}"
 
 if (( LOCAL_MODE )) || [[ -n "${RESPONSAY_SPARKLE_ED_KEY_BASE64:-}" ]]; then

@@ -61,8 +61,10 @@ no secret is configured anywhere.
 The build is not the release. Three things have to happen afterwards, and until the last
 one lands no installed copy learns that an update exists.
 
-1. Create the release in `responsay-releases` for that tag and upload the DMG and its
+1. Create the release in **this repository** for that tag and upload the DMG and its
    `.sha256`. Download it back and confirm the size and checksum match the appcast.
+   Releases used to be published from `responsay-releases`; that repository only holds the
+   history now, and nothing new goes there.
 2. Add the new `<item>` to `public/appcast.xml` in the `responsay-site` repository. Insert
    it above the existing items rather than replacing the file: `generate_appcast` prunes
    entries whose DMG is not in the working directory, which would silently drop the
