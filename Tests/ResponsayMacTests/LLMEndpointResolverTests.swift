@@ -37,10 +37,9 @@ final class LLMEndpointResolverTests: XCTestCase {
         XCTAssertFalse(endpoint?.isLocal ?? true)
     }
 
-    func test_resolveCloud_readsThinkingToggle() {
-        defaults.set(true, forKey: LLMEndpointResolver.thinkingKey)
+    func test_resolveCloud_forcesThinkingOff() {
         let endpoint = LLMEndpointResolver.resolveCloud(
             defaults: defaults, dispatcher: dispatcher(keys: ["byok.qwen.payg": "sk-1"]))
-        XCTAssertTrue(endpoint?.thinkingEnabled ?? false)
+        XCTAssertEqual(endpoint?.thinkingEnabled, false)
     }
 }
