@@ -24,8 +24,9 @@ struct BundledLegalSkillsTests {
         // 15 after adding academic.idea_planning.cn (思路推演);
         // 16 after adding academic.prompt_optimization.cn (提示词优化);
         // 17 after adding style.condense.cn (精简压缩, 写作 lane);
-        // 11 after the 1.5.0 purge deleted the 6 hidden-but-on-disk overlap skills outright.
-        #expect(try registry().skills.count == 11)
+        // 11 after the 1.5.0 purge deleted the 6 hidden-but-on-disk overlap skills outright;
+        // 12 after adding academic.goal_brief.cn (目标七问).
+        #expect(try registry().skills.count == 12)
     }
 
     @Test func indexesIntoThreeScenes() throws {
@@ -33,7 +34,7 @@ struct BundledLegalSkillsTests {
         let scenes = Set(reg.skills.map(\.metadata.sceneLayer.scene))
         #expect(scenes == [.litigation, .academicWriting, .unknown])
         #expect(reg.candidates(scene: .litigation).count == 1)   // 1.5.0 purge: 引注源验 is the litigation survivor
-        #expect(reg.candidates(scene: .academicWriting).count == 5)  // 引注转换/反方观点/思路推演/提示词优化/检索策略
+        #expect(reg.candidates(scene: .academicWriting).count == 6)  // 引注转换/反方观点/思路推演/提示词优化/目标七问/检索策略
         // 325 slice 3b: the 3 unknown-scene entries are the bundled style.* skills
         // (kind:rewrite) — they belong to the 改写风格 picker, not the ⌥L
         // generation palette, so they no longer surface as generation candidates.
