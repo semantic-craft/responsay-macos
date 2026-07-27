@@ -14,7 +14,14 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
     #else
     private let engine = AVAudioEngine()
     #endif
-    private var client: any TranscriptionAPI
+    /// Built on first use, not in `init`: the builder reads the BYOK key from the Keychain,
+    /// and this service is constructed at app launch (stored property chain via
+    /// RoutedSpeechCaptureService → CaptureController → AppBootstrap). An eager build did
+    /// one blocking securityd round-trip per cloud service on the main thread before the
+    /// first frame — and hung the ResponsayMacTests host forever on the Keychain ACL prompt,
+    /// since the freshly built test binary is never on the item's ACL. `start()` rebuilds
+    /// before every capture anyway, so the init-time client was never used.
+    private lazy var client: any TranscriptionAPI = clientBuilder({ [profileStore] in profileStore.profile })
     /// Rebuilt per capture (see `start`). The transcription client captures its Base URL by
     /// value at build time, so a long-lived service would otherwise keep calling the host it
     /// was first built with — e.g. still hitting the Token Plan host after the user switched
@@ -75,7 +82,6 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
         self.providerName = provider
         self.requireMicPermission = requireMicPermission
         self.clientBuilder = clientBuilder
-        self.client = clientBuilder({ store.profile })
     }
 
     public func start(locale: CaptureLocale) throws {
