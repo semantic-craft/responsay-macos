@@ -125,7 +125,8 @@ struct FactCheckSkillEvalsTests {
                     rawOutput: executionResponse.output,
                     envelope: envelope,
                     repair: { brokenOutput in
-                        let repairPrompt = assembler.repairPrompt(brokenOutput: brokenOutput)
+                        let repairPrompt = assembler.repairPrompt(
+                            brokenOutput: brokenOutput, outputCards: skill.metadata.outputCards)
                         let repairRequest = LegalSkillExecutionRequest(
                             skillId: "verification.fact_check.cn",
                             systemPrompt: repairPrompt.system,

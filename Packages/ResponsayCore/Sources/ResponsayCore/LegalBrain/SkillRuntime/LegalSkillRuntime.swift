@@ -183,7 +183,7 @@ public struct LegalSkillRuntime: Sendable {
         let envelope = LegalOutputValidator.Envelope(
             runId: response.runId, skillId: skill.id, scene: card.scene, stage: card.stage)
         let validated = await validator.validate(rawOutput: response.output, envelope: envelope) { broken in
-            let repair = assembler.repairPrompt(brokenOutput: broken)
+            let repair = assembler.repairPrompt(brokenOutput: broken, outputCards: skill.metadata.outputCards)
             let repairRequest = LegalSkillExecutionRequest(
                 skillId: skill.id, systemPrompt: repair.system, userPrompt: repair.user,
                 modelRoute: route, purpose: .legalSkill, isRepair: true)
