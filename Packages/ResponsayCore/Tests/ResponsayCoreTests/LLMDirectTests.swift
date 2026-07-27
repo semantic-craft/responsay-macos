@@ -151,13 +151,11 @@ struct LLMThinkingControlTests {
         #expect(body("custom", "x", true, host: "unknown.example.com").isEmpty)   // unknown → emit nothing
     }
 
-    @Test func supportsThinking_falseForChannellessProviders() {
-        #expect(LLMThinkingControl.supportsThinking(providerId: "qwen", baseURLHost: ""))
-        #expect(LLMThinkingControl.supportsThinking(providerId: "openai", baseURLHost: ""))
-        #expect(!LLMThinkingControl.supportsThinking(providerId: "kimi", baseURLHost: "api.moonshot.cn"))
-        #expect(LLMThinkingControl.supportsThinking(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
-        #expect(LLMThinkingControl.supportsThinking(providerId: "doubao", baseURLHost: "ark.cn-beijing.volces.com"))
-        #expect(!LLMThinkingControl.supportsThinking(providerId: "unknown", baseURLHost: "unknown.example.com"))
+    /// Providers with no documented 思考 parameter (Kimi, unknown 自定义 hosts) emit nothing —
+    /// the model choice decides, and an invented field would 400.
+    @Test func channellessProviders_emitNothing() {
+        #expect(body("kimi", "kimi-k2", false, host: "api.moonshot.cn").isEmpty)
+        #expect(body("unknown", "x", false, host: "unknown.example.com").isEmpty)
     }
 }
 

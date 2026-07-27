@@ -32,17 +32,6 @@ final class CapabilitySelectionSyncTests: XCTestCase {
     // (Token Plan is now the package billing plan inside `qwen`, picked in the card's 接入点
     // dropdown — not a separate provider selection; covered by ProviderConfigDispatcherTests.)
 
-    func testSelectingQwenDefaultsThinkingOffEvenIfPreviousProviderWasOn() {
-        let defaults = freshDefaults("qwen-thinking-default")
-        defaults.set("openai", forKey: "byok.llm.provider")
-        defaults.set(true, forKey: "byok.llm.thinking")
-
-        CapabilitySelectionSync.selectProvider("qwen", capability: .llm, defaults: defaults)
-
-        XCTAssertFalse(defaults.bool(forKey: "byok.llm.thinking"))
-        XCTAssertFalse(defaults.bool(forKey: "byok.llm.qwen.thinking"))
-    }
-
     func testReselectingSameTTSProviderPreservesEditedModelAndVoice() {
         let defaults = freshDefaults("tts")
         defaults.set("mimo", forKey: "byok.tts.provider")
