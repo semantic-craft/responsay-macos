@@ -34,7 +34,6 @@ final class ProviderConfigMachine {
     var boostingTableId = ""
     var status = ""
     var fetchedModels: [String] = []
-    var thinking = false
 
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
@@ -130,8 +129,6 @@ final class ProviderConfigMachine {
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
-        thinking = CapabilityProviderConfigStore.bool(
-            "thinking", providerId: pid, capability: capability, defaults: d, activeProviderId: storedProvider)
     }
 
     func defaultProviderId() -> String {
@@ -171,8 +168,6 @@ final class ProviderConfigMachine {
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
-        thinking = CapabilityProviderConfigStore.bool(
-            "thinking", providerId: prov.id, capability: capability, defaults: defaults, activeProviderId: activeProvider)
         status = ""
         fetchedModels = []
     }
@@ -212,7 +207,6 @@ final class ProviderConfigMachine {
         setScoped(model, suffix: "model")
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
-        setScoped(thinking, suffix: "thinking")
     }
 
     func scopedString(_ suffix: String, providerId pid: String, activeProviderId: String?) -> String? {
