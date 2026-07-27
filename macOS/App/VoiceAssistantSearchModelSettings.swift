@@ -39,7 +39,11 @@ enum VoiceAssistantSearchModelSettings {
 
     /// 胶囊里露出的「联网模型署名」(对应设计稿 ask-anything-capsule Variant B):单字纹章 + 友好名。
     /// 名字用模型品牌(通义千问/智谱/MiMo),比 provider 公司名更贴近用户认知。非可联网 → nil。
+    /// 走独立检索服务时,署名的是检索服务本身(豆包搜索 / Perplexity)——搜的是它,不是主模型。
     static func capsuleSource(for providerId: String) -> CapsuleSearchSource? {
+        if let kind = WebSearchBackendKind(rawValue: providerId) {
+            return CapsuleSearchSource(monogram: kind.monogram, name: kind.displayName)
+        }
         switch providerId {
         case "qwen":   return CapsuleSearchSource(monogram: "通", name: "通义千问")
         case "zhipu":  return CapsuleSearchSource(monogram: "智", name: "智谱")

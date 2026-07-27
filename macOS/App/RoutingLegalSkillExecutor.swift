@@ -23,15 +23,21 @@ struct RoutingLegalSkillExecutor: LegalSkillExecutorAPI {
 
     func supportsSearchVerification(route: ModelRoute) -> Bool {
         guard route != .blocked, let endpoint = LLMEndpointResolver.resolveText() else { return false }
-        return SearchVerificationService.supportsSearch(
-            providerId: endpoint.providerId, baseURLHost: endpoint.host)
+        return DirectLegalSkillExecutorAPI(endpoint: endpoint, searchBackend: searchBackend())
+            .supportsSearchVerification(route: route)
     }
 
     func searchVerification(_ anchor: VerificationAnchor, route: ModelRoute) async throws -> VerifiedSource? {
         guard route != .blocked, let endpoint = LLMEndpointResolver.resolveText() else {
             throw LegalSkillRuntimeError.executorNotImplemented(skillId: "legal.verification.search")
         }
-        return try await DirectLegalSkillExecutorAPI(endpoint: endpoint)
+        return try await DirectLegalSkillExecutorAPI(endpoint: endpoint, searchBackend: searchBackend())
             .searchVerification(anchor, route: route)
+    }
+
+    /// 用户配的独立检索服务(豆包搜索 / Perplexity)。[待核] 核验跟着这一个开关走
+    /// ——不看「任意提问」的联网开关:那个开关管的是提问要不要联网,与法律核验是两回事。
+    private func searchBackend() -> (any WebSearchBackend)? {
+        WebSearchProviderSettings.backend()
     }
 }

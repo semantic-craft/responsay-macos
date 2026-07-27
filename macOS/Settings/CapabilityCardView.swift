@@ -123,20 +123,6 @@ struct CapabilityCardView: View {
                     }
                 }
             }
-            if capability == .llm {
-                let thinkingSupported = LLMThinkingControl.supportsThinking(
-                    providerId: machine.providerId, baseURLHost: URL(string: machine.baseURL)?.host ?? "")
-                LabeledRow(label: "思考") {
-                    HStack(spacing: 8) {
-                        Toggle("", isOn: $machine.thinking).labelsHidden().toggleStyle(.switch)
-                            .disabled(!thinkingSupported)
-                        Text(!thinkingSupported ? "此服务方无官方思考参数，开关不生效"
-                             : (machine.thinking ? "开 · 模型先思考再作答（更慢、更细）"
-                                         : "关 · 直接作答（更快；默认）"))
-                            .font(SettingsTheme.footnote).foregroundStyle(SettingsTheme.ink3)
-                    }
-                }
-            }
             if !machine.isFixedEndpoint {
                 LabeledRow(label: "连接校验") {
                     HStack(spacing: 8) {
@@ -180,7 +166,6 @@ struct CapabilityCardView: View {
         .onChange(of: machine.appId) { _, _ in machine.writeAppId() }
         .onChange(of: machine.accessToken) { _, _ in machine.writeAccessToken() }
         .onChange(of: machine.boostingTableId) { _, _ in machine.writeBoostingTableId() }
-        .onChange(of: machine.thinking) { _, _ in machine.persist() }
     }
 
     @ViewBuilder private var credentialRows: some View {
