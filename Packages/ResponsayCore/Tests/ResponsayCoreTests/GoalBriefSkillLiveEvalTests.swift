@@ -72,7 +72,8 @@ struct GoalBriefSkillLiveEvalTests {
             rawOutput: executionResponse.output,
             envelope: envelope,
             repair: { brokenOutput in
-                let repairPrompt = assembler.repairPrompt(brokenOutput: brokenOutput)
+                let repairPrompt = assembler.repairPrompt(
+                    brokenOutput: brokenOutput, outputCards: skill.metadata.outputCards)
                 let repairRequest = LegalSkillExecutionRequest(
                     skillId: skill.metadata.id,
                     systemPrompt: repairPrompt.system,
