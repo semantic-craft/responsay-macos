@@ -27,7 +27,6 @@ enum CapabilitySelectionSync {
         defaults.set(preset.presetVoices.first?.id ?? "", forKey: key("voice", capability: capability))
         let baseURL = preset.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? ""
         defaults.set(baseURL, forKey: key("baseURL", capability: capability))
-        seedLLMThinkingDefault(providerId, capability: capability, defaults: defaults)
     }
 
     static func providerMatches(
@@ -43,20 +42,6 @@ enum CapabilitySelectionSync {
 
     private static func key(_ suffix: String, capability: ModelCapability) -> String {
         "byok.\(capability.rawValue).\(suffix)"
-    }
-
-    private static func seedLLMThinkingDefault(
-        _ providerId: String,
-        capability: ModelCapability,
-        defaults: UserDefaults
-    ) {
-        guard capability == .llm else { return }
-        let scopedKey = CapabilityProviderConfigStore.scopedKey(
-            "thinking", providerId: providerId, capability: capability)
-        if defaults.object(forKey: scopedKey) == nil {
-            defaults.set(false, forKey: scopedKey)
-        }
-        defaults.set(defaults.bool(forKey: scopedKey), forKey: key("thinking", capability: capability))
     }
 
     private static func migrateSameProviderDefaults(
