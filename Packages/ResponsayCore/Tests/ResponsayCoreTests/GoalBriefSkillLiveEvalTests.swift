@@ -4,26 +4,36 @@ import Foundation
 
 /// E2E evaluation for the `academic.goal_brief.cn` skill (目标七问).
 /// Live eval — **opt-in only**, gated behind `RUN_LIVE_EVALS=1` so a plain `swift test`
-/// never hits the network. Run it explicitly:
+/// never hits the network. Provider is picked from whichever key is set (first match wins,
+/// same convention as `PolishPromptLiveEvalTests`):
 ///   `RUN_LIVE_EVALS=1 DOUBAO_KEY="..." swift test --filter GoalBriefSkillLiveEvalTests`
+///   `RUN_LIVE_EVALS=1 QWEN_KEY="..."   swift test --filter GoalBriefSkillLiveEvalTests`
 @Suite("Goal Brief (目标七问) Live Evaluations")
 struct GoalBriefSkillLiveEvalTests {
+
+    private static func endpointUnderTest() -> LLMEndpoint? {
+        let env = ProcessInfo.processInfo.environment
+        if let key = env["DOUBAO_KEY"], !key.isEmpty {
+            return LLMEndpoint(
+                providerId: "doubao", baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+                model: "doubao-seed-2-1-turbo-260628", apiKey: key, thinkingEnabled: false)
+        }
+        if let key = env["QWEN_KEY"], !key.isEmpty {
+            return LLMEndpoint(
+                providerId: "qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                model: env["QWEN_MODEL"] ?? "qwen3.7-plus", apiKey: key, thinkingEnabled: false)
+        }
+        return nil
+    }
 
     @Test(
         "Vague dictated requirement becomes a seven-question task brief with gap list",
         .enabled(if: ProcessInfo.processInfo.environment["RUN_LIVE_EVALS"] == "1"))
     func evaluateGoalBrief() async throws {
-        let apiKey = try #require(
-            ProcessInfo.processInfo.environment["DOUBAO_KEY"],
-            "RUN_LIVE_EVALS=1 requires DOUBAO_KEY to be set.")
-
-        let endpoint = LLMEndpoint(
-            providerId: "doubao",
-            baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-            model: "doubao-seed-2-1-turbo-260628",
-            apiKey: apiKey,
-            thinkingEnabled: false
-        )
+        let endpoint = try #require(
+            Self.endpointUnderTest(),
+            "RUN_LIVE_EVALS=1 requires DOUBAO_KEY or QWEN_KEY to be set.")
+        print("▶️ provider: \(endpoint.providerId), model: \(endpoint.model)")
         let executor = DirectLegalSkillExecutorAPI(endpoint: endpoint)
         let runtime = try LegalSkillRuntime.bundled(executor: executor)
         let validator = LegalOutputValidator()
@@ -77,6 +87,13 @@ struct GoalBriefSkillLiveEvalTests {
         let isFallback = response.cards.contains {
             if case .fallbackText = $0 { return true }
             return false
+        }
+        if isFallback {
+            for card in response.cards {
+                if case .fallbackText(let f) = card {
+                    print("--- fallback text (\(f.text.count) chars) ---\n\(f.text.prefix(1200))\n---")
+                }
+            }
         }
         #expect(!isFallback, "Output fell back to plain text — model did not produce LEGAL_OUTPUT/v1")
 
