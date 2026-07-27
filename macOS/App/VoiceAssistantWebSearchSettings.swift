@@ -15,10 +15,19 @@ enum VoiceAssistantWebSearchSettings {
             baseURLHost: endpoint.host)
     }
 
+    /// 模型自带联网这一档是否生效。
+    ///
+    /// 配了独立检索服务(`WebSearchProviderSettings`)时恒为 false:联网那一步已经由 App 的
+    /// 检索段做掉了,再打开模型自带联网会让同一个问题被搜两遍(还会搅乱来源署名)。
+    /// 重新生成走的 `makeClient` 靠这个判断,不能漏。
     static func effectiveEnabled(
         endpoint: LLMEndpoint?,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        keyReader: (String) -> String? = { BYOKKeychain.read($0) }
     ) -> Bool {
-        isEnabled(defaults: defaults) && isSupported(endpoint: endpoint)
+        guard WebSearchProviderSettings.backend(defaults: defaults, reader: keyReader) == nil else {
+            return false
+        }
+        return isEnabled(defaults: defaults) && isSupported(endpoint: endpoint)
     }
 }

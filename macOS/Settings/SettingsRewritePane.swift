@@ -35,10 +35,9 @@ struct SettingsRewritePane: View {
     @AppStorage(StyleProfileSettings.enabledKey) private var styleEnabled = true
     @AppStorage(StyleProfileSettings.learnedKey) private var styleLearned = ""
     @AppStorage(StyleProfileSettings.overrideKey) private var styleOverride = ""
-    // 任意提问联网搜索: opt-in only, because the query is sent to the provider's web-search tool.
+    // 任意提问联网搜索: opt-in only, because the query is sent to the provider's web-search tool
+    // (or to the独立检索服务). 搜索来源与联网模型的选择都在 `WebSearchSourceSection` 里。
     @AppStorage(VoiceAssistantWebSearchSettings.key) private var askWebSearchEnabled = false
-    // 联网搜索专属模型: "" = 自动(优先当前可联网主模型，否则第一个已配密钥的 Qwen/智谱/MiMo)。
-    @AppStorage(VoiceAssistantSearchModelSettings.key) private var searchProvider = ""
     // 566: 校验成稿的编译路线（云端 / 本机 / 未配置），从当前已配置的文本 endpoint 派生。用户「选本机」
     // 只是把「模型与密钥」指向本机 runner；这里让路线对用户可见（spec #30/#59）。刷新于面板出现时。
     @State private var intentRoute: IntentCompilerRoute = .unavailable
@@ -183,22 +182,11 @@ struct SettingsRewritePane: View {
                 WarmDivider()
                 SettingsToggleRow(
                     title: "联网搜索",
-                    desc: "打开后，这一问会交给下面选的「联网模型」直接联网作答（联网只有 阿里云百炼 / 智谱 / 小米Mimo 三家支持，与你的主模型无关）。",
+                    desc: "打开后，这一问会先联网再作答。来源可以是一个独立的检索服务（豆包搜索 / Perplexity，填自己的 Key），也可以跟随模型自带的联网能力。",
                     binding: $askWebSearchEnabled)
                 if askWebSearchEnabled {
                     WarmDivider()
-                    LabeledRow(label: "联网模型") {
-                        Picker("", selection: $searchProvider) {
-                            Text("自动").tag("")
-                            ForEach(VoiceAssistantSearchModelSettings.searchProviders, id: \.self) { id in
-                                Text(VoiceAssistantSearchModelSettings.displayName(for: id)).tag(id)
-                            }
-                        }
-                        .pickerStyle(.menu).labelsHidden().frame(width: 220)
-                    }
-                    Text("「自动」= 优先用你当前的文本模型（若它本就支持联网），否则用第一个你已配好密钥的联网模型。这三家都没配密钥时会自动退回普通问答——去「文本改写」给对应模型填好密钥即可。")
-                        .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    WebSearchSourceSection()
                 }
             }
         }

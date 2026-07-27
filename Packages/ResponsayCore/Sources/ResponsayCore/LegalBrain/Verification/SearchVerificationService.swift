@@ -92,6 +92,43 @@ public enum SearchVerificationService {
             snippet: result.snippet)
     }
 
+    /// 独立检索服务(`WebSearchBackend`)的结果 → `VerifiedSource`。检索 API 直接给出
+    /// 标题/URL/摘要,不用再过一次模型;相关性由 `WebSearchVerificationScreen` 先筛过。
+    public static func toVerifiedSource(
+        _ document: WebSearchDocument,
+        provider: String
+    ) -> VerifiedSource {
+        VerifiedSource(
+            title: document.title,
+            url: document.url,
+            accessedAt: ISO8601DateFormatter().string(from: Date()),
+            provider: provider,
+            snippet: document.snippet)
+    }
+
+    /// 用检索服务核验一个锚点:搜 → 筛 → 回填。没有对得上的结果 → nil(锚点保持 pending)。
+    public static func verify(
+        _ anchor: VerificationAnchor,
+        using backend: any WebSearchBackend
+    ) async throws -> VerifiedSource? {
+        let query = anchorQuery(anchor)
+        guard !query.isEmpty else { return nil }
+        let documents = try await backend.search(
+            query: String(query.prefix(backend.kind.queryCharacterLimit)),
+            limit: WebSearchRunner.defaultResultCount)
+        guard let matched = WebSearchVerificationScreen.firstMatch(documents: documents, query: query) else {
+            return nil
+        }
+        return toVerifiedSource(matched, provider: backend.kind.rawValue)
+    }
+
+    /// 锚点的检索词:`query` 优先,空则退到 `label`。法律引用本身就短,不做检索词提炼
+    /// ——案号/条文号每个字都是定位信息,交给模型改写反而会丢。
+    static func anchorQuery(_ anchor: VerificationAnchor) -> String {
+        let query = anchor.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? anchor.label.trimmingCharacters(in: .whitespacesAndNewlines) : query
+    }
+
     // MARK: - Search capability check
 
     public static func supportsSearch(providerId: String, baseURLHost: String) -> Bool {
