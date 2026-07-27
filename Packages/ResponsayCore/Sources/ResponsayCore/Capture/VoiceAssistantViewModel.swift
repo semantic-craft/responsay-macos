@@ -42,10 +42,15 @@ public final class VoiceAssistantViewModel {
     public var makeClient: (@MainActor () -> (any StreamingChatClient)?)?
 
     /// Canonical provider id of the web-search model used for the current turn ("qwen" / "zhipu" /
-    /// "mimo"), set by the app layer when 联网搜索 routes this 任意提问 to a search-capable model;
-    /// nil = no web search this turn. The capsule ("联网搜索中" + 署名 chip) and the answer-card
-    /// chip resolve it to a display name via `VoiceAssistantSearchModelSettings.capsuleSource`.
+    /// "mimo"), or the 检索服务 id when 联网搜索 runs on an independent backend ("doubao-search" /
+    /// "perplexity"); nil = no web search this turn. The capsule ("联网搜索中" + 署名 chip) and the
+    /// answer-card chip resolve it to a display name via `VoiceAssistantSearchModelSettings.capsuleSource`.
     public var searchProviderId: String?
+
+    /// 独立检索服务的前置检索:拿这一轮的提问去搜,返回喂给模型的检索上下文块(nil = 没搜到
+    /// 或检索失败 → 照常作答,只是不带检索材料)。由 app 层注入(它才拿得到密钥与后端);
+    /// 模型自带联网的那两条路不设这个钩子——那时是模型自己搜。
+    public var searchPreflight: (@MainActor (String) async -> String?)?
 
     /// Default global-assistant persona; swapped for the selection-QA prompt when
     /// `beginSelectionAsk` seeds a selection.
@@ -105,10 +110,14 @@ public final class VoiceAssistantViewModel {
     /// the conversation, with the selection enveloped into the *first* user turn
     /// only (later turns ride the history). No selection → byte-identical to the
     /// plain global-assistant shape.
+    ///
+    /// `searchContext`(独立检索服务这一轮搜到的围栏块)挂在**最后**一条 user 消息前面:
+    /// 检索是按当轮提问做的,追问会重搜,所以它跟着当轮走,而不是像选区那样只挂第一轮。
     nonisolated static func apiMessages(
         systemPrompt: String,
         messages: [VoiceAssistantMessage],
-        selection: String?
+        selection: String?,
+        searchContext: String? = nil
     ) -> [[String: String]] {
         var out: [[String: String]] = [["role": "system", "content": systemPrompt]]
         let seed = selection?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -122,6 +131,9 @@ public final class VoiceAssistantViewModel {
                 out.append(["role": msg.role, "content": msg.content])
             }
         }
+        guard let searchContext, !searchContext.isEmpty,
+              let lastUser = out.lastIndex(where: { $0["role"] == "user" }) else { return out }
+        out[lastUser]["content"] = searchContext + "\n\n" + (out[lastUser]["content"] ?? "")
         return out
     }
     
@@ -190,6 +202,14 @@ public final class VoiceAssistantViewModel {
             return
         }
         vaLog.info("VA streamResponse: client OK, starting LLM stream")
+
+        // 独立检索服务:先搜再答。整个检索期间停在 `.thinking`,胶囊照旧显示「联网搜索中」+
+        // 检索服务署名;搜完才进 `.responding` 开始出字。
+        var searchContext: String?
+        if let searchPreflight, let question = messages.last(where: { $0.role == "user" })?.content {
+            phase = .thinking
+            searchContext = await searchPreflight(question)
+        }
         phase = .responding
 
         // In 对抗 mode the system prompt is the stance directive for this round
@@ -202,7 +222,8 @@ public final class VoiceAssistantViewModel {
             effectiveSystemPrompt = systemPrompt
         }
         let apiMessages = Self.apiMessages(
-            systemPrompt: effectiveSystemPrompt, messages: messages, selection: selectionContext)
+            systemPrompt: effectiveSystemPrompt, messages: messages, selection: selectionContext,
+            searchContext: searchContext)
 
         messages.append(VoiceAssistantMessage(role: "assistant", content: ""))
         let assistantIndex = messages.count - 1
