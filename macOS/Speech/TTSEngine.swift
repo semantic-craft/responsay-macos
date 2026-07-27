@@ -107,14 +107,23 @@ enum TTSEngine: String, CaseIterable {
 
     func selectedVoiceID(defaults: UserDefaults) -> String? {
         guard let catalog else { return nil }
-        
+
+        // The card's voice field is free-form ("输入或选择音色 ID") and most providers accept ids
+        // far beyond our curated list (MiniMax cloned voices, the long official rosters). So when
+        // the TTS card targets this provider, honor the typed voice verbatim — validating it
+        // against the bundled catalog silently swapped any off-catalog voice for the default,
+        // which is exactly the wrong failure (a bad id should error audibly at the provider).
+        // Qwen is the exception: a fixed surface with a closed, versioned roster where a retired
+        // id (e.g. "Cherry") would 400 every 朗读 — there the catalog check stays.
         if let pid = providerID,
            ttsSettingsProvider(defaults: defaults) == pid,
            let byokVoice = nonEmpty(defaults.string(forKey: "byok.tts.voice")),
-           catalog.voices.contains(where: { $0.id == byokVoice }) {
+           !hasClosedVoiceRoster || catalog.voices.contains(where: { $0.id == byokVoice }) {
             return byokVoice
         }
-        
+
+        // The legacy per-engine pick predates the card and can carry stale ids — for that
+        // migration path the catalog check stays (issue 196).
         if let stored = defaults.string(forKey: voiceDefaultsKey),
            catalog.voices.contains(where: { $0.id == stored }) {
             return stored
@@ -315,6 +324,11 @@ enum TTSEngine: String, CaseIterable {
         }
         return URL(string: raw)
     }
+
+    /// Whether this engine's provider only accepts voices from its bundled roster. Qwen 语音合成
+    /// is a fixed surface (one model, versioned voice list, dispatcher forces the preset voice);
+    /// every other cloud provider takes free-form voice ids, so only Qwen validates.
+    private var hasClosedVoiceRoster: Bool { self == .cloudQwen }
 
     private func ttsSettingsProvider(defaults: UserDefaults) -> String? {
         nonEmpty(defaults.string(forKey: "byok.tts.provider"))
