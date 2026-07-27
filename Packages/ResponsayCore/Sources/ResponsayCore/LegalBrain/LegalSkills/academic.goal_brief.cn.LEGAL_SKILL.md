@@ -86,5 +86,5 @@
 只返回符合 `LegalSkillResponse`（`schemaVersion = "LEGAL_OUTPUT/v1"`）的严格 JSON，不要输出任何额外的解释性自然段落文字。
 
 - `cards` 阵列必须包含一张 `strategyRecommendation` 卡：`title` 是那句一句话目的重述；`recommendations` 的每一项是一处关键整理（`strategy` = 做了什么归位或拍板，`rationale` = 依据的七问维度与理由）。替用户拍的板以「拍板：」开头；缺口以「缺口：」开头（`rationale` = 为什么这条信息重要、补上后放进哪一问）。
-- 必须输出一张 `insertableParagraph`：内容是按七问组织的**完整任务书全文**，可直接复制交给执行 Agent；`containsPendingVerification` 如实填写（含未验证假设时为 true）。
+- 必须输出一张 `insertableParagraph`：内容是按七问组织的**完整任务书全文**，可直接复制交给执行 Agent；`containsPendingVerification` 如实填写（含未验证假设时为 true）。这张卡必须放在 `cards` 数组里（`{"insertableParagraph": {...}}`），**不要**把任务书放进顶层 `insertables` 字段——顶层 `insertables` 恒为空数组 `[]`。
 - 本技能不涉及外部事实核验，不产生 `verificationAnchors`。
