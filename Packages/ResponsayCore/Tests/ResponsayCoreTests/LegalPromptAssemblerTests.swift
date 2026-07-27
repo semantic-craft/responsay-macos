@@ -75,10 +75,15 @@ struct LegalPromptAssemblerTests {
         #expect(fallbackLines == 1)   // conceptMap + riskMatrix both → fallbackText, deduped
     }
 
-    @Test func repairPrompt_asksToFixJSONOnly() {
-        let prompt = assembler.repairPrompt(brokenOutput: "{ not json ,, }")
+    @Test func repairPrompt_asksToFixJSONOnly_andCarriesOutputSchema() {
+        // Live finding (qwen3.7-plus): without the schema the repair pass cannot fix
+        // structural errors like insertableParagraph content misplaced into `insertables`.
+        let prompt = assembler.repairPrompt(
+            brokenOutput: "{ not json ,, }", outputCards: [.strategyRecommendation, .insertableParagraph])
         #expect(prompt.system.contains("只修复"))
         #expect(prompt.system.contains("[待核]"))
+        #expect(prompt.system.contains("\"insertableParagraph\""))   // card shapes included
+        #expect(prompt.system.contains("顶层 insertables 恒为空数组"))
         #expect(prompt.user == "{ not json ,, }")
     }
 
