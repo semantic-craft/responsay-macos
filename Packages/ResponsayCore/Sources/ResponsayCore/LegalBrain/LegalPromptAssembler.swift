@@ -60,12 +60,17 @@ public struct LegalPromptAssembler: Sendable {
     }
 
     /// "Fix the JSON only — do not change content" repair pass (validator second call).
-    public func repairPrompt(brokenOutput: String) -> AssembledLegalPrompt {
+    /// Carries the skill's exact output schema: without it the model cannot fix structural
+    /// errors (e.g. insertableParagraph content misplaced into top-level `insertables`).
+    public func repairPrompt(brokenOutput: String, outputCards: [LegalOutputCardType]) -> AssembledLegalPrompt {
         AssembledLegalPrompt(
-            system: """
-            上一次输出不是合法的 LEGAL_OUTPUT/v1 JSON。只修复 JSON 结构与字段，使其可被严格解析；\
-            不要改变任何内容、不要新增或删除事实、保留所有 [待核] 标记。仅返回修复后的 JSON 对象，无其它文字。
-            """,
+            system: [
+                """
+                上一次输出不是合法的 LEGAL_OUTPUT/v1 JSON。只修复 JSON 结构与字段，使其可被严格解析；\
+                不要改变任何内容、不要新增或删除事实、保留所有 [待核] 标记。仅返回修复后的 JSON 对象，无其它文字。
+                """,
+                Self.outputSchema(for: outputCards),
+            ].joined(separator: "\n\n"),
             user: brokenOutput)
     }
 
@@ -81,7 +86,8 @@ public struct LegalPromptAssembler: Sendable {
         }
         return ([
             "输出 JSON 结构（严格遵守字段名与嵌套；不要改字段名、不要用内联 \"type\" 标签）：",
-            "顶层对象必须含全部字段：{\"summary\": string, \"cards\": [卡片], \"insertables\": [], \"verificationAnchors\": [锚点], \"warnings\": [string]}（insertables/warnings 即使为空也要写成 []）。",
+            "顶层对象必须含全部字段：{\"summary\": string, \"cards\": [卡片], \"insertables\": [], \"verificationAnchors\": [锚点], \"warnings\": [string]}。",
+            "所有正文卡片（包括 insertableParagraph 卡片）一律放进 cards 数组；顶层 insertables 恒为空数组 []，不要往里放任何内容；warnings 为空时也要写成 []。",
             "卡片是「外标记」对象：唯一键为卡片类型名，值为其负载。本技能可用卡片：",
         ] + shapes + [
             "锚点对象：{\"id\": string, \"label\": 坐标原文（如《民法典》第577条 / 2023年5月10日 / 120万元）, \"kind\": one of [law,caseLaw,administrativeRule,standard,scholarlyArticle,date,money,officialDocument,other], \"status\": \"pending\", \"query\": 检索词, \"preferredSources\": []}。",
