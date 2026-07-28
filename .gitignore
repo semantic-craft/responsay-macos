@@ -29,6 +29,7 @@ Secrets.plist
 *.cer
 *.crt
 *.mobileprovision
+macOS/Signing.local.xcconfig
 
 # Local scratch and tool output
 .scratch/

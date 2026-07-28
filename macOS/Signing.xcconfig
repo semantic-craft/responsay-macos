@@ -1,0 +1,19 @@
+// Debug signing.
+//
+// The default is ad-hoc ("-") so a fresh clone builds with no certificates at all.
+// Ad-hoc signing has no certificate chain to anchor to, so the binary's designated
+// requirement degrades to a literal `cdhash H"..."` — a hash of the executable that
+// changes on every build. Keychain ACLs identify an app by that requirement, so each
+// rebuild reads as a different app and macOS re-asks for the login keychain password;
+// "Always Allow" only ever whitelists the build you clicked it on.
+//
+// A maintainer who holds a signing certificate can escape that by creating
+// `macOS/Signing.local.xcconfig`, which is gitignored and included below when it
+// exists. Its requirement anchors to the certificate and the bundle identifier
+// instead of the executable's bytes, so it survives rebuilds and one "Always Allow"
+// holds. The exact settings are in docs/RELEASING.md — signing metadata is spelled
+// out only in the few files the leak scanner allows it in, and this is not one.
+
+CODE_SIGN_IDENTITY = -
+
+#include? "Signing.local.xcconfig"
