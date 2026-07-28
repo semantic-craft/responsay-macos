@@ -69,7 +69,10 @@ final class ProviderConfigMachine {
     var currentRegions: [ProviderRegion] { current.regions(for: capability) }
     var currentPlans: [BillingPlan] { current.plans(for: capability) }
     var region: ProviderRegion { ProviderRegion(rawValue: regionRaw) ?? currentRegions.first ?? .global }
-    var plan: BillingPlan { BillingPlan(rawValue: planRaw) ?? currentPlans.first ?? .payg }
+    var plan: BillingPlan {
+        let candidate = BillingPlan(rawValue: planRaw) ?? currentPlans.first ?? .payg
+        return currentPlans.contains(candidate) ? candidate : (currentPlans.first ?? .payg)
+    }
 
     /// All non-empty endpoints (region × plan) for this capability, shown in one combined
     /// 「接入点」dropdown so 按量付费 / Token Plan sit next to 国内/新加坡/欧洲 instead of being
@@ -96,19 +99,33 @@ final class ProviderConfigMachine {
         let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
         let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
         regionRaw = scopedString("region", providerId: pid, activeProviderId: storedProvider) ?? defaultRegion
-        planRaw = MiMoASRRouting.normalizedPlanRaw(providerId: pid, capability: capability,
-                                                   storedRaw: scopedString("plan", providerId: pid, activeProviderId: storedProvider),
-                                                   fallbackRaw: defaultPlan)
+        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
+            providerId: pid, capability: capability,
+            storedRaw: scopedString("plan", providerId: pid, activeProviderId: storedProvider),
+            fallbackRaw: defaultPlan)
+        let availablePlans = prov.plans(for: capability)
+        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
+        let retiredQwenTokenPlan = pid == "qwen"
+            && requestedPlan == .package
+            && !availablePlans.contains(.package)
+        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
         let r = ProviderRegion(rawValue: regionRaw) ?? .global
         let pl = BillingPlan(rawValue: planRaw) ?? .payg
-        baseURL = MiMoASRRouting.normalizedBaseURL(
-            providerId: pid, capability: capability,
-            stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
-            fallback: prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? "")
+        let catalogBaseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? ""
+        baseURL = retiredQwenTokenPlan
+            ? catalogBaseURL
+            : MiMoASRRouting.normalizedBaseURL(
+                providerId: pid, capability: capability,
+                stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
+                fallback: catalogBaseURL)
+        if retiredQwenTokenPlan {
+            setScoped(planRaw, suffix: "plan")
+            setScoped(baseURL, suffix: "baseURL")
+        }
         let shouldPersist = MiMoASRRouting.shouldPersistNormalizedDefaults(providerId: pid, capability: capability)
         if CapabilitySelectionSync.providerMatches(storedProvider, pid, capability: capability), shouldPersist {
             setScoped(planRaw, suffix: "plan")
@@ -123,9 +140,7 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: pid, capability: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg)) ?? ""
+        apiKey = readApiKey(providerId: pid, plan: plan)
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
@@ -142,18 +157,31 @@ final class ProviderConfigMachine {
         let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
         let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
         regionRaw = scopedString("region", providerId: prov.id, activeProviderId: activeProvider) ?? defaultRegion
-        planRaw = MiMoASRRouting.normalizedPlanRaw(providerId: prov.id, capability: capability,
-                                                   storedRaw: scopedString("plan", providerId: prov.id, activeProviderId: activeProvider),
-                                                   fallbackRaw: defaultPlan)
+        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
+            providerId: prov.id, capability: capability,
+            storedRaw: scopedString("plan", providerId: prov.id, activeProviderId: activeProvider),
+            fallbackRaw: defaultPlan)
+        let availablePlans = prov.plans(for: capability)
+        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
+        let retiredQwenTokenPlan = prov.id == "qwen"
+            && requestedPlan == .package
+            && !availablePlans.contains(.package)
+        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
         baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
                                 plan: BillingPlan(rawValue: planRaw) ?? .payg)?.baseURL ?? ""
-        baseURL = MiMoASRRouting.normalizedBaseURL(
-            providerId: prov.id, capability: capability,
-            stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
+        if !retiredQwenTokenPlan {
+            baseURL = MiMoASRRouting.normalizedBaseURL(
+                providerId: prov.id, capability: capability,
+                stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
+        }
+        if retiredQwenTokenPlan {
+            setScoped(planRaw, suffix: "plan")
+            setScoped(baseURL, suffix: "baseURL")
+        }
         if capability == .asr, prov.id == "qwen-asr-flash" || prov.id == "volcengine-flash" {
             let pl = BillingPlan(rawValue: planRaw) ?? .payg
             baseURL = prov.endpoint(for: capability,
@@ -162,9 +190,7 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: prov.id, capability: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg)) ?? ""
+        apiKey = readApiKey(providerId: prov.id, plan: plan)
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
@@ -180,14 +206,12 @@ final class ProviderConfigMachine {
     /// (sk- vs tp-), so switching the 接入点 dropdown shows that plan's key (or blank) instead
     /// of carrying the other plan's key over and sending it to the wrong host → 401.
     func reloadKeyForCurrentPlan() {
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: providerId, capability: capability, plan: plan)) ?? ""
+        apiKey = readApiKey(providerId: providerId, plan: plan)
     }
 
     /// When the billing plan changes and the user hasn't customized the model away from the old
     /// plan's default, retarget it to the new plan's default. No-op when both plans share a default
-    /// (Qwen 按量付费/Token Plan 现都默认 qwen3.6-flash；MiMo → mimo-v2.5).
+    /// (MiMo plans currently share the mimo-v2.5 default).
     func autoSwitchModel(from oldPlanRaw: String, to newPlanRaw: String) {
         guard let oldPlan = BillingPlan(rawValue: oldPlanRaw),
               let newPlan = BillingPlan(rawValue: newPlanRaw),
@@ -243,5 +267,14 @@ final class ProviderConfigMachine {
         defaults.set(
             boostingTableId.trimmingCharacters(in: .whitespacesAndNewlines),
             forKey: "byok.\(providerId).boostingTableId")
+    }
+
+    private func readApiKey(providerId: String, plan: BillingPlan) -> String {
+        for account in CapabilityCredentialAccount.apiKeyReadAccounts(
+            providerId: providerId, capability: capability, plan: plan
+        ) {
+            if let key = BYOKKeychain.read(account), !key.isEmpty { return key }
+        }
+        return ""
     }
 }
