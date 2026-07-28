@@ -112,11 +112,9 @@ final class MenuModelSelectionTests: XCTestCase {
 
     func testConfiguredOptionsKeepsCurrentEvenWhenUnconfigured() {
         // The active route is always shown so the user can see what's on, even if its
-        // key was cleared — but other unconfigured providers stay hidden. qwen LLM is
-        // multi-plan, so its options are plan-tagged ids (`qwen#payg` / `qwen#package`);
-        // the current selection is the 按量付费 default variant.
-        let visible = visibleLLM(current: "qwen#payg")   // qwen has no key in this resolver
-        XCTAssertTrue(visible.contains("qwen#payg"))
+        // key was cleared — but other unconfigured providers stay hidden.
+        let visible = visibleLLM(current: "qwen")   // qwen has no key in this resolver
+        XCTAssertTrue(visible.contains("qwen"))
         XCTAssertFalse(visible.contains("deepseek"))
     }
 

@@ -74,9 +74,7 @@ final class ModelRouteCatalogTests: XCTestCase {
 
         let result = ModelRouteCatalog.currentLLMId(defaults: defaults)
         XCTAssertNotEqual(result, "offline")
-        // The fallback (qwen) is multi-plan, so the id is plan-tagged (qwen#payg) — match the base.
-        let base = ModelRouteOptionID.parse(result).base
-        XCTAssertTrue(ProviderCatalog.presets(for: .llm).contains { $0.id == base })
+        XCTAssertEqual(result, "qwen")
     }
 
     func testCurrentTTSIdReflectsStoredEngine() {
@@ -109,8 +107,9 @@ final class ModelRouteCatalogTests: XCTestCase {
         let ids = ModelRouteCatalog.llmOptions.map(\.id)
         XCTAssertTrue(ids.contains("mimo#payg"))
         XCTAssertTrue(ids.contains("mimo#package"))
-        XCTAssertTrue(ids.contains("qwen#payg"))
-        XCTAssertTrue(ids.contains("qwen#package"))
+        XCTAssertTrue(ids.contains("qwen"))
+        XCTAssertFalse(ids.contains("qwen#payg"))
+        XCTAssertFalse(ids.contains("qwen#package"))
         XCTAssertTrue(ids.contains("doubao"))
         XCTAssertTrue(ids.contains("deepseek"))   // single-plan provider stays bare
         // The offline/Ollama LLM lane was removed — llmOptions now derives purely from cloud presets.

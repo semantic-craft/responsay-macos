@@ -29,9 +29,6 @@ final class CapabilitySelectionSyncTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "byok.llm.baseURL"), "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
-    // (Token Plan is now the package billing plan inside `qwen`, picked in the card's 接入点
-    // dropdown — not a separate provider selection; covered by ProviderConfigDispatcherTests.)
-
     func testReselectingSameTTSProviderPreservesEditedModelAndVoice() {
         let defaults = freshDefaults("tts")
         defaults.set("mimo", forKey: "byok.tts.provider")

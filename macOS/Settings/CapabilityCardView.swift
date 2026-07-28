@@ -229,11 +229,14 @@ struct CapabilityCardView: View {
     private var statusColor: Color { machine.status.hasPrefix("✓") ? SettingsTheme.green : SettingsTheme.ink2 }
     /// Label for one endpoint in the combined 接入点 picker. Append the plan only where the
     /// region offers more than one (国内·按量付费 / 国内·Token Plan); single-plan regions stay
-    /// plain (新加坡 / 欧洲).
+    /// plain. Qwen uses the explicit mainland label "中国大陆".
     private func endpointLabel(_ e: EndpointVariant) -> String {
         let plansInRegion = Set(machine.current.endpoints(for: capability)
             .filter { $0.region == e.region && !$0.baseURL.isEmpty }
             .map(\.plan))
-        return plansInRegion.count > 1 ? "\(e.region.label)·\(e.plan.label)" : e.region.label
+        let regionLabel = machine.current.id == "qwen" && e.region == .china
+            ? "中国大陆"
+            : e.region.label
+        return plansInRegion.count > 1 ? "\(regionLabel)·\(e.plan.label)" : regionLabel
     }
 }
