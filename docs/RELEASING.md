@@ -150,3 +150,37 @@ home paths, signing identity hashes, and team IDs.
 
 A notarization submission that stalls at `In Progress` with no log is almost always the
 proxy problem described above, not an Apple queue delay.
+
+## Local debug signing
+
+This is not part of cutting a release, but it is the other place signing metadata belongs.
+
+Debug builds are ad-hoc signed by default so a clone with no certificates still builds.
+Ad-hoc code has no certificate to anchor to, so its designated requirement is a literal
+`cdhash` — the executable's own hash, different on every build. Keychain ACLs match an app
+by that requirement, so every rebuild looks like a new app and macOS asks for the login
+keychain password again; "Always Allow" only ever covers the build you clicked it on.
+
+If you hold a certificate, create `macOS/Signing.local.xcconfig` (gitignored,
+`#include?`-ed by `macOS/Signing.xcconfig`). All three settings are required — an identity
+alone fails with *"requires selecting either a development team or a provisioning
+profile"*:
+
+```
+CODE_SIGN_IDENTITY = Developer ID Application
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM = <your-team-id>
+```
+
+Your team id is the parenthesised code in `security find-identity -v -p codesigning`.
+Leave it out of any tracked file: the gate rejects a literal ten-character team id
+everywhere, this document included.
+
+The requirement then reads `anchor apple generic and identifier "…" and certificate
+leaf[subject.OU] = <team>`, which no longer mentions the binary, so it holds across
+rebuilds. Expect one last prompt after switching: the existing ACL entries still name the
+old `cdhash`. Verify with `codesign -d -r- <app>` — the line must not contain `cdhash`.
+
+Keep these settings out of `project.yml`: a target build setting outranks the target's
+xcconfig and would silence the local override. They are also why the leak scanner allows
+signing metadata in this file and refuses it elsewhere.

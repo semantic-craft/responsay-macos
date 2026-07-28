@@ -74,11 +74,13 @@ targets:
         OTHER_LDFLAGS:
           - -lc++
       configs:
-        Debug:
-          CODE_SIGN_IDENTITY: "-"
         Release:
           ENABLE_HARDENED_RUNTIME: YES
           CODE_SIGN_ENTITLEMENTS: macOS/Responsay.entitlements
+    # Debug signing lives in the xcconfig so a maintainer can override the identity
+    # locally; a build setting written here would take precedence and defeat that.
+    configFiles:
+      Debug: macOS/Signing.xcconfig
   ResponsayMacTests:
     type: bundle.unit-test
     platform: macOS
