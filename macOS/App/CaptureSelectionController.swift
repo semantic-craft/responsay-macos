@@ -64,11 +64,10 @@ final class CaptureSelectionController {
         // 划词菜单 actions are content-dependent (SelectionActionResolver), then gated by 技能平台
         // 激活 (SelectionMenuGate): only 翻译/朗读/加入词典/任意提问 are fixed — 引注源验/来源辅助检索/
         // 规范排版 appear only when their backing skill / SelectionTool is on. The saved
-        // SelectionMenuLayout then decides
-        // the final order + show/hide.
+        // SelectionMenuLayout then decides the final order + show/hide.
         let contentActions = SelectionActionResolver().actions(classification: classification)
         let actions = SelectionMenuGate().available(from: contentActions)
-        let skills = enabledPracticeSkills()
+        let skills = enabledSelectionGenerationSkills()
         let items = SelectionMenuLayoutStore.load().resolve(
             availableActions: actions,
             availableSkills: skills.map { (id: $0.id, title: $0.title) })
@@ -80,7 +79,7 @@ final class CaptureSelectionController {
                 self?.executeSelectionAction(action, selectedText: pickedText)
             },
             onPickSkill: { [weak self] skillId, pickedText in
-                self?.runPracticeSkill(skillId: skillId, selectedText: pickedText)
+                self?.runSelectionGenerationSkill(skillId: skillId, selectedText: pickedText)
             },
             onCustomize: { [weak self] in self?.openMenuCustomizer() })
     }
@@ -89,9 +88,9 @@ final class CaptureSelectionController {
     /// `LegalSkillsScreen` files under 划词生成 (legal category, minus the verification /
     /// retrieval skills which have their own explicit 来源核验 / 来源辅助检索 entries),
     /// filtered to what the user has enabled. Loaded per-show (cheap, user-initiated).
-    private func enabledPracticeSkills() -> [SelectionPracticeSkill] {
-        legalSkillLibrary.enabledPracticeSkills()
-            .map { SelectionPracticeSkill(id: $0.id, title: $0.metadata.title) }
+    private func enabledSelectionGenerationSkills() -> [SelectionGenerationSkill] {
+        legalSkillLibrary.enabledSelectionGenerationSkills()
+            .map { SelectionGenerationSkill(id: $0.id, title: $0.metadata.title) }
     }
 
     func coachSelection(prefetched: String? = nil) {
@@ -188,12 +187,12 @@ final class CaptureSelectionController {
         }
     }
 
-    /// 实务辅助 ▾ pick — run one named practice/academic skill directly on the selection.
+    /// 划词生成 pick — run one named 生成技能 directly on the selection.
     /// Each skill declares its own 互动形态 (`interaction`): `.conversation` skills open a
     /// multi-turn 对抗/对话 in the Voice Assistant; `.oneShot` skills produce a result card.
     /// No bundled skill declares `.conversation` today — 反方观点 produces its card first and
     /// enters the 对抗 from the result panel — so this branch serves imported skills.
-    func runPracticeSkill(skillId: String, selectedText: String? = nil) {
+    func runSelectionGenerationSkill(skillId: String, selectedText: String? = nil) {
         switch legalSkillLibrary.interaction(forSkillId: skillId) {
         case .conversation:
             // Every conversation skill today is adversarial, so this reuses the 反方观点 entry
@@ -202,7 +201,7 @@ final class CaptureSelectionController {
             startCounterargumentDebate(prefetched: selectedText)
         case .oneShot:
             runLegalSkillSelection(skillId: skillId, prefetched: selectedText,
-                                   actionName: "Run 实务辅助 skill on selection")
+                                   actionName: "Run 划词生成 skill on selection")
         }
     }
 
@@ -233,7 +232,7 @@ final class CaptureSelectionController {
         MacSettingsWindowController.shared.show(section: .selectionMenu)
     }
 
-    /// Shared body for 来源辅助检索 / 实务辅助: run one named legal skill on the captured
+    /// Shared body for 来源辅助检索 / 划词生成: run one named legal skill on the captured
     /// selection through the VM's privacy-gated direct-run path. Gated by the `legalBrainEnabled`
     /// build flag; the LLM-configured check is enforced inside `vm.runLegalSkillOnSelection`
     /// (`法律技能未配置`), so no separate text-model preflight is needed here.

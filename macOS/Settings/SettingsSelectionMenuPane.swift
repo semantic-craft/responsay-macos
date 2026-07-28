@@ -108,7 +108,7 @@ struct SettingsSelectionMenuPane: View {
     }
 
     /// Platform-gated items — skill-backed actions (引注源验 / 来源辅助检索), the rule-driven
-    /// 规范排版 and enabled practice skills — surface here only because they're 激活 in the 技能平台,
+    /// 规范排版 and enabled 划词生成 技能 — surface here only because they're 激活 in the 技能平台,
     /// so they carry a「技能平台」marker and disappear if turned off there. The fixed functions
     /// (翻译 / 朗读 / 加入词典 / 任意提问) are never gated.
     private func isPlatformGated(_ item: SelectionMenuItem) -> Bool {
@@ -127,7 +127,7 @@ struct SettingsSelectionMenuPane: View {
         // Same 技能平台 gate as the live menu: the gated actions (引注源验/来源辅助检索/规范排版) list
         // here only when 激活, so 拖动排序 stays in sync with what the menu actually shows.
         let actions = SelectionMenuGate().available(from: SelectionMenuLayout.configurableActions)
-        let skills = LegalSkillLibrary().enabledPracticeSkills()
+        let skills = LegalSkillLibrary().enabledSelectionGenerationSkills()
             .map { (id: $0.id, title: $0.metadata.title) }
         rows = SelectionMenuLayoutStore.load().editorRows(
             availableActions: actions,
