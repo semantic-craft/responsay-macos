@@ -9,9 +9,13 @@ import AppKit
 /// `NSColor` dynamic provider, so the *skin* is the runtime choice and light/dark stays
 /// system-driven. Default = **荔园红** (`.shenda`); also ships **胡佛红** (`.stanford`) /
 /// **珞珈青** (`.wuda`) / **嘉庚蓝** (`.xiada`) / **香槟橙（藏蓝）** (`.illinois`) /
-/// **香槟橙（燃橙）** (`.illinoisflame`) / **纽约紫** (`.nyu`).
-/// Names/colours match rime-law-next 法墨输入法 (canonical values: that repo's
-/// `packages/rime-law-config/skins/colors.md`). Upstream defines the 8 candidate-window tokens
+/// **香槟橙（燃橙）** (`.illinoisflame`) / **纽约紫** (`.nyu`) / **黑文蓝** (`.yale`).
+/// Names/colours match 法墨输入法 — `semantic-craft/famotype-macos`, whose
+/// `sources/Theme/FamoThemes.swift` is the readable canonical copy. (The palette comments below
+/// cite `colors.md`: that was the original design source in the older rime-law-next repo, which no
+/// longer exists — FamoThemes.swift is what to diff against now. `.yale` never came from colors.md
+/// at all; upstream sources its 8 core tokens from Yale's own brand guide, see that palette's
+/// comment.) Upstream defines the 8 candidate-window tokens
 /// (accent/accentDeep/onAccent/card/card2/ink/ink2/ink3); the remaining app-chrome tokens
 /// (bg/sidebar/field/accentSoft/hair/hairStrong/paperGrain) are Responsay-only, derived here per
 /// the existing skins' family rules.
@@ -27,6 +31,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
     case illinois
     case illinoisflame
     case nyu
+    case yale
 
     var id: String { rawValue }
 
@@ -53,6 +58,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         case .illinois:      "香槟橙（藏蓝）"
         case .illinoisflame: "香槟橙（燃橙）"
         case .nyu:           "纽约紫"
+        case .yale:          "黑文蓝"
         }
     }
 
@@ -66,6 +72,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         case .illinois:      "香槟纸 + 藏蓝撞橙"
         case .illinoisflame: "香槟纸 + 焦糖燃橙"
         case .nyu:           "月白 + 紫罗兰"
+        case .yale:          "象牙纸 + 耶鲁蓝"
         }
     }
 
@@ -78,6 +85,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         case .illinois:      Self.illinois_
         case .illinoisflame: Self.illinoisflame_
         case .nyu:           Self.nyu_
+        case .yale:          Self.yale_
         }
     }
 
@@ -223,6 +231,30 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         paperGrain:  dyn(0x3C2C5A, 0xB49ADA, lightA: 0.035, darkA: 0.028)
     )
 
+    // 黑文蓝 / yale — 耶鲁大学（New Haven 纽黑文）。8 core tokens 的源是耶鲁自家品牌规范，**不是**
+    // colors.md：accent = 官方数字版 Yale Blue #00356B；accentDeep_light = #0C2340，即 licensing 品牌
+    // 手册所定 Yale Blue 印刷版 PMS 289 的 hex —— 同一个 Yale Blue 的更深一版，正作描边，不另调暗。
+    // ink2/ink3 走 Yale Gray (PMS Warm Gray 7) 暖灰系（手册列其为 Yale Blue 的官方搭配色），配米白纸，
+    // 与同为藏蓝的 xiada 拉开距离。守 accentDeep_dark = accent_light 铁律 (#00356B)；深色循「亮胶囊承
+    // 深字」：accent #4E86C9 + onAccent 深藏蓝 #081426。chrome 按象牙纸/暖灰家族推导。
+    private static let yale_ = SkinPalette(
+        accent:      dyn(0x00356B, 0x4E86C9),
+        accentDeep:  dyn(0x0C2340, 0x00356B),
+        accentSoft:  dyn(0x75797E, 0x6C737C),
+        onAccent:    dyn(0xFBFAF7, 0x081426),
+        bg:          dyn(0xDDD8CD, 0x12151B),
+        sidebar:     dyn(0xD5D0C5, 0x181B22),
+        card:        dyn(0xFAF9F6, 0x1D2129),
+        card2:       dyn(0xF1EEE7, 0x181B22),
+        field:       dyn(0xFFFFFF, 0x0E1116),
+        ink:         dyn(0x20242B, 0xEAE7E1),
+        ink2:        dyn(0x6E665C, 0xA69E95),
+        ink3:        dyn(0x968C83, 0x746E66),
+        hair:        dyn(0x20242B, 0xEAE7E1, lightA: 0.10, darkA: 0.10),
+        hairStrong:  dyn(0x20242B, 0xEAE7E1, lightA: 0.17, darkA: 0.16),
+        paperGrain:  dyn(0x5A4F42, 0xC8BBA8, lightA: 0.035, darkA: 0.028)
+    )
+
     // MARK: - Raw hexes for the Capsule System
 
     /// Hex pairs the Capsule System re-derives with its own per-appearance alphas
@@ -237,6 +269,7 @@ enum Skin: String, CaseIterable, Identifiable, Sendable {
         case .illinois:      (0x13294B, 0xFF7A2E, 0x13294B)
         case .illinoisflame: (0xC24A00, 0xFF6E24, 0x3A2A1B)
         case .nyu:           (0x57068C, 0xA274DA, 0x2A2333)
+        case .yale:          (0x00356B, 0x4E86C9, 0x20242B)
         }
     }
 
