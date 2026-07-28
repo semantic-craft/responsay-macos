@@ -107,8 +107,8 @@ struct SettingsSelectionMenuPane: View {
             .background(Capsule().fill(palette.accent.opacity(0.12)))
     }
 
-    /// Platform-gated items — skill-backed actions (引注源验 / 来源辅助检索), the deterministic 工具
-    /// (规范排版) and enabled practice skills — surface here only because they're 激活 in the 技能平台,
+    /// Platform-gated items — skill-backed actions (引注源验 / 来源辅助检索), the rule-driven
+    /// 规范排版 and enabled practice skills — surface here only because they're 激活 in the 技能平台,
     /// so they carry a「技能平台」marker and disappear if turned off there. The fixed functions
     /// (翻译 / 朗读 / 加入词典 / 任意提问) are never gated.
     private func isPlatformGated(_ item: SelectionMenuItem) -> Bool {
