@@ -29,7 +29,7 @@ struct AppearanceScreen: View {
         }
     }
 
-    // Three flexible columns → a tidy grid (8 skins = 3×3) so each card has real width and the
+    // Three flexible columns → a tidy grid (9 skins = 3×3) so each card has real width and the
     // display name never wraps character-by-character. Reflows to as many rows as the skins need.
     private let skinColumns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 3)
 
