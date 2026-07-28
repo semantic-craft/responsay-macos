@@ -41,7 +41,24 @@ must belong to the team that owns the Developer ID certificate.
 ## 1. Bump the version
 
 Set `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`. Open a pull
-request — `main` is protected and requires one — and merge it once CI is green.
+request and merge it once CI is green.
+
+Nothing enforces either half. `main` carries no branch protection, so a direct push and a
+merge over pending or red CI both succeed silently — the PR is the review surface and CI the
+safety net by convention only.
+
+Run both suites locally before tagging regardless of what CI says, because CI does not cover
+the same ground:
+
+```bash
+swift test --package-path Packages/ResponsayCore
+xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
+```
+
+The workflow only does `build-for-testing` for the macOS target, so those tests **compile**
+in CI and never **run** there — a failure in them leaves CI green. Its `macos-26` runners
+also queue for tens of minutes when GitHub is short on them, which is the usual reason a
+release ends up merged with CI still pending.
 
 ## 2. Tag the merge commit
 
