@@ -63,7 +63,8 @@ final class CaptureSelectionController {
         let classification = SelectionClassifier().classify(text)
         // 划词菜单 actions are content-dependent (SelectionActionResolver), then gated by 技能平台
         // 激活 (SelectionMenuGate): only 翻译/朗读/加入词典/任意提问 are fixed — 引注源验/来源辅助检索/
-        // 规范排版 appear only when their skill/工具 is on. The saved SelectionMenuLayout then decides
+        // 规范排版 appear only when their backing skill / SelectionTool is on. The saved
+        // SelectionMenuLayout then decides
         // the final order + show/hide.
         let contentActions = SelectionActionResolver().actions(classification: classification)
         let actions = SelectionMenuGate().available(from: contentActions)

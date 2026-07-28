@@ -66,8 +66,9 @@ public enum SelectionAction: String, Sendable, Equatable, CaseIterable {
 public extension SelectionAction {
     /// What controls this action's presence in the 划词菜单. The fixed functions (翻译 / 朗读 /
     /// 加入词典 / 任意提问) are `.always`; the rest appear only once their backing 技能平台 skill
-    /// (`.skill`) or 工具 (`.tool`) is 激活. `SelectionMenuGate` evaluates this against the user's
-    /// enable-state — the resolver stays purely content-driven and unaware of activation.
+    /// (`.skill`) or rule-driven `SelectionTool` (`.tool`) is 激活. `SelectionMenuGate` evaluates
+    /// this against the user's enable-state — the resolver stays purely content-driven and unaware
+    /// of activation.
     enum Gate: Equatable, Sendable {
         case always
         case skill(id: String)
