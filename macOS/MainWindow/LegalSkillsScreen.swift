@@ -45,8 +45,11 @@ struct LegalSkillsScreen: View {
     private var retrievalSkills: [LegalSkillCompiled] {
         inventory.retrievalSkills
     }
-    private var practicalSkills: [LegalSkillCompiled] {
-        inventory.practicalSkills
+    /// 划词生成 — 内置生成技能里 来源核验 / 来源检索 之外的那些（脚注排版 / 反方观点 / 目标七问 /
+    /// 思路推演 / 提示词优化）。分区旧名「实务辅助」是法律实务时代的遗名，与内容对不上：这 5 个的
+    /// `domain` 全是 academicWriting，共性是就着选区产出新内容（`outputCards`），而不是改写选区。
+    private var selectionGenerationSkills: [LegalSkillCompiled] {
+        inventory.selectionGenerationSkills
     }
 
     /// Imported rewrite packs — selectable as a style on either lane (alongside the bundled ones).
@@ -93,10 +96,10 @@ struct LegalSkillsScreen: View {
                     sectionHeader(title: "划词改写 · 与听写各自独立", count: styleCards(for: .writing).count + 1)
                     styleGrid(activeID: writingStyleID, lane: .writing)
 
+                    typographySection
                     skillSection(title: "来源核验", skills: verificationSkills, isBuiltin: true)
                     skillSection(title: "来源检索", skills: retrievalSkills, isBuiltin: true)
-                    skillSection(title: "实务辅助", skills: practicalSkills, isBuiltin: true)
-                    toolsSection
+                    skillSection(title: "划词生成", skills: selectionGenerationSkills, isBuiltin: true)
                     if !importedGenerationSkills.isEmpty {
                         sectionHeader(title: "第三方生成技能", count: importedGenerationSkills.count)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
@@ -181,12 +184,12 @@ struct LegalSkillsScreen: View {
         .background(appearanceStore.palette.bg)
     }
     
-    /// 工具 — deterministic 划词 tools that are not AI skills but still follow the 激活 model:
-    /// activate one here and it appears in the 划词菜单 (see `SelectionMenuGate`). Placed as its own
-    /// category so it reads apart from the AI skill lists above.
-    private var toolsSection: some View {
+    /// 排版整理 — 规范排版 跟着选区走、就地替换，对用户就是写作技能的一种，所以列在「写作技能」下
+    /// 与 划词改写 / 来源核验 同级（原先自成一个顶级分区的做法已撤销）。它只是实现上以确定性规则为主、
+    /// 没有 `*.LEGAL_SKILL.md` 背书，激活开关另走 `SelectionTool`（见 `SelectionMenuGate`）。
+    private var typographySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            categoryHeader("工具", subtitle: "确定性小工具（不是 AI 技能）· 激活后出现在划词菜单。")
+            sectionHeader(title: "排版整理 · 只动格式不改文字", count: SelectionTool.allCases.count)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(SelectionTool.allCases) { tool in
                     SelectionToolCardView(
@@ -196,7 +199,7 @@ struct LegalSkillsScreen: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.bottom, 24)
         }
     }
 
