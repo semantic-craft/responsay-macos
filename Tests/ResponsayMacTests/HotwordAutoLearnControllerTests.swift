@@ -4,32 +4,28 @@ import ResponsayCore
 
 @MainActor
 final class HotwordAutoLearnControllerTests: XCTestCase {
-    nonisolated(unsafe) private var savedDefaults: [String: Any] = [:]
+    // These tests drive the real learning path (dictionary writes + the toast post), and the
+    // suite runs inside the app itself (`TEST_HOST`). Both sinks are therefore isolated: an
+    // own defaults suite, and an injected `notify`. Touching `UserDefaults.standard` here used
+    // to write the machine's live 识别词典 and fire a real toast at whoever was at the keyboard,
+    // and a run interrupted between setUp and tearDown left that dictionary emptied.
+    private var defaults: UserDefaults!
+    private let suite = "test.hotwordAutoLearnController"
 
     override func setUp() {
         super.setUp()
-        savedDefaults = [:]
-        for key in Self.defaultsKeys {
-            if let value = UserDefaults.standard.object(forKey: key) {
-                savedDefaults[key] = value
-            }
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
     }
 
     override func tearDown() {
-        for key in Self.defaultsKeys {
-            if let value = savedDefaults[key] {
-                UserDefaults.standard.set(value, forKey: key)
-            } else {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
-        }
+        defaults.removePersistentDomain(forName: suite)
+        defaults = nil
         super.tearDown()
     }
 
     func testCheckForCorrectionAddsAutoHotword() async {
-        UserDefaults.standard.set(true, forKey: AutoLearnHotwordSettings.key)
+        defaults.set(true, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我在用 cloud code 写代码", app: "Notes", sceneID: "note-1", windowTitle: "Test")
         var addedTerms: [String] = []
         let processor = AutoLearnHotwordProcessor(
@@ -42,7 +38,9 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
             record: { _, _ in true })
         let controller = HotwordAutoLearnController(
             snapshotReader: { snapshot },
-            processor: processor)
+            processor: processor,
+            isEnabled: { [defaults] in AutoLearnHotwordSettings.resolve(defaults: defaults!) },
+            notify: { _ in })
 
         controller.noteInsertion()
         snapshot.text = "我在用 Claude Code 写代码"
@@ -54,40 +52,43 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
     }
 
     func testCorrectionPersistsClaudeCodeIntoActiveDictionary() async {
-        UserDefaults.standard.set(true, forKey: AutoLearnHotwordSettings.key)
+        defaults.set(true, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我在用 cloud code 写代码", app: "Notes", sceneID: "note-1", windowTitle: "Test")
         let processor = AutoLearnHotwordProcessor(
             isEnabled: { AutoLearnHotwordSettings.isEnabled },
             mode: { .localRules },
             confirmationPolicy: { .autoAddHighConfidence },
-            existingManualTerms: { Set(ContextHotwordSettings.hotwords()) },
-            existingAutoTerms: { Set(ContextHotwordSettings.autoHotwords()) },
-            addAuto: { proposal in
+            existingManualTerms: { [defaults] in Set(ContextHotwordSettings.hotwords(defaults: defaults!)) },
+            existingAutoTerms: { [defaults] in Set(ContextHotwordSettings.autoHotwords(defaults: defaults!)) },
+            addAuto: { [defaults] proposal in
                 ContextHotwordSettings.addAuto(
                     proposal.term,
                     source: proposal.source,
-                    reason: proposal.reason)
+                    reason: proposal.reason,
+                    defaults: defaults!)
             },
-            record: { proposal, status in
-                AutoLearnHotwordHistorySettings.append(proposal, status: status)
+            record: { [defaults] proposal, status in
+                AutoLearnHotwordHistorySettings.append(proposal, status: status, defaults: defaults!)
             })
         let controller = HotwordAutoLearnController(
             snapshotReader: { snapshot },
-            processor: processor)
+            processor: processor,
+            isEnabled: { [defaults] in AutoLearnHotwordSettings.resolve(defaults: defaults!) },
+            notify: { _ in })
 
         controller.noteInsertion()
         snapshot.text = "我在用 Claude Code 写代码"
         XCTAssertTrue(checkAfterStablePolls(controller))
         try? await Task.sleep(for: .milliseconds(50))
 
-        XCTAssertTrue(ContextHotwordSettings.autoHotwords().contains("Claude Code"))
-        XCTAssertTrue(ContextHotwordSettings.biasingSets().weakPrompt.contains("Claude Code"))
-        XCTAssertEqual(AutoLearnHotwordHistorySettings.records().first?.term, "Claude Code")
-        XCTAssertEqual(AutoLearnHotwordHistorySettings.records().first?.sourceTerm, "cloud code")
+        XCTAssertTrue(ContextHotwordSettings.autoHotwords(defaults: defaults).contains("Claude Code"))
+        XCTAssertTrue(ContextHotwordSettings.biasingSets(defaults: defaults).weakPrompt.contains("Claude Code"))
+        XCTAssertEqual(AutoLearnHotwordHistorySettings.records(defaults: defaults).first?.term, "Claude Code")
+        XCTAssertEqual(AutoLearnHotwordHistorySettings.records(defaults: defaults).first?.sourceTerm, "cloud code")
     }
 
     func testPartialManualEditWaitsForStableFinalText() async {
-        UserDefaults.standard.set(true, forKey: AutoLearnHotwordSettings.key)
+        defaults.set(true, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我最近在用 Cloud Xcode 写代码。", app: "TextEdit", sceneID: "textedit", windowTitle: "Untitled")
         var addedTerms: [String] = []
         let processor = AutoLearnHotwordProcessor(
@@ -100,7 +101,9 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
             record: { _, _ in true })
         let controller = HotwordAutoLearnController(
             snapshotReader: { snapshot },
-            processor: processor)
+            processor: processor,
+            isEnabled: { [defaults] in AutoLearnHotwordSettings.resolve(defaults: defaults!) },
+            notify: { _ in })
 
         controller.noteInsertion()
         snapshot.text = "我最近在用 Clou Xcode 写代码。"
@@ -114,7 +117,7 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
     }
 
     func testDisabledAutoLearnDoesNotWatchOrAdd() {
-        UserDefaults.standard.set(false, forKey: AutoLearnHotwordSettings.key)
+        defaults.set(false, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我在用 cloud code 写代码", app: "Notes", sceneID: "note-1", windowTitle: "Test")
         var addedTerms: [String] = []
         let processor = AutoLearnHotwordProcessor(
@@ -127,7 +130,9 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
             record: { _, _ in true })
         let controller = HotwordAutoLearnController(
             snapshotReader: { snapshot },
-            processor: processor)
+            processor: processor,
+            isEnabled: { [defaults] in AutoLearnHotwordSettings.resolve(defaults: defaults!) },
+            notify: { _ in })
 
         controller.noteInsertion()
         snapshot.text = "我在用 Claude Code 写代码"
@@ -135,14 +140,6 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
         XCTAssertFalse(controller.checkForCorrection())
         XCTAssertTrue(addedTerms.isEmpty)
     }
-
-    nonisolated private static let defaultsKeys = [
-        AutoLearnHotwordSettings.key,
-        ContextHotwordSettings.defaultsKey,
-        ContextHotwordSettings.autoDefaultsKey,
-        ContextHotwordSettings.autoMetadataDefaultsKey,
-        AutoLearnHotwordHistorySettings.historyKey
-    ]
 
     private func checkAfterStablePolls(_ controller: HotwordAutoLearnController) -> Bool {
         for _ in 0..<6 {

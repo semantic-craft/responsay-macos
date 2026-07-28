@@ -20,6 +20,8 @@ final class HotwordAutoLearnController {
     private var watcher = PostInsertEditWatcher()
     private let snapshotReader: () -> (text: String, app: String, sceneID: String?, windowTitle: String?)?
     private let processor: AutoLearnHotwordProcessor
+    private let isEnabled: () -> Bool
+    private let notify: (String) -> Void
     private var observationTask: Task<Void, Never>?
     private var lastObservedSnapshot: (text: String, app: String, sceneID: String?, windowTitle: String?)?
     private var stableSnapshotPolls = 0
@@ -31,18 +33,30 @@ final class HotwordAutoLearnController {
     private var lastCountedEdit: String?
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "auto-learn")
 
+    /// `isEnabled` and `notify` are injected for the same reason the snapshot reader is: the
+    /// defaults read and the toast post are the two places this controller reaches outside the
+    /// process. Left hardcoded, a test could only exercise the flywheel by flipping the real
+    /// `AutoLearnHotwordSettings` key and firing a real toast at whoever is at the keyboard —
+    /// tests run inside the app (`TEST_HOST`), so that notification is a live one.
     init(
         snapshotReader: @escaping () -> (text: String, app: String, sceneID: String?, windowTitle: String?)?,
-        processor: AutoLearnHotwordProcessor = .live()
+        processor: AutoLearnHotwordProcessor = .live(),
+        isEnabled: @escaping () -> Bool = { AutoLearnHotwordSettings.isEnabled },
+        notify: @escaping (String) -> Void = { term in
+            NotificationCenter.default.post(
+                name: .autoLearnHotwordDidAdd, object: nil, userInfo: ["term": term])
+        }
     ) {
         self.snapshotReader = snapshotReader
         self.processor = processor
+        self.isEnabled = isEnabled
+        self.notify = notify
     }
 
     /// Snapshot the focused field right after Responsay inserted into it. No-op when disabled
     /// or the field can't be read (e.g. AX untrusted, non-text field).
     func noteInsertion() {
-        guard AutoLearnHotwordSettings.isEnabled else { return }
+        guard isEnabled() else { return }
         guard let snap = snapshotReader() else {
             log.info("Auto-learn skipped post-insert snapshot; readable false")
             return
@@ -61,7 +75,7 @@ final class HotwordAutoLearnController {
     /// Re-read the focused field before the next capture; learn from any edit to the snapshot.
     @discardableResult
     func checkForCorrection() -> Bool {
-        guard AutoLearnHotwordSettings.isEnabled else { return false }
+        guard isEnabled() else { return false }
         guard let snap = snapshotReader() else {
             log.info("Auto-learn correction check cleared; readable false")
             lastObservedSnapshot = nil
@@ -151,14 +165,11 @@ final class HotwordAutoLearnController {
             userFinalText: userFinal,
             appName: app,
             windowTitle: windowTitle)
-        Task { @MainActor [processor] in
+        Task { @MainActor [processor, notify] in
             let result = await processor.process(context)
             // Toast only for specialized terms; ordinary terms are added silently (PRD §3 Tier 1/2).
             for term in result.notifiedTerms {
-                NotificationCenter.default.post(
-                    name: .autoLearnHotwordDidAdd,
-                    object: nil,
-                    userInfo: ["term": term])
+                notify(term)
             }
         }
     }
