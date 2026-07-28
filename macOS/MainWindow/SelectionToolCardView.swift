@@ -1,8 +1,9 @@
 import SwiftUI
 import ResponsayCore
 
-/// 技能平台「工具」区的一张卡：确定性小工具（如 规范排版），不是 LLM 技能，所以没有导出 / 编辑 / 标签，
-/// 只有一个 激活 / 取消激活 开关。激活后对应的 `SelectionAction` 才出现在划词菜单（见 `SelectionMenuGate`）。
+/// 技能平台›写作技能›排版整理 里的一张卡：规则驱动的写作技能（如 规范排版），没有 `*.LEGAL_SKILL.md`
+/// 背书，所以没有导出 / 编辑 / 标签，只有一个 激活 / 取消激活 开关。激活后对应的 `SelectionAction`
+/// 才出现在划词菜单（见 `SelectionMenuGate`）。
 /// 视觉与 `LegalSkillCardView` 对齐（同高度 / 同胶囊 / 同 accent 处理），使网格排布统一。
 struct SelectionToolCardView: View {
     @Environment(AppearanceStore.self) private var appearanceStore
@@ -20,7 +21,7 @@ struct SelectionToolCardView: View {
                             .font(.system(size: SkinMetrics.fsBody, weight: .semibold))
                             .foregroundStyle(appearanceStore.palette.ink)
 
-                        Text("工具")
+                        Text("内置")
                             .font(.system(size: SkinMetrics.fsCaption, weight: .medium))
                             .foregroundStyle(appearanceStore.palette.ink3)
                             .padding(.horizontal, 6).padding(.vertical, 2)

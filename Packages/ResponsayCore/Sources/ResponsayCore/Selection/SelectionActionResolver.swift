@@ -3,15 +3,15 @@ import Foundation
 /// Decides the **gated action set** for a text selection (issue 127 / ADR-0022).
 /// Redesigned 划词菜单: the menu is fixed-structure now. Instant tools (翻译 / 朗读)
 /// + the legal-research smart row (来源核验 / 来源辅助检索 / 任意提问) are always offered;
-/// a term-shaped fragment additionally gets 加入词典. 实务辅助 (the practice-skill
-/// dropdown) is not a `SelectionAction` — the menu builds it from enabled skills.
+/// a term-shaped fragment additionally gets 加入词典. The 划词生成 技能 are not
+/// `SelectionAction`s — the menu appends one flat row per enabled skill.
 /// Empty selection → nothing (downgrade, ADR-0008).
 public struct SelectionActionResolver: Sendable {
     public init() {}
 
     /// `scene` is accepted for call-site compatibility but no longer gates the set:
     /// the smart row is fixed regardless of scene (the explicit 来源核验 / 来源辅助检索 /
-    /// 实务辅助 entries replaced the opaque auto-routed 法律技能 palette).
+    /// 划词生成 entries replaced the opaque auto-routed 法律技能 palette).
     public func actions(
         classification: SelectionClassification,
         scene: SceneStageClassification? = nil,
