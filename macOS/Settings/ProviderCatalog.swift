@@ -46,7 +46,7 @@ enum ProviderRegion: String, CaseIterable, Sendable {
 }
 
 /// 计费 — for providers where the endpoint *and* key format differ by plan
-/// (verified: Qwen Coding Plan). Only surfaced when a provider has both.
+/// (verified: MiMo Token Plan). Only surfaced when a provider has both.
 enum BillingPlan: String, CaseIterable, Sendable {
     case payg, package
     var label: String {
@@ -92,10 +92,6 @@ struct ProviderPreset: Identifiable, Sendable {
     let endpoints: [EndpointVariant]
     let capabilityEndpoints: [ModelCapability: [EndpointVariant]]
     let defaultModels: [ModelCapability: String]
-    /// Per-plan default model, for providers whose billing plans default to different
-    /// models (Qwen: 按量付费 → qwen-flash, Token Plan → qwen3.6-flash). Falls back to
-    /// `defaultModels[capability]` when a plan has no specific override.
-    let planModelDefaults: [ModelCapability: [BillingPlan: String]]
     let keyLabel: String
     /// Shown next to the key field to prevent mis-billing (e.g. `sk-sp-…`).
     let keyFormatHint: String?
@@ -120,7 +116,6 @@ struct ProviderPreset: Identifiable, Sendable {
         endpoints: [EndpointVariant],
         capabilityEndpoints: [ModelCapability: [EndpointVariant]] = [:],
         defaultModels: [ModelCapability: String],
-        planModelDefaults: [ModelCapability: [BillingPlan: String]] = [:],
         keyLabel: String,
         keyFormatHint: String?,
         capabilityKeyFormatHints: [ModelCapability: String] = [:],
@@ -137,7 +132,6 @@ struct ProviderPreset: Identifiable, Sendable {
         self.endpoints = endpoints
         self.capabilityEndpoints = capabilityEndpoints
         self.defaultModels = defaultModels
-        self.planModelDefaults = planModelDefaults
         self.keyLabel = keyLabel
         self.keyFormatHint = keyFormatHint
         self.capabilityKeyFormatHints = capabilityKeyFormatHints
@@ -223,10 +217,8 @@ struct ProviderPreset: Identifiable, Sendable {
     func keyFormatHint(for capability: ModelCapability) -> String? {
         capabilityKeyFormatHints[capability] ?? keyFormatHint
     }
-    /// The default model for a capability under a specific billing plan, falling back to
-    /// the capability default when the plan has no specific override (Qwen Token Plan).
-    func defaultModel(for capability: ModelCapability, plan: BillingPlan) -> String? {
-        planModelDefaults[capability]?[plan] ?? defaultModels[capability]
+    func defaultModel(for capability: ModelCapability, plan _: BillingPlan) -> String? {
+        defaultModels[capability]
     }
     func presets(for capability: ModelCapability) -> Bool { capabilities.contains(capability) }
 }

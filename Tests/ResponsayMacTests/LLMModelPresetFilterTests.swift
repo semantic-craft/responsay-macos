@@ -14,10 +14,9 @@ final class LLMModelPresetFilterTests: XCTestCase {
         XCTAssertEqual(models, ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"])
     }
 
-    /// Token Plan is a billing plan inside `qwen` (not a separate provider); its qwen3.6-flash
-    /// default is part of the curated set, so it survives a fetch alongside the other curated
-    /// ids that the provider list happens to include.
-    func testQwenTokenPlanFlashStaysCuratedWhenFetched() {
+    /// The Qwen PAYG default is part of the curated set, so it survives a fetch alongside the
+    /// other curated ids that the provider list happens to include.
+    func testQwenDefaultFlashStaysCuratedWhenFetched() {
         let models = LLMModelPresetFilter.models(
             from: ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash"],
             preset: ProviderCatalog.qwen,

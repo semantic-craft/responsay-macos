@@ -198,20 +198,20 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.model, "qwen3.6-flash")
     }
 
-    // Token Plan is now a billing plan inside `qwen`: selecting qwen + package resolves to the
-    // Token Plan endpoint and its plan-specific default model (qwen3.6-flash).
-    func testQwenTokenPlanPlanResolvesTokenPlanEndpointAndModel() {
+    func testRetiredQwenTokenPlanSelectionFallsBackToPayAsYouGo() {
         defaults.set("qwen", forKey: "byok.llm.provider")
         defaults.set(BillingPlan.package.rawValue, forKey: "byok.llm.plan")
-        // Multi-plan provider stores keys per plan: Token Plan key lives at byok.qwen.package.
-        let config = dispatcher(keys: ["byok.qwen.package": "token-plan-secret"]).resolve(.llm)
+        defaults.set(
+            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+            forKey: "byok.llm.baseURL")
+        let config = dispatcher(keys: ["byok.qwen": "dashscope-secret"]).resolve(.llm)
 
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.region, .china)
-        XCTAssertEqual(config.plan, .package)
-        XCTAssertEqual(config.baseURL, "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+        XCTAssertEqual(config.plan, .payg)
+        XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
         XCTAssertEqual(config.model, "qwen3.6-flash")
-        XCTAssertEqual(config.apiKey, "token-plan-secret")
+        XCTAssertEqual(config.apiKey, "dashscope-secret")
     }
 
     func testExplicitBaseURLAndModelWinOverCatalog() {
@@ -255,8 +255,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(dispatcher().resolve(.llm).providerId, "qwen")
     }
 
-    // Legacy `qwen-team` / `qwen-token-plan` ids now canonicalize onto the surviving `qwen`
-    // provider (Token Plan is a plan within it), falling to qwen's 按量付费 defaults.
+    // Legacy provider ids canonicalize onto the surviving Qwen PAYG route.
     func testLegacyQwenTeamLLMSelectionCanonicalizesToQwen() {
         defaults.set("qwen-team", forKey: "byok.llm.provider")
 
@@ -265,6 +264,16 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.plan, .payg)
         XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    }
+
+    func testLegacyQwenTokenPlanProviderCanonicalizesToQwenPayAsYouGo() {
+        defaults.set("qwen-token-plan", forKey: "byok.llm.provider")
+
+        let config = dispatcher().resolve(.llm)
+
+        XCTAssertEqual(config.providerId, "qwen")
+        XCTAssertEqual(config.plan, .payg)
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -284,10 +293,14 @@ final class ProviderConfigDispatcherTests: XCTestCase {
     // MARK: Keys
 
     func testKeyIsReadFromKeychainByProviderId() {
-        // qwen is multi-plan; default plan is 按量付费, so the key lives at byok.qwen.payg.
-        let config = dispatcher(keys: ["byok.qwen.payg": "dashscope-secret"]).resolve(.llm)
+        let config = dispatcher(keys: ["byok.qwen": "dashscope-secret"]).resolve(.llm)
         XCTAssertEqual(config.apiKey, "dashscope-secret")
         XCTAssertTrue(config.hasKey)
+    }
+
+    func testQwenPayAsYouGoReadsLegacyMultiPlanKeySlot() {
+        let config = dispatcher(keys: ["byok.qwen.payg": "legacy-dashscope-secret"]).resolve(.llm)
+        XCTAssertEqual(config.apiKey, "legacy-dashscope-secret")
     }
 
     func testMultiPlanProviderStoresKeyPerPlanSinglePlanStaysShared() {
@@ -303,8 +316,8 @@ final class ProviderConfigDispatcherTests: XCTestCase {
             CapabilityCredentialAccount.apiKeyAccount(providerId: "mimo", capability: .tts, plan: .package),
             "byok.tts.mimo.package")
         XCTAssertEqual(
-            CapabilityCredentialAccount.apiKeyAccount(providerId: "qwen", capability: .llm, plan: .package),
-            "byok.qwen.package")
+            CapabilityCredentialAccount.apiKeyAccount(providerId: "qwen", capability: .llm, plan: .payg),
+            "byok.qwen")
         // single-plan provider ignores the plan and keeps its shared slot
         XCTAssertEqual(
             CapabilityCredentialAccount.apiKeyAccount(providerId: "openai", capability: .llm, plan: .package),

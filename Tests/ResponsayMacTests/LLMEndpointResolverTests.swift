@@ -31,7 +31,7 @@ final class LLMEndpointResolverTests: XCTestCase {
 
     func test_resolveCloud_configured_returnsCloudEndpoint() {
         let endpoint = LLMEndpointResolver.resolveCloud(
-            defaults: defaults, dispatcher: dispatcher(keys: ["byok.qwen.payg": "sk-1"]))
+            defaults: defaults, dispatcher: dispatcher(keys: ["byok.qwen": "sk-1"]))
         XCTAssertEqual(endpoint?.providerId, "qwen")
         XCTAssertEqual(endpoint?.apiKey, "sk-1")
         XCTAssertFalse(endpoint?.isLocal ?? true)
@@ -39,7 +39,7 @@ final class LLMEndpointResolverTests: XCTestCase {
 
     func test_resolveCloud_forcesThinkingOff() {
         let endpoint = LLMEndpointResolver.resolveCloud(
-            defaults: defaults, dispatcher: dispatcher(keys: ["byok.qwen.payg": "sk-1"]))
+            defaults: defaults, dispatcher: dispatcher(keys: ["byok.qwen": "sk-1"]))
         XCTAssertEqual(endpoint?.thinkingEnabled, false)
     }
 }
