@@ -85,8 +85,8 @@ final class CaptureSelectionController {
             onCustomize: { [weak self] in self?.openMenuCustomizer() })
     }
 
-    /// The enabled practice / academic skills surfaced in 实务辅助 ▾ — the same subset
-    /// `LegalSkillsScreen` files under 实务辅助 (legal category, minus the verification /
+    /// The enabled generation skills flattened into the 划词菜单 — the same subset
+    /// `LegalSkillsScreen` files under 划词生成 (legal category, minus the verification /
     /// retrieval skills which have their own explicit 来源核验 / 来源辅助检索 entries),
     /// filtered to what the user has enabled. Loaded per-show (cheap, user-initiated).
     private func enabledPracticeSkills() -> [SelectionPracticeSkill] {

@@ -45,6 +45,9 @@ struct LegalSkillsScreen: View {
     private var retrievalSkills: [LegalSkillCompiled] {
         inventory.retrievalSkills
     }
+    /// 划词生成 — 内置生成技能里 来源核验 / 来源检索 之外的那些（脚注排版 / 反方观点 / 目标七问 /
+    /// 思路推演 / 提示词优化）。分区旧名「实务辅助」是法律实务时代的遗名，与内容对不上：这 5 个的
+    /// `domain` 全是 academicWriting，共性是就着选区产出新内容（`outputCards`），而不是改写选区。
     private var practicalSkills: [LegalSkillCompiled] {
         inventory.practicalSkills
     }
@@ -96,7 +99,7 @@ struct LegalSkillsScreen: View {
                     typographySection
                     skillSection(title: "来源核验", skills: verificationSkills, isBuiltin: true)
                     skillSection(title: "来源检索", skills: retrievalSkills, isBuiltin: true)
-                    skillSection(title: "实务辅助", skills: practicalSkills, isBuiltin: true)
+                    skillSection(title: "划词生成", skills: practicalSkills, isBuiltin: true)
                     if !importedGenerationSkills.isEmpty {
                         sectionHeader(title: "第三方生成技能", count: importedGenerationSkills.count)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
