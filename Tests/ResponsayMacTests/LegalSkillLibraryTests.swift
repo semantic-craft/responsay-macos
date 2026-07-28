@@ -42,7 +42,7 @@ final class LegalSkillLibraryTests: XCTestCase {
         XCTAssertEqual(inventory.bundledEverydaySkills.map(\.id), ["rewrite.office.cn"])
         XCTAssertEqual(inventory.verificationSkills.map(\.id), ["verification.fact_check.cn"])
         XCTAssertEqual(inventory.retrievalSkills.map(\.id), ["research.search_strategy.cn"])
-        XCTAssertEqual(inventory.practicalSkills.map(\.id), ["practice.local.cn"])
+        XCTAssertEqual(inventory.selectionGenerationSkills.map(\.id), ["practice.local.cn"])
         XCTAssertEqual(inventory.importedSkills.map(\.id), ["practice.imported.cn"])
     }
 
@@ -55,7 +55,7 @@ final class LegalSkillLibraryTests: XCTestCase {
         let library = makeLibrary(importedStore: importedStore, bundled: [localPractice])
         library.setLegalSkillEnabled(true, id: "practice.imported.cn")
 
-        XCTAssertEqual(library.enabledPracticeSkills().map(\.id), ["practice.imported.cn"])
+        XCTAssertEqual(library.enabledSelectionGenerationSkills().map(\.id), ["practice.imported.cn"])
     }
 
     func testInteractionForSkillIdReadsMetadataWithOneShotDefault() throws {

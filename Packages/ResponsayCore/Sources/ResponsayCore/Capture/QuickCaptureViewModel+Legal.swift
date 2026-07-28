@@ -14,7 +14,7 @@ extension QuickCaptureViewModel {
     }
 
     /// Direct (non-palette) run of one named skill on a captured selection — the 划词菜单's
-    /// 来源辅助检索 / 实务辅助 entries. Sets the transcript, builds the skill's card and runs it
+    /// 来源辅助检索 / 划词生成 entries. Sets the transcript, builds the skill's card and runs it
     /// through the same privacy-gated path as a palette pick (so the send-confirm / route
     /// logic is shared, not duplicated). Shows a one-card review while it executes.
     public func runLegalSkillOnSelection(skillId: String, text: String) async {

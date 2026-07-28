@@ -7,13 +7,13 @@ import ResponsayCore
 /// the selection:
 ///   1. **Resting** = an instant icon row — `[翻译] [朗读] | [⋯]` (icon-only, hover =
 ///      accent-tinted). Tapping ⋯ expands.
-///   2. **Expanded** = labeled smart rows (icon坑 · 标题 + 一行说明 · optional ▸), legal-first:
-///      来源核验 / 来源辅助检索 / 实务辅助▸ / 任意提问 / (加入词典). 实务辅助 drops the user's
-///      enabled practice skills in place.
+///   2. **Expanded** = labeled smart rows (icon坑 · 标题 + 一行说明): 来源核验 / 来源辅助检索 /
+///      任意提问 / (加入词典), plus each enabled 划词生成 技能 as its own row. The list is flat —
+///      `items` arrives already resolved from the saved `SelectionMenuLayout` (order + show/hide).
 ///   3. **Bottom bar** = 管理技能… (left, opens the skills library) + ✕ close (right).
 ///
 /// Tokens are aligned to the designer's shenda-skin defaults (light + dark). The view
-/// owns its expand/dropdown state and reports its size so the host panel can resize.
+/// owns its expand state and reports its size so the host panel can resize.
 struct SelectionActionMenu: View {
     /// All visible menu items, resolved from the user's `SelectionMenuLayout` (order + show/hide) —
     /// built-in actions (incl. 翻译/朗读) and enabled skills, flattened. The first few render as the
@@ -239,8 +239,8 @@ struct SelectionActionMenu: View {
     }
 }
 
-/// A practice/academic skill surfaced in the 实务辅助 dropdown (id runs the skill).
-struct SelectionPracticeSkill: Identifiable, Hashable {
+/// One 划词生成 技能 surfaced as its own 划词菜单 row (picking it runs the skill by id).
+struct SelectionGenerationSkill: Identifiable, Hashable {
     let id: String
     let title: String
 }
