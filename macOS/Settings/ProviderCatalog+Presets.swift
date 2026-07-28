@@ -2,7 +2,7 @@ import Foundation
 import ResponsayCore
 
 extension ProviderCatalog {
-    // -- 通义千问 · 阿里云百炼（PAYG） ----------
+    // -- 通义千问 · 阿里云百炼 ----------
     static let qwen = ProviderPreset(
         id: "qwen", displayName: "阿里云百炼",
         capabilities: [.llm, .tts], credentialShape: .apiKey,
@@ -14,18 +14,14 @@ extension ProviderCatalog {
         // 官方建议迁移到业务空间专属域名，但确认旧 dashscope 域名仍可正常使用，
         // 因此 BYOK 预设不强迫用户额外填写 Workspace ID。
         capabilityEndpoints: [
-            // 国内拆两档（按量付费 / Token Plan），新加坡仅按量付费；接入点随档切换。
-            // Token Plan 是独立计费档（独立 host + 专属 key + 默认 qwen3.6-flash），不是按量子集。
             .llm: [
-                .init(.china, .payg, "https://dashscope.aliyuncs.com/compatible-mode/v1", note: "百炼 OpenAI 兼容 · 华北2（北京）· 按量付费"),
-                .init(.china, .package, "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", note: "百炼 Token Plan · 华北2（北京）"),
+                .init(.china, .payg, "https://dashscope.aliyuncs.com/compatible-mode/v1", note: "百炼 OpenAI 兼容 · 中国大陆"),
                 .init(.singapore, .payg, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", note: "百炼 OpenAI 兼容 · 新加坡"),
             ],
         ],
         defaultModels: [.llm: "qwen3.6-flash", .tts: "qwen-audio-3.0-tts-flash"],
-        planModelDefaults: [.llm: [.payg: "qwen3.6-flash", .package: "qwen3.6-flash"]],
         keyLabel: "通义千问 API Key", keyFormatHint: "sk-…",
-        capabilityKeyFormatHints: [.llm: "按量付费 sk-…；Token Plan 专属 Key（勿与按量混用）"],
+        capabilityKeyFormatHints: [.llm: "百炼 API Key（sk-…）"],
         builtinSearch: true, isCustom: false, isLocal: false,
         presetModels: [
             .llm: ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],

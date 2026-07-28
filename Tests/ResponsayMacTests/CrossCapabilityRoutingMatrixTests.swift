@@ -9,14 +9,13 @@ import ResponsayCore
 final class CrossCapabilityRoutingMatrixTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suite = "test.crossCapabilityRoutingMatrix"
-    // Multi-plan providers store keys per plan: mimo ASR/LLM default to 套餐 (package),
-    // mimo TTS + qwen LLM default to 按量付费 (payg) — so their slots carry a plan suffix.
+    // Multi-plan MiMo routes store keys per plan; single-plan Qwen LLM uses its base slot.
     private static let keys: [String: String] = [
         "byok.qwen-asr-flash": "asr-qwen-flash-key",
         "byok.mimo.package": "mimo-shared-key",
         "byok.zhipu": "zhipu-shared-key",
         "byok.openai": "asr-openai-key",
-        "byok.qwen.payg": "llm-qwen-key",
+        "byok.qwen": "llm-qwen-key",
         "byok.deepseek": "llm-deepseek-key",
         "byok.tts.qwen": "tts-qwen-key",
         "byok.tts.mimo.payg": "tts-mimo-key",
@@ -40,7 +39,7 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "SenseVoice ASR + Qwen LLM + Qwen TTS",
                 asr: .local(.sensevoiceLocal),
-                llm: .cloud("qwen", keyAccount: "byok.qwen.payg", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "Qwen3 local ASR + MiMo LLM + local Kokoro TTS",
@@ -50,12 +49,12 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "MiMo ASR + Qwen LLM + Qwen TTS",
                 asr: .cloud(.cloudMimo, providerId: "mimo", keyAccount: "byok.mimo.package", expectedModel: "mimo-v2.5-asr"),
-                llm: .cloud("qwen", keyAccount: "byok.qwen.payg", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "千问极速实时 ASR + Qwen LLM + local Kokoro TTS",
                 asr: .cloud(.cloudQwenASRFlashRealtime, providerId: "qwen-asr-flash", keyAccount: "byok.qwen-asr-flash", expectedModel: QwenRealtimeEndpoint.defaultModel),
-                llm: .cloud("qwen", keyAccount: "byok.qwen.payg", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
                 tts: .local(.sherpaKokoroLocal)),
             Scenario(
                 name: "OpenAI ASR + DeepSeek LLM + OpenAI TTS",

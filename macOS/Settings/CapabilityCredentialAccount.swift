@@ -21,6 +21,21 @@ enum CapabilityCredentialAccount {
         return "\(base).\(plan.rawValue)"
     }
 
+    /// Read candidates in priority order. Qwen LLM used a plan-suffixed PAYG slot while Bailian
+    /// Token Plan was selectable; keep that old slot as a read-only fallback so existing users do
+    /// not lose their configured key after Qwen becomes single-plan again.
+    static func apiKeyReadAccounts(
+        providerId: String,
+        capability: ModelCapability,
+        plan: BillingPlan? = nil
+    ) -> [String] {
+        let primary = apiKeyAccount(providerId: providerId, capability: capability, plan: plan)
+        guard providerId == "qwen", capability == .llm,
+              primary == TTSCredential.coachAccount(for: providerId)
+        else { return [primary] }
+        return [primary, "\(primary).payg"]
+    }
+
     static func appIdAccount(providerId: String) -> String {
         "byok.\(providerId).appId"
     }

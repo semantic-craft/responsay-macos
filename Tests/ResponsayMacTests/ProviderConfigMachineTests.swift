@@ -136,7 +136,7 @@ struct ProviderConfigMachineTests {
 
     // MARK: - endpointBase(): region × plan derivation
 
-    @Test func endpointBaseFollowsRegionAndPlanForQwenLLM() {
+    @Test func endpointBaseFollowsRegionForQwenLLM() {
         let m = machine(.llm, suffix: "endpoint-base")
         m.load()  // qwen · china · payg
 
@@ -144,35 +144,28 @@ struct ProviderConfigMachineTests {
         m.planRaw = BillingPlan.payg.rawValue
         #expect(m.endpointBase() == "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
-        m.planRaw = BillingPlan.package.rawValue
-        #expect(m.endpointBase() == "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
-
         m.regionRaw = ProviderRegion.singapore.rawValue
-        m.planRaw = BillingPlan.payg.rawValue
         #expect(m.endpointBase() == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
     }
 
-    // MARK: - autoSwitchModel(): retarget only when uncustomized; no-op on shared default
+    @Test func loadRetiredQwenTokenPlanSelectionAsPayAsYouGo() {
+        let d = freshDefaults("load-retired-qwen-token-plan")
+        d.set("qwen", forKey: "byok.llm.provider")
+        d.set(BillingPlan.package.rawValue, forKey: "byok.llm.qwen.plan")
+        d.set(
+            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+            forKey: "byok.llm.qwen.baseURL")
 
-    @Test func autoSwitchModelNoOpWhenPlansShareDefault() {
-        // Qwen LLM: 按量付费 and Token Plan both default to qwen3.6-flash → switching plans must
-        // NOT change a model the user set to that shared default.
-        let m = machine(.llm, suffix: "autoswitch-shared")
+        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
         m.load()
-        m.model = "qwen3.6-flash"
-        m.autoSwitchModel(from: BillingPlan.payg.rawValue, to: BillingPlan.package.rawValue)
-        #expect(m.model == "qwen3.6-flash")
+
+        #expect(m.plan == .payg)
+        #expect(m.baseURL == "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        #expect(d.string(forKey: "byok.llm.qwen.plan") == BillingPlan.payg.rawValue)
+        #expect(d.string(forKey: "byok.llm.qwen.baseURL") == "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
-    @Test func autoSwitchModelLeavesCustomizedModelAloneOnSharedDefault() {
-        // A model the user hand-edited away from the plan default is preserved: it neither equals
-        // the old default nor is empty, so the retarget guard skips it.
-        let m = machine(.llm, suffix: "autoswitch-custom")
-        m.load()
-        m.model = "qwen3.7-plus"
-        m.autoSwitchModel(from: BillingPlan.payg.rawValue, to: BillingPlan.package.rawValue)
-        #expect(m.model == "qwen3.7-plus")
-    }
+    // MARK: - autoSwitchModel(): retarget only when uncustomized
 
     @Test func autoSwitchModelNoOpWhenPlanUnchanged() {
         let m = machine(.llm, suffix: "autoswitch-same-plan")
