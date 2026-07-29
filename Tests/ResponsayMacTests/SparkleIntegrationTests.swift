@@ -7,7 +7,7 @@ struct SparkleIntegrationTests {
     @Test("SUFeedURL points to production appcast")
     func feedURLConfigured() {
         let url = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
-        #expect(url == "https://responsay.com/appcast.xml")
+        #expect(url == "https://raw.githubusercontent.com/semantic-craft/responsay-macos/main/appcast.xml")
     }
 
     @Test("SUPublicEDKey is present and non-empty")
