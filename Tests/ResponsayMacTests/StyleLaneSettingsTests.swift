@@ -88,7 +88,7 @@ final class StyleLaneSettingsTests: XCTestCase {
             [nil, "style.clear_structure.cn", "style.formal_expression.cn"])
         XCTAssertEqual(
             DictationDraftPreset.allCases.map(\.title),
-            ["智能整理", "清晰结构", "正式表达"])
+            ["智能整理", "强制清单", "正式表达"])
     }
 
     func testDictationDraftPresetActivationUsesTheExistingDictationLane() {

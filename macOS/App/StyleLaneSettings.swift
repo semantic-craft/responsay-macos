@@ -20,7 +20,7 @@ enum DictationDraftPreset: CaseIterable, Hashable {
     var title: String {
         switch self {
         case .smartCleanup: "智能整理"
-        case .clearStructure: "清晰结构"
+        case .clearStructure: "强制清单"
         case .formalExpression: "正式表达"
         }
     }

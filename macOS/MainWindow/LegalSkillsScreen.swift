@@ -74,7 +74,7 @@ struct LegalSkillsScreen: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Built-in 清晰结构 / 正式表达 now live beside 改写力度. Keep this section only
+                    // Built-in 强制清单 / 正式表达 now live beside 改写力度. Keep this section only
                     // when the user has imported a dictation style that still needs platform controls.
                     if !styleCards(for: .dictation).isEmpty {
                         categoryHeader("第三方听写风格",
