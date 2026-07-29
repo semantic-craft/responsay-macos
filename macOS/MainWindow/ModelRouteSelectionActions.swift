@@ -17,9 +17,10 @@ enum ModelRouteSelectionActions {
     }
 
     static func applyTTSSelection(_ id: String, defaults: UserDefaults = .standard) {
-        defaults.set(id, forKey: TTSEngine.defaultsKey)
         if let providerId = TTSEngine(rawValue: id)?.providerID {
-            CapabilitySelectionSync.selectProvider(providerId, capability: .tts, defaults: defaults)
+            TTSActiveProvider.adopt(providerId, defaults: defaults)
+        } else {
+            defaults.set(id, forKey: TTSEngine.defaultsKey)
         }
     }
 
