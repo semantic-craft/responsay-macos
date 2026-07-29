@@ -135,10 +135,9 @@ struct CapabilityCardView: View {
                 }
             }
         }
-        // 朗读 only: the active `byok.tts.provider` is what tells `TTSEngine.selected` a cloud
-        // voice is configured, and nothing else writes it from this card. ASR / LLM are excluded
-        // on purpose — their active provider is written in lockstep with the engine enum by the
-        // model-route picker, so writing it here alone would desync `asrEngine` from its config.
+        // 朗读 only: selecting a provider also selects its engine and restores its scoped runtime
+        // config; opening the card only backfills genuinely missing legacy state. ASR / LLM stay
+        // excluded because their route pickers own engine/provider synchronization separately.
         .onAppear {
             machine.load()
             guard capability == .tts else { return }
