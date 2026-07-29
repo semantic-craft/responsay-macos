@@ -16,7 +16,7 @@ allowed_path() {
     .github/dependabot.yml|.github/workflows/ci.yml|.github/workflows/codeql.yml)
       return 0
       ;;
-    .gitignore|.gitleaks.toml|CONTRIBUTING.md|LICENSE|README.md|THIRD_PARTY_NOTICES.md|project.yml)
+    .gitignore|.gitleaks.toml|CONTRIBUTING.md|LICENSE|README.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
       return 0
       ;;
     docs/RELEASING.md)
