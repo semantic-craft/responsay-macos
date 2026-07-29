@@ -32,7 +32,7 @@ public enum SkillCategorizer {
     public static let lightPolishSkillID = "style.light_polish.cn"
 
     /// Bundled rewrite skills that back a 改写力度 档 directly (轻度润色 / 表达升级) and are kept OUT
-    /// of the 日常办公 selectable list, which is left with the two flavors (清晰结构 / 正式表达).
+    /// of the 日常办公 selectable list, which is left with the two flavors (强制清单 / 正式表达).
     static let rewriteTierDefaultIDs: Set<String> = [expressionUpgradeSkillID, lightPolishSkillID]
 
     public static func category(for skill: LegalSkillCompiled) -> SkillCategory {
