@@ -81,4 +81,28 @@ final class StyleLaneSettingsTests: XCTestCase {
             XCTAssertEqual(style.polishHint, p.systemPrompt, "激活 \(id) 后听写 polishHint 应是它的提示词")
         }
     }
+
+    func testDictationDraftPresetsAreTheThreeRewriteSettingsChoices() {
+        XCTAssertEqual(
+            DictationDraftPreset.allCases.map(\.styleID),
+            [nil, "style.clear_structure.cn", "style.formal_expression.cn"])
+        XCTAssertEqual(
+            DictationDraftPreset.allCases.map(\.title),
+            ["智能整理", "强制清单", "正式表达"])
+    }
+
+    func testDictationDraftPresetActivationUsesTheExistingDictationLane() {
+        DictationDraftPreset.clearStructure.activate(defaults: defaults)
+        XCTAssertEqual(StyleLaneSettings.activeID(.dictation, defaults: defaults), "style.clear_structure.cn")
+
+        DictationDraftPreset.smartCleanup.activate(defaults: defaults)
+        XCTAssertNil(StyleLaneSettings.activeID(.dictation, defaults: defaults))
+    }
+
+    func testLegacyLightPolishSelectionReadsAsSmartCleanup() {
+        XCTAssertTrue(DictationDraftPreset.smartCleanup.matches(
+            activeStyleID: SkillCategorizer.lightPolishSkillID))
+        XCTAssertTrue(DictationDraftPreset.contains(
+            styleID: SkillCategorizer.lightPolishSkillID))
+    }
 }
