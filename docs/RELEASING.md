@@ -50,7 +50,8 @@ request and merge it once CI is green.
 
 Nothing enforces either half automatically. The `main` ruleset requires a pull request and
 blocks unresolved review threads, but it has no required checks or approval requirement.
-Treat CI as a safety net anyway: wait for it to pass before merging.
+The pull request is the review surface; CI is an additional safety signal, not a substitute
+for the local test suites below.
 
 Run both suites locally before tagging regardless of what CI says, because CI does not cover
 the same ground:
