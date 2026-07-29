@@ -52,12 +52,15 @@ final class TTSActiveProviderTests: XCTestCase {
     func testExplicitAdoptWritesEvenWhenProviderHasNoConfigYet() {
         let defaults = freshDefaults("explicit-switch")
         defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("OldProviderVoice", forKey: "byok.tts.voice")
 
         TTSActiveProvider.adopt("gemini", defaults: defaults)
 
         XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "gemini")
         XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudGemini.rawValue)
         XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudGemini)
+        XCTAssertNil(defaults.string(forKey: "byok.tts.gemini.voice"))
+        XCTAssertNotEqual(defaults.string(forKey: "byok.tts.voice"), "OldProviderVoice")
     }
 
     /// Explicitly choosing a provider in the connection card is also a route choice. It must
@@ -167,6 +170,27 @@ final class TTSActiveProviderTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "mimo")
         XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "custom-mimo-tts")
         XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudMimo.rawValue)
+    }
+
+    /// Older installs could have a coherent route while keeping customized runtime values only
+    /// in the shared active keys. Reconciliation must migrate those values into the matching
+    /// provider profile before catalog fallbacks can replace them.
+    func testLaunchReconcileMigratesLegacyActiveConfigForMatchingProvider() {
+        let defaults = freshDefaults("launch-migrate-active-config")
+        defaults.set(TTSEngine.cloudMimo.rawValue, forKey: TTSEngine.defaultsKey)
+        defaults.set("mimo", forKey: "byok.tts.provider")
+        defaults.set("legacy-custom-model", forKey: "byok.tts.model")
+        defaults.set("LegacyVoice", forKey: "byok.tts.voice")
+        defaults.set("https://tts.example.com/v1", forKey: "byok.tts.baseURL")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "legacy-custom-model")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "LegacyVoice")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.baseURL"), "https://tts.example.com/v1")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.model"), "legacy-custom-model")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.voice"), "LegacyVoice")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.baseURL"), "https://tts.example.com/v1")
     }
 
     /// Multiple matching archived profiles are not enough evidence of the user's active route.
