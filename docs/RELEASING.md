@@ -14,8 +14,8 @@ A GitHub-hosted release path used to exist alongside this one. It was removed: i
 completed a release, and it had no step that updated the live Sparkle feed, so following it
 produced a GitHub Release that no installed copy would ever learn about.
 
-The steps below are the whole procedure, in order. **Until step 7 lands, no installed copy
-knows an update exists.**
+The steps below are the whole procedure, in order. **Until step 6's appcast pull request
+lands, no installed copy knows an update exists.**
 
 ## Before you start
 
@@ -48,9 +48,9 @@ must belong to the team that owns the Developer ID certificate.
 Set `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`. Open a pull
 request and merge it once CI is green.
 
-Nothing enforces either half. `main` carries no branch protection, so a direct push and a
-merge over pending or red CI both succeed silently — the PR is the review surface and CI the
-safety net by convention only.
+Nothing enforces either half automatically. The `main` ruleset requires a pull request and
+blocks unresolved review threads, but it has no required checks or approval requirement.
+Treat CI as a safety net anyway: wait for it to pass before merging.
 
 Run both suites locally before tagging regardless of what CI says, because CI does not cover
 the same ground:
