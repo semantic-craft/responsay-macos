@@ -69,9 +69,28 @@ enum TTSActiveProvider {
 
     private static func activate(_ providerId: String, defaults: UserDefaults) {
         guard let engine = engine(for: providerId) else { return }
+        migrateLegacyActiveConfigIfNeeded(providerId, defaults: defaults)
         restoreActiveConfig(providerId, defaults: defaults)
         defaults.set(providerId, forKey: activeKey)
         defaults.set(engine.rawValue, forKey: TTSEngine.defaultsKey)
+    }
+
+    private static func migrateLegacyActiveConfigIfNeeded(
+        _ providerId: String,
+        defaults: UserDefaults
+    ) {
+        guard nonEmpty(defaults.string(forKey: activeKey)) == providerId else { return }
+
+        for suffix in configSuffixes {
+            let scopedKey = CapabilityProviderConfigStore.scopedKey(
+                suffix, providerId: providerId, capability: .tts)
+            let activeConfigKey = CapabilityProviderConfigStore.activeKey(suffix, capability: .tts)
+            guard defaults.object(forKey: scopedKey) == nil,
+                  let activeValue = defaults.string(forKey: activeConfigKey),
+                  nonEmpty(activeValue) != nil
+            else { continue }
+            defaults.set(activeValue, forKey: scopedKey)
+        }
     }
 
     private static func restoreActiveConfig(_ providerId: String, defaults: UserDefaults) {
