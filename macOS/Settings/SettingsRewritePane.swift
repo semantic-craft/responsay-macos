@@ -92,7 +92,7 @@ struct SettingsRewritePane: View {
                             dictationPresetChip(preset)
                         }
                     }
-                    Text("「智能整理」保持默认力度；「清晰结构」会把多项内容整理成编号清单；「正式表达」会改成克制的商务书面语。三者只影响意图成稿。")
+                    Text("「智能整理」保持默认力度；「强制清单」会把两项以上内容整理成编号清单；「正式表达」会改成克制的商务书面语。三者只影响意图成稿。")
                         .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
                         .fixedSize(horizontal: false, vertical: true)
                     if !DictationDraftPreset.contains(styleID: dictationStyleID) {

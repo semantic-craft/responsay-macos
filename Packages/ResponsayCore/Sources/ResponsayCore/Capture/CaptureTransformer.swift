@@ -66,7 +66,7 @@ public final class CaptureTransformer {
     private let snapTranslationTargetResolver: (@MainActor (String) -> TranslationTargetLanguage)?
     private let rewriteToneProvider: (@MainActor () -> RewriteTone)?
     private let rewriteStyleProvider: (@MainActor () -> RewriteStyle)?
-    /// The 轻度润色 register nudge — the EXPLICITLY-activated 日常办公 pack only (清晰结构 / 正式表达),
+    /// The 轻度润色 register nudge — the EXPLICITLY-activated 日常办公 pack only (强制清单 / 正式表达),
     /// kept SEPARATE from `rewriteStyleProvider`: the latter now resolves to the 表达升级 tier default
     /// (`.pack(expression_upgrade)`) when nothing is active, which must NOT leak into 轻度润色 (it would
     /// nudge the light tier with the heavy-rewrite skill and suppress streaming). nil → plain polish.
@@ -213,7 +213,7 @@ public final class CaptureTransformer {
             contextTexts: base.contextTexts + contextTexts)
     }
 
-    /// The 轻度润色 register nudge: the explicitly-activated 日常办公 pack only (清晰结构 / 正式表达),
+    /// The 轻度润色 register nudge: the explicitly-activated 日常办公 pack only (强制清单 / 正式表达),
     /// via its own provider. nil when nothing is active → plain polish. (Must NOT fall back to
     /// `rewriteStyleProvider`, which now defaults to the heavy 表达升级 skill.)
     private func activePolishStyleHint() -> String? {

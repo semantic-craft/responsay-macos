@@ -58,7 +58,7 @@ struct SkillCategorizerTests {
         #expect(SkillCategorizer.category(kind: .rewrite, tags: ["公文"]) == .everydayOffice)
     }
 
-    /// 日常办公 = the selectable flavor packs across both lanes: 清晰结构 / 正式表达 (听写) and
+    /// 日常办公 = the selectable flavor packs across both lanes: 强制清单 / 正式表达 (听写) and
     /// 精简压缩 (写作). The two 改写力度 档 backings (轻度润色 / 表达升级) route to
     /// .rewriteTierDefault — see the next test — so they stay OUT of this selectable list.
     /// A flavor pack mis-tagged into 法律技能 also breaks this.
