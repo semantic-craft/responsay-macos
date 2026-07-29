@@ -15,6 +15,15 @@ struct LegalSkillInventory {
         bundledSkills.filter { SkillCategorizer.category(for: $0) == .legal }
     }
 
+    /// Style cards that still belong in 技能平台. Built-in dictation presets are selected beside
+    /// 改写力度, so the dictation lane shows imported extensions only; the writing lane keeps its
+    /// bundled choices and imported extensions.
+    func platformStyleSkills(for lane: SkillLane) -> [LegalSkillCompiled] {
+        let bundled = lane == .writing ? bundledEverydaySkills : []
+        let imported = importedSkills.filter { SkillCategorizer.category(for: $0) == .everydayOffice }
+        return (bundled + imported).filter { $0.metadata.lanes.contains(lane) }
+    }
+
     var verificationSkills: [LegalSkillCompiled] {
         bundledLegalSkills.filter(Self.isVerificationSkill)
     }

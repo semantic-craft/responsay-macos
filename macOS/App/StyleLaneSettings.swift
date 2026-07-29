@@ -1,7 +1,57 @@
 import Foundation
 import ResponsayCore
 
-/// Two independent 风格包 lanes, each over its own pack pool. 听写技能 (`.dictation`) drives 意图成稿
+/// The built-in ways to run 意图成稿. They are product presets in 改写设置, not installable
+/// capabilities in 技能平台. The stored values remain the existing style-pack ids so current users
+/// keep their selection and the runtime prompt path stays unchanged.
+enum DictationDraftPreset: CaseIterable, Hashable {
+    case smartCleanup
+    case clearStructure
+    case formalExpression
+
+    var styleID: String? {
+        switch self {
+        case .smartCleanup: nil
+        case .clearStructure: "style.clear_structure.cn"
+        case .formalExpression: "style.formal_expression.cn"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .smartCleanup: "智能整理"
+        case .clearStructure: "清晰结构"
+        case .formalExpression: "正式表达"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .smartCleanup: "默认"
+        case .clearStructure: "多事项分点"
+        case .formalExpression: "商务书面"
+        }
+    }
+
+    func activate(defaults: UserDefaults = .standard) {
+        StyleLaneSettings.setActive(styleID, lane: .dictation, defaults: defaults)
+    }
+
+    func matches(activeStyleID: String?) -> Bool {
+        switch self {
+        case .smartCleanup:
+            activeStyleID == nil || activeStyleID == SkillCategorizer.lightPolishSkillID
+        case .clearStructure, .formalExpression:
+            activeStyleID == styleID
+        }
+    }
+
+    static func contains(styleID: String?) -> Bool {
+        allCases.contains { $0.matches(activeStyleID: styleID) }
+    }
+}
+
+/// Two independent style lanes. 听写成稿方式 / imported styles (`.dictation`) drive 意图成稿
 /// polish; 写作技能 (`.writing`) drives 表达升级 / 改写选中文本 heavy rewrite. Decoupled so changing
 /// one never moves the other (replaces the single `ActiveEverydaySkillSettings` that fed both).
 ///

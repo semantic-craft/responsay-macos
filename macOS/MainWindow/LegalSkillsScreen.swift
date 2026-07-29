@@ -33,12 +33,6 @@ struct LegalSkillsScreen: View {
 
     private let columns = [GridItem(.adaptive(minimum: 280, maximum: 360), spacing: 16, alignment: .top)]
     
-    // 416 — bundled skills split by the shared categorizer: the 3 rewrite style packs
-    // (清晰结构 / 正式表达 / 轻度润色) are 日常办公; the generation skills are 法律技能.
-    private var bundledEverydaySkills: [LegalSkillCompiled] {
-        inventory.bundledEverydaySkills
-    }
-
     private var verificationSkills: [LegalSkillCompiled] {
         inventory.verificationSkills
     }
@@ -52,19 +46,14 @@ struct LegalSkillsScreen: View {
         inventory.selectionGenerationSkills
     }
 
-    /// Imported rewrite packs — selectable as a style on either lane (alongside the bundled ones).
-    private var importedRewritePacks: [LegalSkillCompiled] {
-        inventory.importedSkills.filter { SkillCategorizer.category(for: $0) == .everydayOffice }
-    }
     /// Imported generation skills — multi-toggle, live under 写作技能 › 划词技能.
     private var importedGenerationSkills: [LegalSkillCompiled] {
         inventory.importedSkills.filter { SkillCategorizer.category(for: $0) == .legal }
     }
-    /// Per-lane candidate pool. The bundled 听写 flavors (清晰结构 / 正式表达) are written for 语音转写
-    /// input and 精简压缩 for text already on screen, so each declares its lane and the two pools are
-    /// disjoint. Imported packs declare nothing → they show on both lanes, exactly as before.
+    /// Per-lane cards that belong on the platform. Built-in dictation presets moved beside 改写力度;
+    /// imported dictation styles remain here because this is still where extensions are managed.
     private func styleCards(for lane: SkillLane) -> [LegalSkillCompiled] {
-        (bundledEverydaySkills + importedRewritePacks).filter { $0.metadata.lanes.contains(lane) }
+        inventory.platformStyleSkills(for: lane)
     }
 
     /// 表达升级 — the writing lane's built-in default. It backs the 改写 behaviour when no pack is
@@ -85,10 +74,13 @@ struct LegalSkillsScreen: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // ===== 听写技能 — drives 意图成稿 only =====
-                    categoryHeader("听写技能",
-                                   subtitle: "选一个风格包，听写的「意图成稿」就照它整理；没选就用内置默认。")
-                    styleGrid(activeID: dictationStyleID, lane: .dictation)
+                    // Built-in 清晰结构 / 正式表达 now live beside 改写力度. Keep this section only
+                    // when the user has imported a dictation style that still needs platform controls.
+                    if !styleCards(for: .dictation).isEmpty {
+                        categoryHeader("第三方听写风格",
+                                       subtitle: "导入的扩展风格在这里管理；内置成稿方式请到「改写设置」选择。")
+                        styleGrid(activeID: dictationStyleID, lane: .dictation)
+                    }
 
                     // ===== 写作技能 — selection 改写 + 划词生成 =====
                     categoryHeader("写作技能",
@@ -151,7 +143,7 @@ struct LegalSkillsScreen: View {
                 Text("技能平台")
                     .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(appearanceStore.palette.ink)
-                Text("听写技能与写作技能 · 激活 / 导入 / 导出。")
+                Text("扩展风格与写作技能 · 激活 / 导入 / 导出。")
                     .font(.system(size: SkinMetrics.fsFoot))
                     .foregroundStyle(appearanceStore.palette.ink3)
             }
