@@ -46,6 +46,26 @@ final class LegalSkillLibraryTests: XCTestCase {
         XCTAssertEqual(inventory.importedSkills.map(\.id), ["practice.imported.cn"])
     }
 
+    func testPlatformMovesBundledDictationPresetsOutButKeepsImportedStyles() throws {
+        let clear = try compiler.compile(rewriteSkill(
+            id: "style.clear_structure.cn", lanes: ["dictation"]))
+        let formal = try compiler.compile(rewriteSkill(
+            id: "style.formal_expression.cn", lanes: ["dictation"]))
+        let condense = try compiler.compile(rewriteSkill(
+            id: "style.condense.cn", lanes: ["writing"]))
+        let importedStore = FileImportedLegalSkillStore(directory: directory)
+        try importedStore.save(
+            rawMarkdown: rewriteSkill(id: "style.imported.cn", lanes: ["dictation"]),
+            id: "style.imported.cn")
+
+        let inventory = makeLibrary(
+            importedStore: importedStore,
+            bundled: [clear, formal, condense]).loadInventory()
+
+        XCTAssertEqual(inventory.platformStyleSkills(for: .dictation).map(\.id), ["style.imported.cn"])
+        XCTAssertEqual(inventory.platformStyleSkills(for: .writing).map(\.id), ["style.condense.cn"])
+    }
+
     func testEnabledPracticeSkillsUseInventoryAndEnabledStore() throws {
         defaults.set([], forKey: EnabledLegalSkillStore.defaultsKey)
         let localPractice = try compiler.compile(generationSkill(id: "practice.local.cn"))
@@ -139,10 +159,14 @@ final class LegalSkillLibraryTests: XCTestCase {
         """
     }
 
-    private func rewriteSkill(id: String) -> String {
-        """
+    private func rewriteSkill(id: String, lanes: [String]? = nil) -> String {
+        let lanesJSON = lanes.map { values in
+            let encoded = values.map { "\"\($0)\"" }.joined(separator: ",")
+            return ",\"lanes\":[\(encoded)]"
+        } ?? ""
+        return """
         ```legal-skill
-        {"schemaVersion":"LEGAL_SKILL/v1","id":"\(id)","title":"改写技能","domain":"litigation","language":"zh","kind":"rewrite","prompt":"改写。","examples":[],"tags":[]}
+        {"schemaVersion":"LEGAL_SKILL/v1","id":"\(id)","title":"改写技能","domain":"litigation","language":"zh","kind":"rewrite","prompt":"改写。","examples":[],"tags":[]\(lanesJSON)}
         ```
         ## Skill Instructions
         """

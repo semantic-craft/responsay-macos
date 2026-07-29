@@ -24,6 +24,9 @@ struct SettingsRewritePane: View {
     // menu-bar「如实输入」toggle drives (`DictationRewriteSettings`), so picking here and
     // toggling there stay in sync. Default = 轻度改写 (clean).
     @AppStorage(DictationRewriteSettings.key) private var lightRewrite = true
+    /// Built-in 意图成稿 preset. Optional because nil is the default 智能整理; an unknown id means
+    /// an imported style is active and is surfaced as such below the built-in choices.
+    @State private var dictationStyleID: String? = nil
     // 校验成稿（实验，558）: 在意图成稿档上叠加的 Intent-aware Dictate。默认关；如实输入档不受影响。
     @AppStorage(IntentDictationSettings.key) private var intentAware = false
     // 564: 校验成稿的可选第二阶段润色。默认关——关着时 sanitized draft 就是完整路线。
@@ -80,6 +83,31 @@ struct SettingsRewritePane: View {
                     .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 WarmDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("意图成稿方式")
+                        .font(.system(size: SkinMetrics.fsLabel, weight: .medium))
+                        .foregroundStyle(appearanceStore.palette.ink)
+                    HStack(spacing: 6) {
+                        ForEach(DictationDraftPreset.allCases, id: \.self) { preset in
+                            dictationPresetChip(preset)
+                        }
+                    }
+                    Text("「智能整理」保持默认力度；「清晰结构」会把多项内容整理成编号清单；「正式表达」会改成克制的商务书面语。三者只影响意图成稿。")
+                        .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !DictationDraftPreset.contains(styleID: dictationStyleID) {
+                        Text("当前使用的是已导入风格。选择上方任一内置方式即可替换。")
+                            .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.accent)
+                    }
+                    if intentAware && !intentOptionalPolish {
+                        Text("当前已开启「校验成稿」但未开启「成稿后再润色」，所选方式会保留，但暂不参与这一条校验路线。")
+                            .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.accent)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(!lightRewrite)
+                .opacity(lightRewrite ? 1 : 0.45)
+                WarmDivider()
                 SettingsToggleRow(
                     title: "校验成稿（实验）",
                     desc: "绝大多数情况（约 98%）用默认的「意图成稿」就够了——它同样能懂改口、口述人名释字和各种口头指令，而且更快。这个实验档是给「宁可被打断、也绝不能写错」的场合准备的：模型先给出结构化整理计划，逐条对回你的原话、通过来源校验后才上屏，校验不过就停在胶囊里等你确认——代价是偶尔更慢、更容易被打断，好处是错字永远进不了你的文档。需要已配置文本模型；「如实输入」不受影响，随时可切回。",
@@ -95,12 +123,12 @@ struct SettingsRewritePane: View {
                     .opacity(lightRewrite && intentAware ? 1 : 0.45)
                 WarmDivider()
                 Button { openSection(.legalSkills) } label: {
-                    Label("打开技能平台 →", systemImage: "square.grid.2x2")
+                    Label("管理导入风格与写作技能 →", systemImage: "square.grid.2x2")
                         .font(.system(size: SkinMetrics.fsLabel, weight: .medium))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(appearanceStore.palette.accent)
-                Text("想换语气或体裁？去技能平台选风格包——「听写技能」管意图成稿，「写作技能」管划词改写，两条各选各的、互不影响；没选就用各自的内置默认。")
+                Text("内置的意图成稿方式已在上方选择；技能平台只负责导入的扩展风格和跟着选区走的写作技能。")
                     .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -193,7 +221,10 @@ struct SettingsRewritePane: View {
         .navigationTitle("改写设置")
         // Normalize the retired `expressAutoInsert` bool into the new 3-state key so the chips
         // show the user's prior choice (写入并讲解 / 仅讲解) instead of the bare default.
-        .onAppear { ExpressInsertSettings.setMode(ExpressInsertSettings.mode()) }
+        .onAppear {
+            ExpressInsertSettings.setMode(ExpressInsertSettings.mode())
+            dictationStyleID = StyleLaneSettings.activeID(.dictation)
+        }
     }
 
     /// 如实 / 轻改写 — the two listening defaults, mutually exclusive. Tapping flips
@@ -209,6 +240,13 @@ struct SettingsRewritePane: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func dictationPresetChip(_ preset: DictationDraftPreset) -> some View {
+        forceChip(preset.title, preset.subtitle, active: preset.matches(activeStyleID: dictationStyleID)) {
+            preset.activate()
+            dictationStyleID = preset.styleID
+        }
     }
 
     private func chipBody(_ title: String, _ sub: String, titleColor: Color) -> some View {
