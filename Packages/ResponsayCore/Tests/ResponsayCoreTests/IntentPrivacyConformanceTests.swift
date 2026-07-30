@@ -75,7 +75,7 @@ struct IntentPrivacyConformanceTests {
 
     @Test func localSelection_contactsOnlyLocalhostNeverCloud() async {
         PrivacyStubURLProtocol.requestURLs = []
-        PrivacyStubURLProtocol.data = intentCompletion(validIntentPlanJSON())
+        PrivacyStubURLProtocol.data = intentChatCompletion(validIntentPlanJSON())
         let outcome = await IntentCompilationPipeline(
             compiler: DirectIntentPlanAPI(endpoint: intentLocalEndpoint(), session: privacyStubSession()))
             .compile(finalTranscript: intentCorrectionTranscript, locale: .chinese,

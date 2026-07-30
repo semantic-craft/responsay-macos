@@ -198,20 +198,51 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.model, "qwen3.6-flash")
     }
 
-    func testRetiredQwenTokenPlanSelectionFallsBackToPayAsYouGo() {
+    func testQwenWorkspaceIDOverridesBaseURLWithRegionalDedicatedResponsesEndpoint() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        defaults.set(BillingPlan.package.rawValue, forKey: "byok.llm.plan")
-        defaults.set(
-            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-            forKey: "byok.llm.baseURL")
-        let config = dispatcher(keys: ["byok.qwen": "dashscope-secret"]).resolve(.llm)
+        defaults.set("ws-abc123", forKey: "byok.llm.qwen.workspaceId")
 
-        XCTAssertEqual(config.providerId, "qwen")
-        XCTAssertEqual(config.region, .china)
-        XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        XCTAssertEqual(config.model, "qwen3.6-flash")
-        XCTAssertEqual(config.apiKey, "dashscope-secret")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.germany.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.eu-central-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.japan.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.unitedStates.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
+    }
+
+    func testInvalidQwenWorkspaceIDCannotInjectAHost() {
+        defaults.set("qwen", forKey: "byok.llm.provider")
+        defaults.set("ws-abc123.evil.example", forKey: "byok.llm.qwen.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    }
+
+    func testQwenWorkspaceIDDoesNotChangeQwenTTSProtocolEndpoint() {
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("ws-abc123", forKey: "byok.tts.qwen.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.tts).baseURL,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
     }
 
     func testExplicitBaseURLAndModelWinOverCatalog() {
@@ -267,16 +298,6 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
-    func testLegacyQwenTokenPlanProviderCanonicalizesToQwenPayAsYouGo() {
-        defaults.set("qwen-token-plan", forKey: "byok.llm.provider")
-
-        let config = dispatcher().resolve(.llm)
-
-        XCTAssertEqual(config.providerId, "qwen")
-        XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    }
-
     func testDoubaoLLMDefaultsToArkSeedTurboEndpointAndModel() {
         let config = dispatcher(keys: ["byok.doubao": "ark-test-key"])
             .resolve(.llm, providerId: "doubao")
@@ -296,11 +317,6 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         let config = dispatcher(keys: ["byok.qwen": "dashscope-secret"]).resolve(.llm)
         XCTAssertEqual(config.apiKey, "dashscope-secret")
         XCTAssertTrue(config.hasKey)
-    }
-
-    func testQwenPayAsYouGoReadsLegacyMultiPlanKeySlot() {
-        let config = dispatcher(keys: ["byok.qwen.payg": "legacy-dashscope-secret"]).resolve(.llm)
-        XCTAssertEqual(config.apiKey, "legacy-dashscope-secret")
     }
 
     func testMultiPlanProviderStoresKeyPerPlanSinglePlanStaysShared() {

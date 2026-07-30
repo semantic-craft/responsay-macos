@@ -10,13 +10,18 @@ extension ProviderCatalog {
             .init(.china, .payg, "wss://dashscope.aliyuncs.com/api-ws/v1/inference", note: "Qwen-Audio-TTS · 华北2（北京）"),
             .init(.singapore, .payg, "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference", note: "Qwen-Audio-TTS · 新加坡"),
         ],
-        // LLM 走 OpenAI 兼容端点；上面的共享 endpoint 仅供 Qwen-Audio-TTS。
-        // 官方建议迁移到业务空间专属域名，但确认旧 dashscope 域名仍可正常使用，
-        // 因此 BYOK 预设不强迫用户额外填写 Workspace ID。
+        // LLM 走 OpenAI Responses 兼容端点；上面的共享 endpoint 仅供 Qwen-Audio-TTS。
+        // 官方建议迁移到业务空间专属域名；设置卡可选填 Workspace ID 并按地域派生，
+        // 留空时继续使用兼容的 dashscope 通用域名。
         capabilityEndpoints: [
             .llm: [
-                .init(.china, .payg, "https://dashscope.aliyuncs.com/compatible-mode/v1", note: "百炼 OpenAI 兼容 · 中国大陆"),
-                .init(.singapore, .payg, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", note: "百炼 OpenAI 兼容 · 新加坡"),
+                .init(.china, .payg, "https://dashscope.aliyuncs.com/compatible-mode/v1", note: "百炼 Responses · 华北2（北京）"),
+                .init(.singapore, .payg, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", note: "百炼 Responses · 新加坡"),
+                .init(.unitedStates, .payg, "https://dashscope-us.aliyuncs.com/compatible-mode/v1", note: "百炼 Responses · 美国（弗吉尼亚）"),
+                // 德国、日本文档只给出 Workspace 专属域名；留空表示必须由用户填写
+                // Workspace ID 后派生，不能臆造一个通用 DashScope 域名。
+                .init(.germany, .payg, "", note: "百炼 Responses · 德国（法兰克福，需 Workspace ID）"),
+                .init(.japan, .payg, "", note: "百炼 Responses · 日本（东京，需 Workspace ID）"),
             ],
         ],
         defaultModels: [.llm: "qwen3.6-flash", .tts: "qwen-audio-3.0-tts-flash"],

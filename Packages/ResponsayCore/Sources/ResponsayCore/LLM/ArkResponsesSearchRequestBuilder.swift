@@ -79,14 +79,7 @@ enum ArkResponsesSearchRequestBuilder {
     }
 
     static func responsesURL(base: String) -> URL? {
-        var s = base.trimmingCharacters(in: .whitespacesAndNewlines)
-        while s.hasSuffix("/") { s.removeLast() }
-        guard !s.isEmpty else { return nil }
-        if s.hasSuffix("/responses") { return URL(string: s) }
-        if s.hasSuffix("/chat/completions") {
-            s = String(s.dropLast("/chat/completions".count))
-        }
-        return URL(string: s + "/responses")
+        LLMWire.responsesURL(base: base)
     }
 
     private static func message(role: String, text: String) -> [String: Any] {

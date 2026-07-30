@@ -1,9 +1,7 @@
 import Foundation
 
-/// Pure HTTP-shape helpers for the OpenAI-compatible chat path. Every BYOK LLM provider in
-/// `ProviderCatalog` exposes an OpenAI-compatible `/chat/completions` endpoint (Qwen
-/// compatible-mode, Doubao/Ark, OpenAI, Gemini openai-compat, DeepSeek, MiniMax, custom),
-/// so one wire shape covers them all; only the 思考 params and auth header vary.
+/// Pure URL and auth helpers for OpenAI-compatible text-generation routes. Most BYOK providers
+/// use `/chat/completions`; Qwen uses `/responses` while keeping the same compatible-mode base.
 enum LLMWire {
     /// Mirror backend `chatCompletionsUrl`: trim trailing slashes; reuse if it already ends in
     /// /chat/completions; otherwise append.
@@ -13,6 +11,19 @@ enum LLMWire {
         guard !s.isEmpty else { return nil }
         if s.hasSuffix("/chat/completions") { return URL(string: s) }
         return URL(string: s + "/chat/completions")
+    }
+
+    /// Trim trailing slashes; reuse a complete `/responses` URL; convert a complete
+    /// `/chat/completions` URL when a stored custom endpoint is switched to Responses.
+    static func responsesURL(base: String) -> URL? {
+        var s = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s.removeLast() }
+        guard !s.isEmpty else { return nil }
+        if s.hasSuffix("/responses") { return URL(string: s) }
+        if s.hasSuffix("/chat/completions") {
+            s = String(s.dropLast("/chat/completions".count))
+        }
+        return URL(string: s + "/responses")
     }
 
     /// Mirror backend `modelsUrl` (used by Validate / Fetch models): swap a trailing

@@ -168,7 +168,6 @@ final class NamingCanonTests: XCTestCase {
         ])
         XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "qwen-team" })
         // Retired plan-specific provider ids stay absent from the provider picker.
-        XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "qwen-token-plan" })
         XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "mimo-payg" })
     }
 
@@ -193,11 +192,20 @@ final class NamingCanonTests: XCTestCase {
             [
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+                "",
+                "",
             ])
         XCTAssertEqual(
             ProviderCatalog.qwen.endpoints(for: .llm)
                 .compactMap(\.note),
-            ["百炼 OpenAI 兼容 · 中国大陆", "百炼 OpenAI 兼容 · 新加坡"])
+            [
+                "百炼 Responses · 华北2（北京）",
+                "百炼 Responses · 新加坡",
+                "百炼 Responses · 美国（弗吉尼亚）",
+                "百炼 Responses · 德国（法兰克福，需 Workspace ID）",
+                "百炼 Responses · 日本（东京，需 Workspace ID）",
+            ])
     }
 
     func testLLMPresetsDefaultToLatestFastModelOnly() {

@@ -1,7 +1,7 @@
 import Foundation
 
 /// App-direct Intent-aware plan compiler (#558): calls the user's configured BYOK LLM endpoint
-/// straight (OpenAI-compatible `/chat/completions`, epic 238) and returns the provider's JSON
+/// straight (OpenAI-compatible Chat Completions or Responses transport) and returns the provider's JSON
 /// plan bytes for the strict `IntentPlan` decoder. This is the ONLY tolerant step on the intent
 /// path — unwrapping a ```json fence around the object — and it is transport unwrapping, not a
 /// content fallback: a response without a decodable plan object throws, and the pipeline turns
@@ -13,8 +13,8 @@ public struct DirectIntentPlanAPI: IntentPlanCompiler {
 
     public init(endpoint: LLMEndpoint, session: URLSession = .shared) {
         // 思考 forced OFF regardless of the user's global toggle (435 precedent): plan
-        // compilation needs low-latency, clean JSON content, and DashScope hard-400s on
-        // `enable_thinking:true` for non-streaming calls anyway.
+        // compilation needs low-latency, clean JSON content. On Qwen Responses this maps to
+        // `reasoning.effort:none`; legacy chat providers keep their provider-specific off switch.
         self.endpoint = LLMEndpoint(
             providerId: endpoint.providerId,
             baseURL: endpoint.baseURL,

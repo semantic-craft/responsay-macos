@@ -338,32 +338,33 @@ struct DirectActionsE2ETests {
         #expect((body?["thinking"] as? [String: Any])?["type"] as? String == "disabled")
     }
 
-    @Test func legal_searchVerification_qwenUsesDashScopeNativeSourceResults() async throws {
+    @Test func legal_searchVerification_qwenUsesResponsesWebSearchSources() async throws {
         LLMActionsStubURLProtocol.status = 200
         LLMActionsStubURLProtocol.requestBody = Data()
         LLMActionsStubURLProtocol.requestURL = nil
         LLMActionsStubURLProtocol.data = try JSONSerialization.data(withJSONObject: [
             "output": [
-                "choices": [[
-                    "message": [
-                        "content": "检索到《民法典》第五百七十七条的官方来源。"
-                    ]
-                ]],
-                "search_info": [
-                    "search_results": [
-                        [
-                            "site_name": "百科",
-                            "title": "民法典解读",
-                            "url": "https://example.com/minfadian"
-                        ],
-                        [
-                            "site_name": "国家法律法规数据库",
-                            "title": "中华人民共和国民法典",
-                            "url": "https://flk.npc.gov.cn/detail2.html"
-                        ]
-                    ]
-                ]
-            ]
+                [
+                    "type": "web_search_call",
+                    "status": "completed",
+                    "action": [
+                        "type": "search",
+                        "query": "民法典第五百七十七条",
+                        "sources": [[
+                            "type": "url",
+                            "url": "https://flk.npc.gov.cn/detail2.html",
+                        ]],
+                    ],
+                ],
+                [
+                    "type": "message",
+                    "content": [[
+                        "type": "output_text",
+                        "text": "检索到《民法典》第五百七十七条的官方来源。",
+                        "annotations": [],
+                    ]],
+                ],
+            ],
         ])
         let exec = DirectLegalSkillExecutorAPI(endpoint: qwenSearchEndpoint(), session: actionsStubSession())
         let anchor = VerificationAnchor(
@@ -373,18 +374,16 @@ struct DirectActionsE2ETests {
         let source = try await exec.searchVerification(anchor, route: .cloudAllowed)
 
         #expect(LLMActionsStubURLProtocol.requestURL?.absoluteString
-                == "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation")
-        #expect(source?.title == "中华人民共和国民法典")
+                == "https://dashscope.aliyuncs.com/compatible-mode/v1/responses")
         #expect(source?.url == "https://flk.npc.gov.cn/detail2.html")
         #expect(source?.provider == "qwen")
         let body = try JSONSerialization.jsonObject(with: LLMActionsStubURLProtocol.requestBody) as? [String: Any]
-        let parameters = try #require(body?["parameters"] as? [String: Any])
-        #expect(parameters["enable_search"] as? Bool == true)
-        #expect(parameters["result_format"] as? String == "message")
-        let options = try #require(parameters["search_options"] as? [String: Any])
-        #expect(options["forced_search"] as? Bool == true)
-        #expect(options["enable_source"] as? Bool == true)
-        #expect(options["search_strategy"] as? String == "max")
+        let tools = try #require(body?["tools"] as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools.first?["type"] as? String == "web_search")
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect(body?["parameters"] == nil)
+        #expect(body?["enable_search"] == nil)
     }
 
     @Test func legal_searchVerification_doubaoUsesArkResponsesWebSearch() async throws {
