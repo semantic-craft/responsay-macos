@@ -33,8 +33,8 @@ enum MenuModelSelection {
         readiness.tts(optionId: optionId).needsConfiguration ? .tts : nil
     }
 
-    /// The options worth showing in a menu-bar quick picker: configured cloud providers
-    /// (BYOK key on file) + local engines, **plus the current selection** so the active
+    /// The options worth showing in a menu-bar quick picker: usable cloud providers
+    /// + all local engines (including models still needing download), **plus the current
     /// route is always visible even if its key was just cleared. Unconfigured cloud
     /// providers are dropped — listing them only renders a ⚠ and a jump-to-config that
     /// clutters the menu; the place to add a key is 设置·模型. Custom OpenAI-compatible
@@ -44,6 +44,8 @@ enum MenuModelSelection {
         current: String,
         readiness: (String) -> ModelLaneReadiness
     ) -> [CurrentModelOption] {
-        options.filter { $0.id == current || readiness($0.id).isReady }
+        options.filter { option in
+            option.id == current || readiness(option.id) != .cloudUnconfigured
+        }
     }
 }

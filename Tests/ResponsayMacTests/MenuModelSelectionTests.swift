@@ -123,6 +123,14 @@ final class MenuModelSelectionTests: XCTestCase {
     func testCustomLLMProviderAppearsOnceKeyed() {
         // Verifies the custom provider feature: a user who saved a key for 「自定义 OpenAI
         // 兼容」sees it in the quick picker; without a key it stays hidden.
+        defaults.set(
+            "https://my-host.example/v1",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "baseURL", providerId: "custom", capability: .llm))
+        defaults.set(
+            "my-private-model",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "model", providerId: "custom", capability: .llm))
         let account = CapabilityCredentialAccount.apiKeyAccount(providerId: "custom", capability: .llm)
         XCTAssertFalse(visibleLLM(current: "offline").contains("custom"))
         XCTAssertTrue(visibleLLM(current: "offline", keys: [account: "sk-user"]).contains("custom"))
