@@ -53,7 +53,7 @@ enum LLMEndpointResolver {
         }
         for providerId in candidates {
             let cfg = dispatcher.resolve(.llm, providerId: providerId)
-            guard cfg.hasKey else { continue }
+            guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { continue }
             let endpoint = LLMEndpoint(
                 providerId: cfg.providerId,
                 baseURL: cfg.baseURL,
@@ -68,6 +68,7 @@ enum LLMEndpointResolver {
     /// Shared resolution for text + chat.
     private static func resolve(dispatcher: ProviderConfigDispatcher) -> LLMEndpoint? {
         let cfg = dispatcher.resolve(.llm)
+        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
         let endpoint = LLMEndpoint(
             providerId: cfg.providerId,
             baseURL: cfg.baseURL,
@@ -95,6 +96,7 @@ enum LLMEndpointResolver {
         dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
     ) -> LLMEndpoint? {
         let cfg = dispatcher.resolve(.llm)
+        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
         let endpoint = LLMEndpoint(
             providerId: cfg.providerId,
             baseURL: cfg.baseURL,

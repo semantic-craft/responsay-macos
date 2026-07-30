@@ -36,6 +36,34 @@ public final class SQLiteReviewStore: ReviewStore, @unchecked Sendable {
         }
     }
 
+    public func overviewMetrics(
+        now: Date,
+        calendar: Calendar,
+        status: ProviderStatusSummary,
+        typingCharsPerSecond: Double
+    ) throws -> OverviewMetrics {
+        try connection.locked {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try connection.prepare(
+                "SELECT created_at, source_text, idiomatic FROM review_cards;",
+                &statement)
+
+            var accumulator = OverviewMetricsAccumulator(
+                now: now,
+                calendar: calendar,
+                status: status,
+                typingCharsPerSecond: typingCharsPerSecond)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                accumulator.add(
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    finalText: try connection.columnText(statement, 2),
+                    sourceText: connection.columnOptionalText(statement, 1))
+            }
+            return accumulator.metrics()
+        }
+    }
+
     public func delete(id: UUID) throws {
         try connection.locked {
             var statement: OpaquePointer?

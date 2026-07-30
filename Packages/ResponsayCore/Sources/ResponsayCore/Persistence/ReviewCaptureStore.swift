@@ -9,17 +9,33 @@ public struct ReviewCaptureStore: CaptureStore {
 
     public func save(_ item: CaptureItem) throws {
         try reviewStore.save(ReviewCard(capture: item))
+        NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
     }
 
     public func recent(_ limit: Int) throws -> [CaptureItem] {
         try reviewStore.recent(limit).map(\.captureItem)
     }
 
+    public func overviewMetrics(
+        now: Date,
+        calendar: Calendar,
+        status: ProviderStatusSummary,
+        typingCharsPerSecond: Double
+    ) throws -> OverviewMetrics {
+        try reviewStore.overviewMetrics(
+            now: now,
+            calendar: calendar,
+            status: status,
+            typingCharsPerSecond: typingCharsPerSecond)
+    }
+
     public func delete(id: UUID) throws {
         try reviewStore.delete(id: id)
+        NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
     }
 
     public func deleteAll() throws {
         try reviewStore.deleteAll()
+        NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
     }
 }
