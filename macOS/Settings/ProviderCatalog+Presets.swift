@@ -24,12 +24,12 @@ extension ProviderCatalog {
                 .init(.japan, .payg, "", note: "百炼 Responses · 日本（东京，需 Workspace ID）"),
             ],
         ],
-        defaultModels: [.llm: "qwen3.6-flash", .tts: "qwen-audio-3.0-tts-flash"],
+        defaultModels: [.llm: "qwen3.7-flash", .tts: "qwen-audio-3.0-tts-flash"],
         keyLabel: "通义千问 API Key", keyFormatHint: "sk-…",
         capabilityKeyFormatHints: [.llm: "百炼 API Key（sk-…）"],
         builtinSearch: true, isCustom: false, isLocal: false,
         presetModels: [
-            .llm: ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
+            .llm: ["qwen3.7-flash", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
             .tts: ["qwen-audio-3.0-tts-flash"],
         ],
         presetVoices: [

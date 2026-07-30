@@ -210,7 +210,7 @@ final class NamingCanonTests: XCTestCase {
 
     func testLLMPresetsDefaultToLatestFastModelOnly() {
         let expectedDefaults: [String: String] = [
-            "qwen": "qwen3.6-flash",
+            "qwen": "qwen3.7-flash",
             "doubao": "doubao-seed-2-1-turbo-260628",
             "mimo": "mimo-v2.5",
             "zhipu": "glm-5-turbo",
