@@ -30,6 +30,26 @@ private struct StatusModelSnapshot: Sendable {
     func lane(_ lane: ModelLaneInfo.Lane) -> ModelLaneInfo? {
         lanes.first { $0.lane == lane }
     }
+
+    func rootTitle(_ prefix: String, lane laneID: ModelLaneInfo.Lane) -> String {
+        guard let lane = lane(laneID) else { return "\(prefix)：正在读取…" }
+        return MenuModelSelection.statusTitle(
+            "\(prefix)：\(lane.currentTitle)",
+            readiness: readiness(for: laneID, optionId: lane.currentOptionId) ?? lane.readiness,
+            isCurrent: true)
+    }
+
+    private func readiness(
+        for lane: ModelLaneInfo.Lane,
+        optionId: String
+    ) -> ModelLaneReadiness? {
+        switch lane {
+        case .asr: asrReadiness[optionId]
+        case .llm: llmReadiness[optionId]
+        case .tts: ttsReadiness[optionId]
+        case .ocr: nil
+        }
+    }
 }
 
 /// The status bar, de-SwiftUI-ed (#576). Classic `NSStatusItem` + `NSMenu`, built fresh on
@@ -114,7 +134,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(modelSubmenu(
-            title: "语音识别服务：\(models.lane(.asr)?.currentTitle ?? "正在读取…")",
+            title: models.rootTitle("语音识别服务", lane: .asr),
             options: ModelRouteCatalog.asrOptions,
             current: models.lane(.asr)?.currentOptionId ?? ModelRouteCatalog.currentASRId(),
             readiness: { models.asrReadiness[$0] ?? .cloudUnconfigured },
@@ -126,7 +146,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             })
         menu.addItem(modelSubmenu(
-            title: "文本改写：\(models.lane(.llm)?.currentTitle ?? "正在读取…")",
+            title: models.rootTitle("文本改写", lane: .llm),
             options: ModelRouteCatalog.llmOptions,
             current: models.lane(.llm)?.currentOptionId ?? ModelRouteCatalog.currentLLMId(),
             readiness: { models.llmReadiness[$0] ?? .cloudUnconfigured }) { id in
@@ -136,7 +156,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             })
         menu.addItem(modelSubmenu(
-            title: "文本朗读：\(models.lane(.tts)?.currentTitle ?? "正在读取…")",
+            title: models.rootTitle("文本朗读", lane: .tts),
             options: ModelRouteCatalog.ttsOptions,
             current: models.lane(.tts)?.currentOptionId ?? ModelRouteCatalog.currentTTSId(),
             readiness: { models.ttsReadiness[$0] ?? .cloudUnconfigured }) { id in
@@ -195,8 +215,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let visible = MenuModelSelection.configuredOptions(options, current: current, readiness: readiness)
         func add(_ group: [CurrentModelOption]) {
             for option in group {
-                let entry = item(option.title) { select(option.id) }
-                entry.state = option.id == current ? .on : .off
+                let isCurrent = option.id == current
+                let entry = item(MenuModelSelection.statusTitle(
+                    option.title,
+                    readiness: readiness(option.id),
+                    isCurrent: isCurrent)) { select(option.id) }
+                entry.state = isCurrent ? .on : .off
                 submenu.addItem(entry)
             }
         }

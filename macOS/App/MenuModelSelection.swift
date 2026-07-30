@@ -9,6 +9,22 @@ import Foundation
 /// Pure decision (which config section to open, if any) so the branch is unit-tested; the menu
 /// view performs the actual `applySelection` + `show(section:)`.
 enum MenuModelSelection {
+    static func statusTitle(
+        _ title: String,
+        readiness: ModelLaneReadiness,
+        isCurrent: Bool
+    ) -> String {
+        guard isCurrent else { return title }
+        switch readiness {
+        case .cloudUnconfigured:
+            return "\(title)（未配置）"
+        case .localNotInstalled:
+            return "\(title)（未下载）"
+        case .local, .cloudReady:
+            return title
+        }
+    }
+
     /// The config section to open after selecting an ASR `optionId`, or `nil` to stay put.
     static func sectionToConfigure(
         forASR optionId: String,

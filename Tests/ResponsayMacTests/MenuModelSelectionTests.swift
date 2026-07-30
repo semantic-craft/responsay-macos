@@ -118,6 +118,53 @@ final class MenuModelSelectionTests: XCTestCase {
         XCTAssertFalse(visible.contains("deepseek"))
     }
 
+    // MARK: - Current-route status suffixes
+
+    func testASRCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "OpenAI",
+                readiness: resolver().asr(optionId: ASREngine.cloudOpenAI.rawValue),
+                isCurrent: true),
+            "OpenAI（未配置）")
+    }
+
+    func testLLMCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "DeepSeek",
+                readiness: resolver().llm(optionId: "deepseek"),
+                isCurrent: true),
+            "DeepSeek（未配置）")
+    }
+
+    func testTTSCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "MiniMax",
+                readiness: resolver().tts(optionId: TTSEngine.cloudMiniMax.rawValue),
+                isCurrent: true),
+            "MiniMax（未配置）")
+    }
+
+    func testCurrentLocalTitleMarksMissingDownload() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "本机离线 Kokoro",
+                readiness: resolver().tts(optionId: TTSEngine.sherpaKokoroLocal.rawValue),
+                isCurrent: true),
+            "本机离线 Kokoro（未下载）")
+    }
+
+    func testReadyOrNonCurrentTitleHasNoStatusSuffix() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle("Apple", readiness: .local, isCurrent: true),
+            "Apple")
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle("DeepSeek", readiness: .cloudUnconfigured, isCurrent: false),
+            "DeepSeek")
+    }
+
     // MARK: - Custom OpenAI-compatible provider end-to-end
 
     func testCustomLLMProviderAppearsOnceKeyed() {
