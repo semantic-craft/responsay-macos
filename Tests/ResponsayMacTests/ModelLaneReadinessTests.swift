@@ -26,11 +26,15 @@ final class ModelLaneReadinessTests: XCTestCase {
     private func resolver(
         keys: [String: String] = [:],
         ocrKeys: [String: String] = [:],
+        asrLocalInstalled: Bool = false,
+        ttsLocalInstalled: Bool = false,
         ocrLocalInstalled: Bool = false
     ) -> ModelLaneReadinessResolver {
         ModelLaneReadinessResolver(
             dispatcher: ProviderConfigDispatcher(defaults: defaults, keyReader: { keys[$0] }),
             ocrKeyReader: { ocrKeys[$0] },
+            asrLocalInstalled: { _ in asrLocalInstalled },
+            ttsLocalInstalled: { ttsLocalInstalled },
             ocrLocalInstalled: { ocrLocalInstalled })
     }
 
@@ -57,9 +61,15 @@ final class ModelLaneReadinessTests: XCTestCase {
 
     // MARK: - ASR lane
 
-    func testASRLocalEngineIsLocal() {
+    func testASRAppleIsReadyWithoutDownloadedModel() {
         XCTAssertEqual(resolver().asr(optionId: "apple"), .local)
-        XCTAssertEqual(resolver().asr(optionId: "offline-sensevoice"), .local)
+    }
+
+    func testASRDownloadedEngineIsNotReadyWhenModelIsMissing() {
+        XCTAssertEqual(resolver().asr(optionId: "offline-sensevoice"), .localNotInstalled)
+        XCTAssertEqual(
+            resolver(asrLocalInstalled: true).asr(optionId: "offline-sensevoice"),
+            .local)
     }
 
     func testASRCloudWithKeyIsReady() {
@@ -80,8 +90,13 @@ final class ModelLaneReadinessTests: XCTestCase {
 
     // MARK: - TTS lane
 
-    func testTTSLocalEngineIsLocal() {
-        XCTAssertEqual(resolver().tts(optionId: TTSEngine.sherpaKokoroLocal.rawValue), .local)
+    func testTTSLocalEngineIsNotReadyWhenModelIsMissing() {
+        XCTAssertEqual(
+            resolver().tts(optionId: TTSEngine.sherpaKokoroLocal.rawValue),
+            .localNotInstalled)
+        XCTAssertEqual(
+            resolver(ttsLocalInstalled: true).tts(optionId: TTSEngine.sherpaKokoroLocal.rawValue),
+            .local)
     }
 
     func testTTSCloudWithKeyIsReady() {
@@ -91,6 +106,38 @@ final class ModelLaneReadinessTests: XCTestCase {
 
     func testTTSCloudWithoutKeyIsUnconfigured() {
         XCTAssertEqual(resolver().tts(optionId: TTSEngine.cloudOpenAI.rawValue), .cloudUnconfigured)
+    }
+
+    func testCloudKeyDoesNotHideInvalidEndpoint() {
+        defaults.set("custom", forKey: "byok.llm.provider")
+        defaults.set(
+            "not-a-url",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "baseURL", providerId: "custom", capability: .llm))
+        defaults.set(
+            "my-model",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "model", providerId: "custom", capability: .llm))
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: "custom", capability: .llm)
+
+        XCTAssertEqual(
+            resolver(keys: [account: "sk-test"]).llm(optionId: "custom"),
+            .cloudUnconfigured)
+    }
+
+    func testCloudKeyDoesNotHideMissingModel() {
+        defaults.set("custom", forKey: "byok.llm.provider")
+        defaults.set(
+            "https://example.com/v1",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "baseURL", providerId: "custom", capability: .llm))
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: "custom", capability: .llm)
+
+        XCTAssertEqual(
+            resolver(keys: [account: "sk-test"]).llm(optionId: "custom"),
+            .cloudUnconfigured)
     }
 
     // MARK: - OCR lane
