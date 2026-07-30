@@ -4,9 +4,57 @@ import KeyboardShortcuts
 import Observation
 import ResponsayCore
 
+private struct StatusModelSnapshot: Sendable {
+    let lanes: [ModelLaneInfo]
+    let asrReadiness: [String: ModelLaneReadiness]
+    let llmReadiness: [String: ModelLaneReadiness]
+    let ttsReadiness: [String: ModelLaneReadiness]
+
+    static let empty = Self(lanes: [], asrReadiness: [:], llmReadiness: [:], ttsReadiness: [:])
+
+    static func resolve() -> Self {
+        let readiness = ModelLaneReadinessResolver()
+        return Self(
+            lanes: ModelLaneDisplay(readiness: readiness).lanes(),
+            asrReadiness: Dictionary(uniqueKeysWithValues: ModelRouteCatalog.asrOptions.map {
+                ($0.id, readiness.asr(optionId: $0.id))
+            }),
+            llmReadiness: Dictionary(uniqueKeysWithValues: ModelRouteCatalog.llmOptions.map {
+                ($0.id, readiness.llm(optionId: $0.id))
+            }),
+            ttsReadiness: Dictionary(uniqueKeysWithValues: ModelRouteCatalog.ttsOptions.map {
+                ($0.id, readiness.tts(optionId: $0.id))
+            }))
+    }
+
+    func lane(_ lane: ModelLaneInfo.Lane) -> ModelLaneInfo? {
+        lanes.first { $0.lane == lane }
+    }
+
+    func rootTitle(_ prefix: String, lane laneID: ModelLaneInfo.Lane) -> String {
+        guard let lane = lane(laneID) else { return "\(prefix)：正在读取…" }
+        return MenuModelSelection.statusTitle(
+            "\(prefix)：\(lane.currentTitle)",
+            readiness: readiness(for: laneID, optionId: lane.currentOptionId) ?? lane.readiness,
+            isCurrent: true)
+    }
+
+    private func readiness(
+        for lane: ModelLaneInfo.Lane,
+        optionId: String
+    ) -> ModelLaneReadiness? {
+        switch lane {
+        case .asr: asrReadiness[optionId]
+        case .llm: llmReadiness[optionId]
+        case .tts: ttsReadiness[optionId]
+        case .ocr: nil
+        }
+    }
+}
+
 /// The status bar, de-SwiftUI-ed (#576). Classic `NSStatusItem` + `NSMenu`, built fresh on
-/// every open via `menuNeedsUpdate` with plain imperative reads — no scene, no @AppStorage
-/// subscriptions, no hosting windows.
+/// every open from an off-main model snapshot — no scene, no @AppStorage subscriptions,
+/// no Keychain/filesystem reads while the menu opens, and no hosting windows.
 ///
 /// Why: crashes 1–7 (1.4.14 → 1.4.19) all died in macOS 26's display-cycle loop breaker on a
 /// framework-owned SwiftUI window. #574's window-inventory forensics showed EIGHT full-width
@@ -19,6 +67,9 @@ import ResponsayCore
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private unowned let controller: CaptureController
+    private var modelSnapshot = StatusModelSnapshot.empty
+    private var modelRefreshTask: Task<Void, Never>?
+    private var modelRefreshGeneration = 0
 
     init(controller: CaptureController) {
         self.controller = controller
@@ -34,6 +85,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         observeListeningState()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(modelConfigurationDidChange),
+            name: .modelConfigurationDidChange,
+            object: nil)
+        refreshModelSnapshot()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Listening state (red icon — safe again in AppKit)
@@ -59,9 +120,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             listening ? "\(AppBrand.displayName) 正在听" : AppBrand.displayName)
     }
 
-    // MARK: - Menu (fresh per open; imperative reads, zero live subscriptions)
+    // MARK: - Menu (fresh per open from the asynchronously refreshed snapshot)
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let models = modelSnapshot
         menu.removeAllItems()
 
         menu.addItem(item("打开主面板") { MainWindowController.shared.show() })
@@ -72,35 +134,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(modelSubmenu(
-            title: "语音识别服务：\(asrTitle)",
+            title: models.rootTitle("语音识别服务", lane: .asr),
             options: ModelRouteCatalog.asrOptions,
-            current: ModelRouteCatalog.currentASRId(),
-            readiness: { self.readiness.asr(optionId: $0) },
+            current: models.lane(.asr)?.currentOptionId ?? ModelRouteCatalog.currentASRId(),
+            readiness: { models.asrReadiness[$0] ?? .cloudUnconfigured },
             groupByBadge: true) { raw in
                 ModelRouteSelectionActions.applyASRSelection(raw)
                 ASRResidencyPrewarm.onSelection(raw)
-                if let section = MenuModelSelection.sectionToConfigure(forASR: raw) {
-                    MacSettingsWindowController.shared.show(section: section)
+                if models.asrReadiness[raw]?.needsConfiguration == true {
+                    MacSettingsWindowController.shared.show(section: .asr)
                 }
             })
         menu.addItem(modelSubmenu(
-            title: "文本改写：\(coachTitle)",
+            title: models.rootTitle("文本改写", lane: .llm),
             options: ModelRouteCatalog.llmOptions,
-            current: ModelRouteCatalog.currentLLMId(),
-            readiness: { self.readiness.llm(optionId: $0) }) { id in
+            current: models.lane(.llm)?.currentOptionId ?? ModelRouteCatalog.currentLLMId(),
+            readiness: { models.llmReadiness[$0] ?? .cloudUnconfigured }) { id in
                 ModelRouteSelectionActions.applyLLMSelection(id)
-                if let section = MenuModelSelection.sectionToConfigure(forLLM: id) {
-                    MacSettingsWindowController.shared.show(section: section)
+                if models.llmReadiness[id]?.needsConfiguration == true {
+                    MacSettingsWindowController.shared.show(section: .llm)
                 }
             })
         menu.addItem(modelSubmenu(
-            title: "文本朗读：\(ttsTitle)",
+            title: models.rootTitle("文本朗读", lane: .tts),
             options: ModelRouteCatalog.ttsOptions,
-            current: ModelRouteCatalog.currentTTSId(),
-            readiness: { self.readiness.tts(optionId: $0) }) { id in
+            current: models.lane(.tts)?.currentOptionId ?? ModelRouteCatalog.currentTTSId(),
+            readiness: { models.ttsReadiness[$0] ?? .cloudUnconfigured }) { id in
                 ModelRouteSelectionActions.applyTTSSelection(id)
-                if let section = MenuModelSelection.sectionToConfigure(forTTS: id) {
-                    MacSettingsWindowController.shared.show(section: section)
+                if models.ttsReadiness[id]?.needsConfiguration == true {
+                    MacSettingsWindowController.shared.show(section: .tts)
                 }
             })
 
@@ -153,8 +215,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let visible = MenuModelSelection.configuredOptions(options, current: current, readiness: readiness)
         func add(_ group: [CurrentModelOption]) {
             for option in group {
-                let entry = item(option.title) { select(option.id) }
-                entry.state = option.id == current ? .on : .off
+                let isCurrent = option.id == current
+                let entry = item(MenuModelSelection.statusTitle(
+                    option.title,
+                    readiness: readiness(option.id),
+                    isCurrent: isCurrent)) { select(option.id) }
+                entry.state = isCurrent ? .on : .off
                 submenu.addItem(entry)
             }
         }
@@ -234,24 +300,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return entry
     }
 
-    private var readiness: ModelLaneReadinessResolver { ModelLaneReadinessResolver() }
-
-    private var asrTitle: String {
-        let (base, _) = ModelRouteOptionID.parse(ModelRouteCatalog.currentASRId())
-        return ASREngine.fromStoredValue(base)?.title ?? ASREngine.apple.title
+    @objc private func modelConfigurationDidChange() {
+        refreshModelSnapshot()
     }
 
-    private var ttsTitle: String {
-        let raw = UserDefaults.standard.string(forKey: TTSEngine.defaultsKey) ?? ""
-        return TTSEngine(rawValue: raw)?.title ?? TTSEngine.selected.title
-    }
-
-    private var coachTitle: String {
-        let pid = UserDefaults.standard.string(forKey: "byok.llm.provider") ?? ""
-        if let preset = ProviderCatalog.presets(for: .llm).first(where: { $0.id == pid }) {
-            return preset.displayName(for: .llm)
+    private func refreshModelSnapshot() {
+        modelRefreshTask?.cancel()
+        modelRefreshGeneration &+= 1
+        let generation = modelRefreshGeneration
+        modelRefreshTask = Task {
+            let computed = await Task.detached(priority: .userInitiated) {
+                StatusModelSnapshot.resolve()
+            }.value
+            guard !Task.isCancelled, generation == modelRefreshGeneration else { return }
+            modelSnapshot = computed
         }
-        return "自定义 OpenAI 兼容"
     }
 
     private func shortcutDisplay(for action: ShortcutAction) -> String? {

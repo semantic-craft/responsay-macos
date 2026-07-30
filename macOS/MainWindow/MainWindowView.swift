@@ -1,5 +1,6 @@
 import SwiftUI
 import ResponsayCore
+import AppKit
 
 /// Main-window shell: warm sidebar (Claude Design Scheme B) + feature content.
 /// Dictation is NOT a nav item — it lives in the global hotkey + capsule.
@@ -37,6 +38,7 @@ struct MainWindowView: View {
     /// Session-scoped dismissal: "稍后" hides it until the next app launch.
     @State private var setupPromptDismissed = false
     @State private var showSetupPrompt = false
+    @State private var setupPromptNonce = 0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -54,10 +56,20 @@ struct MainWindowView: View {
                 selection = section
             }
         }
-        .onAppear {
+        .task(id: setupPromptNonce) {
+            let summary = await Task.detached(priority: .utility) {
+                ModelLaneDisplay.providerStatusSummary(from: ModelLaneDisplay().lanes())
+            }.value
+            guard !Task.isCancelled else { return }
             showSetupPrompt = ProviderSetupPromptCondition.shouldShow(
-                summary: OverviewScreen.providerStatus(),
+                summary: summary,
                 dismissedThisSession: setupPromptDismissed)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            setupPromptNonce &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            setupPromptNonce &+= 1
         }
         .overlay {
             if showSetupPrompt {

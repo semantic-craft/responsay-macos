@@ -231,6 +231,7 @@ final class ProviderConfigMachine {
         setScoped(model, suffix: "model")
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
+        ModelConfigurationEvents.post()
     }
 
     func scopedString(_ suffix: String, providerId pid: String, activeProviderId: String?) -> String? {

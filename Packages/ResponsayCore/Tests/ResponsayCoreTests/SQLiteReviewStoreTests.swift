@@ -410,3 +410,27 @@ private func sqliteColumnIsNotNull(
     #expect(try reviewStore.count() == 1)
     #expect(try captureStore.recent(1).first == capture)
 }
+
+@Test func overviewMetricsAggregateAllRetainedRowsBeyondHistoryPageSize() throws {
+    let directory = try tempDirectory()
+    let store = try SQLiteReviewStore(
+        databaseURL: directory.appendingPathComponent("review.sqlite"))
+    let now = Date(timeIntervalSince1970: 2_000_000_000)
+    for index in 0..<501 {
+        try store.save(ReviewCard(
+            createdAt: now.addingTimeInterval(Double(index)),
+            sourceText: nil,
+            language: "zh-CN",
+            idiomatic: "字",
+            reasons: []))
+    }
+
+    let metrics = try store.overviewMetrics(
+        now: now,
+        calendar: Calendar(identifier: .gregorian),
+        status: .unknown,
+        typingCharsPerSecond: 1)
+
+    #expect(metrics.totalSegmentCount == 501)
+    #expect(metrics.estimatedTypingSecondsSaved == 501)
+}

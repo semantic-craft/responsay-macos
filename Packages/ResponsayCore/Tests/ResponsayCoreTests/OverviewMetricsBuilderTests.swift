@@ -74,20 +74,66 @@ struct OverviewMetricsBuilderTests {
         #expect(m.estimatedTypingSecondsSaved == 10.0)   // 35 / 3.5
     }
 
-    @Test func optionalSource_countsApprovedFinalAndTreatsMissingTextAsZero() {
+    @Test func trimsFinalBeforeUsingIt_andFallsBackToTrimmedSource() {
         let now = date(2026, 6, 7)
         let items = [
-            item(now, idiomatic: "approved", source: nil),
-            item(now, idiomatic: "", source: nil),
-            item(now, idiomatic: "", source: "raw"),
+            item(now, idiomatic: "  approved  ", source: "ignored"),
+            item(now, idiomatic: " \n ", source: "  raw  "),
         ]
 
         let metrics = builder.build(from: items, now: now, calendar: utc)
 
         #expect(metrics.todayCharacterCount == 11)
-        #expect(metrics.totalSegmentCount == 3)
-        #expect(metrics.last7Days.last?.segmentCount == 3)
+        #expect(metrics.totalSegmentCount == 2)
+        #expect(metrics.last7Days.last?.segmentCount == 2)
         #expect(metrics.last7Days.last?.characterCount == 11)
+    }
+
+    @Test func recordsWithoutVisibleText_doNotContributeToOverview() {
+        let now = date(2026, 6, 7)
+        let items = [
+            item(now, idiomatic: "", source: nil),
+            item(now, idiomatic: " \n ", source: "\t"),
+            item(now, idiomatic: "kept", source: nil),
+        ]
+
+        let metrics = builder.build(from: items, now: now, calendar: utc)
+
+        #expect(metrics.todayCharacterCount == 4)
+        #expect(metrics.todaySegmentCount == 1)
+        #expect(metrics.totalSegmentCount == 1)
+        #expect(metrics.last7Days.last?.segmentCount == 1)
+    }
+
+    @Test func characterCount_usesSwiftVisibleCharacters() {
+        let now = date(2026, 6, 7)
+        let metrics = builder.build(
+            from: [item(now, idiomatic: " 👨‍👩‍👧‍👦é ", source: nil)],
+            now: now,
+            calendar: utc)
+
+        #expect(metrics.todayCharacterCount == 2)
+        #expect(metrics.last7Days.last?.characterCount == 2)
+    }
+
+    @Test func last7Days_remainSevenLocalCalendarBucketsMeasuredInCharacters() {
+        var shanghai = Calendar(identifier: .gregorian)
+        shanghai.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let now = shanghai.date(from: DateComponents(
+            year: 2026, month: 6, day: 7, hour: 0, minute: 30))!
+        let previousLocalDay = shanghai.date(from: DateComponents(
+            year: 2026, month: 6, day: 6, hour: 23, minute: 30))!
+
+        let metrics = builder.build(
+            from: [item(previousLocalDay, idiomatic: "你好", source: nil)],
+            now: now,
+            calendar: shanghai)
+
+        #expect(metrics.last7Days.count == 7)
+        #expect(metrics.last7Days.map(\.date) == metrics.last7Days.map { shanghai.startOfDay(for: $0.date) })
+        #expect(metrics.last7Days[5].characterCount == 2)
+        #expect(metrics.last7Days[5].segmentCount == 1)
+        #expect(metrics.last7Days[6].characterCount == 0)
     }
 
     // MARK: - provider-status mapping

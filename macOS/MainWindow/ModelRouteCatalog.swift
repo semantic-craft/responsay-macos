@@ -85,7 +85,7 @@ enum ModelRouteCatalog {
         else {
             return engine.rawValue
         }
-        let plan = ProviderConfigDispatcher(defaults: defaults).resolve(.asr).plan
+        let plan = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil }).resolve(.asr).plan
         return ModelRouteOptionID.make(engine.rawValue, plan: plan)
     }
 
@@ -97,7 +97,7 @@ enum ModelRouteCatalog {
         guard ProviderCatalog.providerHasMultipleBillingPlans(providerId, capability: .llm) else {
             return providerId
         }
-        let plan = ProviderConfigDispatcher(defaults: defaults).resolve(.llm).plan
+        let plan = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil }).resolve(.llm).plan
         return ModelRouteOptionID.make(providerId, plan: plan)
     }
 
