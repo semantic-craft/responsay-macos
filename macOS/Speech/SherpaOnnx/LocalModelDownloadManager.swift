@@ -70,9 +70,14 @@ final class LocalModelDownloadManager: Identifiable {
     func delete() {
         guard !isBusy else { return }
         LocalModelInstallActions.beforeDelete(spec)
-        try? LocalModelDownloader.remove(spec)
+        do {
+            try LocalModelDownloader.remove(spec)
+        } catch {
+            return
+        }
         selfCheckSummary = nil
         refresh()
+        LocalModelInstallActions.onDeleted()
     }
 
     /// Load & Test self-check (issue 162): measures real rtfX vs expected.

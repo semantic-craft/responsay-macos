@@ -58,6 +58,9 @@ struct OverviewScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .captureStoreDidChange)) { _ in
             metricsNonce &+= 1
         }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            lanesNonce &+= 1
+        }
         .sheet(isPresented: $showDemos) { demoSheet }
     }
 
@@ -321,10 +324,12 @@ struct OverviewScreen: View {
     private func refreshMetrics() async {
         do {
             let computed = try await Task.detached(priority: .utility) {
-                try Self.makeStore().overviewMetrics(
+                let status = ModelLaneDisplay.providerStatusSummary(
+                    from: ModelLaneDisplay().lanes())
+                return try Self.makeStore().overviewMetrics(
                     now: Date(),
                     calendar: .current,
-                    status: Self.providerStatus(),
+                    status: status,
                     typingCharsPerSecond: OverviewMetricsBuilder.defaultTypingCharsPerSecond)
             }.value
             guard !Task.isCancelled else { return }
@@ -362,21 +367,6 @@ struct OverviewScreen: View {
             return ReviewCaptureStore(reviewStore: sqlite)
         }
         return FileCaptureStore.defaultStore()
-    }
-
-    /// Configured-ness per lane: a local engine is ready without a key; a cloud
-    /// provider is ready once it has a key, else not configured. Not a live probe.
-    /// Internal (not private): MainWindowView reuses it for the provider-setup
-    /// prompt overlay (issues 254/255).
-    nonisolated static func providerStatus() -> ProviderStatusSummary {
-        let dispatcher = ProviderConfigDispatcher()
-        func status(_ capability: ModelCapability) -> ProviderStatus {
-            let config = dispatcher.resolve(capability)
-            let isLocal = ProviderCatalog.presets(for: capability)
-                .first { $0.id == config.providerId }?.isLocal ?? false
-            return ProviderStatus.from(isConfigured: isLocal || config.hasKey, isHealthy: true)
-        }
-        return ProviderStatusSummary(asr: status(.asr), llm: status(.llm), tts: status(.tts))
     }
 
     // MARK: Helpers

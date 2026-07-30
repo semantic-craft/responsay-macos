@@ -298,6 +298,7 @@ enum BYOKKeychain {
         ]
         guard !value.isEmpty else {
             SecItemDelete(base as CFDictionary)
+            ModelConfigurationEvents.post()
             return
         }
         let data = Data(value.utf8)
@@ -305,7 +306,11 @@ enum BYOKKeychain {
         if status == errSecItemNotFound {
             var add = base
             add[kSecValueData as String] = data
-            SecItemAdd(add as CFDictionary, nil)
+            if SecItemAdd(add as CFDictionary, nil) == errSecSuccess {
+                ModelConfigurationEvents.post()
+            }
+        } else if status == errSecSuccess {
+            ModelConfigurationEvents.post()
         }
     }
 }

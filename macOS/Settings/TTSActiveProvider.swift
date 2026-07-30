@@ -73,6 +73,7 @@ enum TTSActiveProvider {
         restoreActiveConfig(providerId, defaults: defaults)
         defaults.set(providerId, forKey: activeKey)
         defaults.set(engine.rawValue, forKey: TTSEngine.defaultsKey)
+        ModelConfigurationEvents.post()
     }
 
     private static func migrateLegacyActiveConfigIfNeeded(
