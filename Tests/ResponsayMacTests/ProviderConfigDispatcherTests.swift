@@ -34,7 +34,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.region, .china)
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -195,7 +195,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
     }
 
     func testQwenWorkspaceIDOverridesBaseURLWithRegionalDedicatedResponsesEndpoint() {
@@ -294,7 +294,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
 
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
