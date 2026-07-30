@@ -46,9 +46,10 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
 
     private func clearBYOK(_ capability: String) {
         let d = UserDefaults.standard
-        for suffix in ["provider", "region", "plan", "model", "baseURL"] {
+        for suffix in ["provider", "region", "plan", "model", "baseURL", "workspaceId"] {
             d.removeObject(forKey: "byok.\(capability).\(suffix)")
         }
+        d.removeObject(forKey: "byok.\(capability).qwen.workspaceId")
     }
 
     private func pumpRunLoop(seconds: TimeInterval) {
@@ -141,7 +142,7 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
     func testLLMCardDefaultSnapshot() throws {
         clearBYOK("llm")
         let url = try capture(CapabilityCardView(capability: .llm),
-                              size: NSSize(width: 660, height: 560),
+                              size: NSSize(width: 660, height: 640),
                               named: "llm-card-default-qwen.png")
         print("SNAPSHOT llm-card-default -> \(url.path)")
     }

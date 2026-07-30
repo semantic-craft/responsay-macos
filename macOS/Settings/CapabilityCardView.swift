@@ -58,6 +58,22 @@ struct CapabilityCardView: View {
             }
 
             credentialRows
+            if machine.isQwenLLM {
+                LabeledRow(label: "Workspace ID") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        WarmField(placeholder: "选填，如 ws-…", text: $machine.workspaceID)
+                        if let validationMessage = machine.workspaceIDValidationMessage {
+                            Text(validationMessage)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(machine.qwenWorkspaceHelp)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
+                        }
+                    }
+                }
+            }
             if machine.isFixedEndpoint {
                 // 千问极速实时 / 豆包流式 的端点与模型由 WSS 实时流式引擎 hardcode（忽略这里的值），
                 // 所以只读展示真实端点+模型，不给可编辑框，免得显示成历史批量配置误导。
@@ -78,7 +94,17 @@ struct CapabilityCardView: View {
                     }
                 }
             } else {
-                LabeledRow(label: "Base URL") { WarmField(placeholder: "https://…/v1", text: $machine.baseURL) }
+                LabeledRow(label: "Base URL") {
+                    if machine.usesQwenWorkspaceEndpoint {
+                        Text(machine.baseURL)
+                            .font(SettingsTheme.mono)
+                            .foregroundStyle(SettingsTheme.ink2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        WarmField(placeholder: "https://…/v1", text: $machine.baseURL)
+                    }
+                }
                 LabeledRow(label: "模型 ID") {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
@@ -151,13 +177,14 @@ struct CapabilityCardView: View {
             guard capability == .tts else { return }
             TTSActiveProvider.adopt(machine.providerId, defaults: machine.defaults)
         }
-        .onChange(of: machine.regionRaw) { _, _ in machine.baseURL = machine.endpointBase(); machine.persist() }
+        .onChange(of: machine.regionRaw) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.planRaw) { old, new in
             machine.autoSwitchModel(from: old, to: new)
-            machine.baseURL = machine.endpointBase()
+            machine.refreshBaseURLForSelection()
             machine.reloadKeyForCurrentPlan()
             machine.persist()
         }
+        .onChange(of: machine.workspaceID) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.model) { _, _ in machine.persist() }
         .onChange(of: machine.voice) { _, _ in machine.persist() }
         .onChange(of: machine.baseURL) { _, _ in machine.persist() }
@@ -228,13 +255,13 @@ struct CapabilityCardView: View {
     private var statusColor: Color { machine.status.hasPrefix("✓") ? SettingsTheme.green : SettingsTheme.ink2 }
     /// Label for one endpoint in the combined 接入点 picker. Append the plan only where the
     /// region offers more than one (国内·按量付费 / 国内·Token Plan); single-plan regions stay
-    /// plain. Qwen uses the explicit mainland label "中国大陆".
+    /// plain. Qwen uses the exact region label from the Responses documentation.
     private func endpointLabel(_ e: EndpointVariant) -> String {
         let plansInRegion = Set(machine.current.endpoints(for: capability)
             .filter { $0.region == e.region && !$0.baseURL.isEmpty }
             .map(\.plan))
         let regionLabel = machine.current.id == "qwen" && e.region == .china
-            ? "中国大陆"
+            ? "华北2（北京）"
             : e.region.label
         return plansInRegion.count > 1 ? "\(regionLabel)·\(e.plan.label)" : regionLabel
     }

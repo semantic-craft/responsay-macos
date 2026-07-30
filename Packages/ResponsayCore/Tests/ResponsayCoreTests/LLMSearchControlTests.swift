@@ -13,12 +13,6 @@ struct LLMSearchControlTests {
         #expect(LLMSearchControl.supportsSearch(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
-    @Test func qwenTokenPlan_supportsSearch() {
-        #expect(LLMSearchControl.supportsSearch(
-            providerId: "qwen-token-plan",
-            baseURLHost: "token-plan.cn-beijing.maas.aliyuncs.com"))
-    }
-
     @Test func zhipu_supportsSearch() {
         #expect(LLMSearchControl.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
     }
@@ -52,12 +46,6 @@ struct LLMSearchControlTests {
         #expect(LLMSearchControl.supportsSourceResults(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
-    @Test func qwenTokenPlan_nonDashScopeHost_doesNotSupportSourceResults() {
-        #expect(!LLMSearchControl.supportsSourceResults(
-            providerId: "qwen-token-plan",
-            baseURLHost: "token-plan.cn-beijing.maas.aliyuncs.com"))
-    }
-
     @Test func mimo_zhipu_supportSourceResults() {
         #expect(LLMSearchControl.supportsSourceResults(providerId: "mimo", baseURLHost: "api.xiaomimimo.com"))
         #expect(LLMSearchControl.supportsSourceResults(providerId: "mimo", baseURLHost: "token-plan-cn.xiaomimimo.com"))
@@ -74,17 +62,15 @@ struct LLMSearchControlTests {
         }
     }
 
-    // MARK: - Qwen (DashScope): enable_search: true
+    // MARK: - Qwen Responses: official web_search tool
 
-    @Test func qwen_searchEnabled_returnsEnableSearch() {
+    @Test func qwen_searchEnabled_returnsResponsesWebSearchTool() throws {
         let params = LLMSearchControl.extraBody(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com", searchEnabled: true)
-        #expect(params["enable_search"] as? Bool == true)
-        #expect(params["tools"] == nil)
-    }
-
-    @Test func qwenTokenPlan_searchEnabled_returnsEnableSearch() {
-        let params = LLMSearchControl.extraBody(providerId: "qwen-token-plan", baseURLHost: "", searchEnabled: true)
-        #expect(params["enable_search"] as? Bool == true)
+        let tools = try #require(params["tools"] as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools.first?["type"] as? String == "web_search")
+        #expect(params["tool_choice"] as? String == "required")
+        #expect(params["enable_search"] == nil)
     }
 
     // MARK: - Zhipu: tools with web_search type

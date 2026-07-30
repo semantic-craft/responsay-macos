@@ -44,9 +44,17 @@ private func llmStubSession() -> URLSession {
     return URLSession(configuration: cfg)
 }
 
-/// Wrap a model JSON envelope into an OpenAI chat-completion response body.
-private func chatCompletion(content: String) -> Data {
-    let obj: [String: Any] = ["choices": [["message": ["role": "assistant", "content": content]]]]
+/// Wrap a model JSON envelope into an OpenAI Responses response body.
+private func responsesCompletion(content: String) -> Data {
+    let obj: [String: Any] = [
+        "object": "response",
+        "status": "completed",
+        "output": [[
+            "type": "message",
+            "role": "assistant",
+            "content": [["type": "output_text", "text": content]],
+        ]],
+    ]
     return try! JSONSerialization.data(withJSONObject: obj)
 }
 
@@ -85,13 +93,11 @@ struct LLMThinkingControlTests {
         #expect(body("openai", "openai/gpt-5-mini", true)["reasoning_effort"] as? String == "medium")  // slug prefix stripped
     }
 
-    @Test func dashScope_enableThinking_onlyOnStreaming() {
-        // Non-streaming: enable_thinking is ALWAYS false (DashScope 400s on true non-streaming).
-        #expect(body("qwen", "qwen-plus", true)["enable_thinking"] as? Bool == false)
-        #expect(body("qwen", "qwen-plus", false)["enable_thinking"] as? Bool == false)
-        // Streaming: thinking-on rides as true.
-        #expect(body("qwen", "qwen-plus", true, streaming: true)["enable_thinking"] as? Bool == true)
-        #expect(body("qwen", "qwen-plus", false, streaming: true)["enable_thinking"] as? Bool == false)
+    @Test func dashScopeResponses_usesReasoningEffortForBothModes() {
+        #expect((body("qwen", "qwen-plus", true)["reasoning"] as? [String: String])?["effort"] == "medium")
+        #expect((body("qwen", "qwen-plus", false)["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect((body("qwen", "qwen-plus", true, streaming: true)["reasoning"] as? [String: String])?["effort"] == "medium")
+        #expect((body("qwen", "qwen-plus", false, streaming: true)["reasoning"] as? [String: String])?["effort"] == "none")
     }
 
     @Test func openrouter_reasoningWithExclude() {
@@ -145,7 +151,7 @@ struct LLMThinkingControlTests {
     }
 
     @Test func custom_routesByHost() {
-        #expect(body("custom", "qwen-plus", false, host: "dashscope.aliyuncs.com")["enable_thinking"] as? Bool == false)
+        #expect((body("custom", "qwen-plus", false, host: "dashscope.aliyuncs.com")["reasoning"] as? [String: String])?["effort"] == "none")
         #expect(body("custom", "x", true, host: "generativelanguage.googleapis.com")["reasoning_effort"] as? String == "medium")
         #expect((body("custom", "glm-5-turbo", false, host: "open.bigmodel.cn")["thinking"] as? [String: String])?["type"] == "disabled")
         #expect(body("custom", "x", true, host: "unknown.example.com").isEmpty)   // unknown → emit nothing
@@ -197,28 +203,32 @@ struct LLMChatRequestBuilderTests {
                     model: "qwen-plus", apiKey: "sk-1", thinkingEnabled: thinking)
     }
 
-    @Test func buildsOpenAIShapeBody() throws {
+    @Test func buildsQwenResponsesShapeBody() throws {
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: endpoint(), system: "SYS", user: "USR")
-        #expect(req.url?.absoluteString == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
+        #expect(req.url?.absoluteString == "https://dashscope.aliyuncs.com/compatible-mode/v1/responses")
         #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer sk-1")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
         #expect(body?["model"] as? String == "qwen-plus")
         #expect(body?["stream"] as? Bool == false)
-        let messages = body?["messages"] as? [[String: String]]
-        #expect(messages?.first?["role"] == "system")
-        #expect(messages?.first?["content"] == "SYS")
-        #expect(messages?.last?["content"] == "USR")
-        // 思考 off (default) → enable_thinking:false rides along for DashScope.
-        #expect(body?["enable_thinking"] as? Bool == false)
+        #expect(body?["store"] as? Bool == false)
+        let input = body?["input"] as? [[String: String]]
+        #expect(input?.first?["role"] == "system")
+        #expect(input?.first?["content"] == "SYS")
+        #expect(input?.last?["content"] == "USR")
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect(body?["messages"] == nil)
+        #expect(body?["enable_thinking"] == nil)
     }
 
-    @Test func ordinaryRewriteRequestOmitsToolSearchMCPAndResponsesOnlyFields() throws {
+    @Test func ordinaryQwenResponsesRequestOmitsToolsAndLegacyChatFields() throws {
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: endpoint(), system: "SYS", user: "USR")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
 
-        for field in ["tools", "tool_choice", "enable_search", "mcp", "input", "instructions", "reasoning", "modalities"] {
+        for field in ["tools", "tool_choice", "enable_search", "mcp", "messages", "instructions", "modalities", "stream_options"] {
             #expect(body?[field] == nil)
         }
+        #expect(body?["input"] != nil)
+        #expect(body?["reasoning"] != nil)
         #expect(body?["response_format"] == nil)
     }
 
@@ -227,7 +237,8 @@ struct LLMChatRequestBuilderTests {
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
 
         #expect(body?["temperature"] as? Double == 0.2)
-        #expect(body?["top_p"] as? Double == 0.8)
+        // 百炼 Responses 文档建议 temperature / top_p 只设置一个。
+        #expect(body?["top_p"] == nil)
     }
 
     @Test func doubaoRewriteUsesArkChatCompletionsAndDisablesThinking() throws {
@@ -365,11 +376,11 @@ struct LLMChatRequestBuilderTests {
         }
     }
 
-    @Test func thinkingOn_dashScope_nonStreaming_pinsEnableThinkingFalse() throws {
-        // Bug fix: a non-streaming Qwen request must NEVER send enable_thinking:true (DashScope 400).
+    @Test func thinkingOn_dashScopeResponses_usesReasoningEffort() throws {
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: endpoint(thinking: true), system: "S", user: "U")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        #expect(body?["enable_thinking"] as? Bool == false)
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "medium")
+        #expect(body?["enable_thinking"] == nil)
     }
 
     @Test func thinkingOn_openAIReasoning_ridesIntoBody() throws {
@@ -405,59 +416,20 @@ struct LLMChatRequestBuilderTests {
         #expect(creq.timeoutInterval == 60)
     }
 
-    @Test func searchEnabled_dashScopeAddsSearchWithoutBreakingThinkingGuard() throws {
+    @Test func searchEnabled_dashScopeResponsesAddsOfficialWebSearchTool() throws {
         let req = try LLMChatRequestBuilder.makeRequest(
             endpoint: endpoint(thinking: true),
             system: "s",
             user: "u",
             searchEnabled: true)
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        #expect(body?["enable_search"] as? Bool == true)
-        #expect(body?["enable_thinking"] as? Bool == false)
-    }
-}
-
-struct DashScopeSearchRequestBuilderTests {
-    private func endpoint(model: String = "qwen-plus") -> LLMEndpoint {
-        LLMEndpoint(providerId: "qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                    model: model, apiKey: "sk-1", thinkingEnabled: false)
-    }
-
-    @Test func buildsNativeGenerationRequestWithSourceSearch() throws {
-        let req = try DashScopeSearchRequestBuilder.makeRequest(
-            endpoint: endpoint(),
-            system: "SYS",
-            user: "USR")
-        #expect(req.url?.absoluteString == "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation")
-        #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer sk-1")
-        let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        #expect(body?["model"] as? String == "qwen-plus")
-        let input = try #require(body?["input"] as? [String: Any])
-        let messages = try #require(input["messages"] as? [[String: String]])
-        #expect(messages.first?["content"] == "SYS")
-        #expect(messages.last?["content"] == "USR")
-        let parameters = try #require(body?["parameters"] as? [String: Any])
-        #expect(parameters["enable_search"] as? Bool == true)
-        #expect(parameters["result_format"] as? String == "message")
-        let options = try #require(parameters["search_options"] as? [String: Any])
-        #expect(options["forced_search"] as? Bool == true)
-        #expect(options["enable_source"] as? Bool == true)
-        #expect(options["search_strategy"] as? String == "max")
-    }
-
-    @Test func qwen3MaxUsesAgentStrategy() throws {
-        let req = try DashScopeSearchRequestBuilder.makeRequest(
-            endpoint: endpoint(model: "qwen3-max"),
-            system: "",
-            user: "USR")
-        let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        let parameters = try #require(body?["parameters"] as? [String: Any])
-        let options = try #require(parameters["search_options"] as? [String: Any])
-        #expect(options["search_strategy"] as? String == "agent")
-    }
-
-    @Test func refusesNonDashScopeHost() {
-        #expect(DashScopeSearchRequestBuilder.generationURL(base: "https://token-plan.cn-beijing.maas.aliyuncs.com/v1") == nil)
+        let tools = try #require(body?["tools"] as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools.first?["type"] as? String == "web_search")
+        #expect(body?["tool_choice"] as? String == "required")
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "medium")
+        #expect(body?["enable_search"] == nil)
+        #expect(body?["enable_thinking"] == nil)
     }
 }
 
@@ -498,7 +470,7 @@ struct DirectTextRewriteAPITests {
 
     @Test func rewrite_parsesEnvelope_fillsOriginalFromInput() async throws {
         LLMStubURLProtocol.status = 200
-        LLMStubURLProtocol.data = chatCompletion(content: #"{"text":"缓存需要调整。","changes":["补标点"]}"#)
+        LLMStubURLProtocol.data = responsesCompletion(content: #"{"text":"缓存需要调整。","changes":["补标点"]}"#)
         let api = DirectTextRewriteAPI(endpoint: endpoint(), session: llmStubSession())
 
         let result = try await api.rewrite("缓存 要改一下", tone: .natural)
@@ -510,7 +482,7 @@ struct DirectTextRewriteAPITests {
 
     @Test func rewrite_tolerates_fencedJSON() async throws {
         LLMStubURLProtocol.status = 200
-        LLMStubURLProtocol.data = chatCompletion(content: "```json\n{\"text\":\"ok\",\"changes\":[]}\n```")
+        LLMStubURLProtocol.data = responsesCompletion(content: "```json\n{\"text\":\"ok\",\"changes\":[]}\n```")
         let api = DirectTextRewriteAPI(endpoint: endpoint(), session: llmStubSession())
         let result = try await api.rewrite("x", tone: .natural)
         #expect(result.text == "ok")
@@ -521,7 +493,7 @@ struct DirectTextRewriteAPITests {
     @Test func rewrite_packStyle_systemPromptRidesIntoRequestBody() async throws {
         LLMStubURLProtocol.status = 200
         LLMStubURLProtocol.requestBody = Data()
-        LLMStubURLProtocol.data = chatCompletion(content: #"{"text":"对方未履行还款义务。","changes":[]}"#)
+        LLMStubURLProtocol.data = responsesCompletion(content: #"{"text":"对方未履行还款义务。","changes":[]}"#)
         let pack = StylePack(id: "p", name: "公文体", systemPrompt: "改成规范公文语气。", origin: .localImport)
         let api = DirectTextRewriteAPI(endpoint: endpoint(), session: llmStubSession())
 
@@ -536,14 +508,15 @@ struct DirectTextRewriteAPITests {
     @Test func rewrite_thinkingFlag_ridesIntoRequestBody() async throws {
         LLMStubURLProtocol.status = 200
         LLMStubURLProtocol.requestBody = Data()
-        LLMStubURLProtocol.data = chatCompletion(content: #"{"text":"y","changes":[]}"#)
+        LLMStubURLProtocol.data = responsesCompletion(content: #"{"text":"y","changes":[]}"#)
         let api = DirectTextRewriteAPI(endpoint: endpoint(thinking: true), session: llmStubSession())
 
         _ = try await api.rewrite("x", tone: .formal)
 
         let body = try JSONSerialization.jsonObject(with: LLMStubURLProtocol.requestBody) as? [String: Any]
-        #expect(body?["enable_thinking"] as? Bool == false)   // non-streaming pins it false (DashScope 400 guard)
-        #expect(LLMStubURLProtocol.requestURL?.path == "/compatible-mode/v1/chat/completions")
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "medium")
+        #expect(body?["enable_thinking"] == nil)
+        #expect(LLMStubURLProtocol.requestURL?.path == "/compatible-mode/v1/responses")
     }
 
     @Test func rewrite_throwsHTTPErrorOnNon2xx() async throws {

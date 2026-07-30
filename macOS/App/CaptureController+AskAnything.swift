@@ -37,8 +37,8 @@ extension CaptureController {
         log.info("任意提问 stop: endpoint \(endpoint == nil ? "NIL — no general LLM" : "resolved", privacy: .public) search=\(searchEndpoint != nil, privacy: .public)")
         let client: (any StreamingChatClient)? = endpoint.map { ep in
             // 豆包/方舟 与 OpenAI 的联网都只在 /responses 上(OpenAI 的 chat-latest/gpt-5.x 在
-            // /chat/completions 上根本搜不了)→ 走流式 Responses 客户端;其余(含豆包纯对话、
-            // Qwen/智谱/MiMo 的 /chat/completions 联网)走通用流式 chat 客户端。
+            // /chat/completions 上根本搜不了)→ 走专用 Responses 客户端;Qwen 由通用客户端内部
+            // 路由到 /responses，智谱/MiMo 仍走 /chat/completions。
             if searchEndpoint != nil, ep.providerId == "doubao" || ep.providerId == "openai" {
                 return DirectArkResponsesStreamingClient(endpoint: ep, searchEnabled: true)
             }
@@ -48,8 +48,8 @@ extension CaptureController {
     }
 
     /// 独立检索服务这一路:App 先用检索服务搜,把结果作为材料交给**主对话模型**作答。
-    /// 主模型走普通 `/chat/completions`(searchEnabled=false)——联网这件事已经由检索服务做完了,
-    /// 再叠模型自带联网只会重复搜一遍、还搅乱来源。
+    /// 主模型走不带搜索工具的普通请求(searchEnabled=false)——联网这件事已经由检索服务做完了,
+    /// 再叠模型自带联网只会重复搜一遍、还搅乱来源。Qwen 普通请求仍由客户端走 Responses。
     private func startBackendSearchAnswer(backend: any WebSearchBackend) {
         let chatEndpoint = LLMEndpointResolver.resolveChat()
         voiceAssistantVM.searchProviderId = backend.kind.rawValue

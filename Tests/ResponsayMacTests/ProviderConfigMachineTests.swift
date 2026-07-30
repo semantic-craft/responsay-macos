@@ -63,6 +63,18 @@ struct ProviderConfigMachineTests {
         #expect(m.baseURL == "https://api.openai.com/v1")
     }
 
+    @Test func loadReadsQwenWorkspaceIDAndDerivesDedicatedResponsesEndpoint() {
+        let d = freshDefaults("load-qwen-workspace")
+        d.set("qwen", forKey: "byok.llm.provider")
+        d.set("ws-abc123", forKey: "byok.llm.qwen.workspaceId")
+        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+
+        m.load()
+
+        #expect(m.workspaceID == "ws-abc123")
+        #expect(m.baseURL == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+    }
+
     @Test func loadIsIdempotent() {
         let m = machine(.llm, suffix: "load-idempotent")
         m.load()
@@ -146,23 +158,39 @@ struct ProviderConfigMachineTests {
 
         m.regionRaw = ProviderRegion.singapore.rawValue
         #expect(m.endpointBase() == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+
+        m.regionRaw = ProviderRegion.unitedStates.rawValue
+        #expect(m.endpointBase() == "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
     }
 
-    @Test func loadRetiredQwenTokenPlanSelectionAsPayAsYouGo() {
-        let d = freshDefaults("load-retired-qwen-token-plan")
-        d.set("qwen", forKey: "byok.llm.provider")
-        d.set(BillingPlan.package.rawValue, forKey: "byok.llm.qwen.plan")
-        d.set(
-            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-            forKey: "byok.llm.qwen.baseURL")
+    @Test func qwenWorkspaceEndpointFollowsRegionAndRejectsUnsafeHostInput() {
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: " ws-abc123 ", region: .china)
+            == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .singapore)
+            == "https://ws-abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .germany)
+            == "https://ws-abc123.eu-central-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .japan)
+            == "https://ws-abc123.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .unitedStates) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .global) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123.evil.example", region: .china) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "https://evil.example", region: .china) == nil)
+    }
 
-        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+    @Test func qwenWorkspaceIDChangeDerivesEndpointOrFallsBackToGenericHost() {
+        let m = machine(.llm, suffix: "workspace-change")
         m.load()
 
-        #expect(m.plan == .payg)
+        m.workspaceID = "ws-abc123"
+        m.refreshBaseURLForSelection()
+        #expect(m.usesQwenWorkspaceEndpoint)
+        #expect(m.baseURL == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+
+        m.workspaceID = ""
+        m.refreshBaseURLForSelection()
+        #expect(!m.usesQwenWorkspaceEndpoint)
         #expect(m.baseURL == "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        #expect(d.string(forKey: "byok.llm.qwen.plan") == BillingPlan.payg.rawValue)
-        #expect(d.string(forKey: "byok.llm.qwen.baseURL") == "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
     // MARK: - autoSwitchModel(): retarget only when uncustomized
@@ -190,11 +218,15 @@ struct ProviderConfigMachineTests {
         let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
         m.load()  // qwen
         m.model = "qwen3.7-plus"
+        m.workspaceID = "ws-abc123"
+        m.refreshBaseURLForSelection()
         m.persist()
         #expect(d.string(forKey: "byok.llm.qwen.model") == "qwen3.7-plus")
         #expect(d.string(forKey: "byok.llm.qwen.region") == ProviderRegion.china.rawValue)
         #expect(d.string(forKey: "byok.llm.qwen.plan") == BillingPlan.payg.rawValue)
-        #expect(d.string(forKey: "byok.llm.qwen.baseURL") == "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        #expect(d.string(forKey: "byok.llm.qwen.workspaceId") == "ws-abc123")
+        #expect(d.string(forKey: "byok.llm.qwen.baseURL")
+            == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
     }
 
     @Test func persistMirrorsToActiveKeyWhenProviderMatchesStored() {
