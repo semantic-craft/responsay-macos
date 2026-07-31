@@ -12,6 +12,7 @@ enum VoiceAssistantWebSearchSettings {
         guard let endpoint, !endpoint.isLocal else { return false }
         return LLMSearchControl.supportsSearch(
             providerId: endpoint.providerId,
+            model: endpoint.model,
             baseURLHost: endpoint.host)
     }
 

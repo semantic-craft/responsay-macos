@@ -131,8 +131,9 @@ public enum SearchVerificationService {
 
     // MARK: - Search capability check
 
-    public static func supportsSearch(providerId: String, baseURLHost: String) -> Bool {
-        LLMSearchControl.supportsSourceResults(providerId: providerId, baseURLHost: baseURLHost)
+    public static func supportsSearch(providerId: String, model: String, baseURLHost: String) -> Bool {
+        LLMSearchControl.supportsSourceResults(
+            providerId: providerId, model: model, baseURLHost: baseURLHost)
             || ArkResponsesSearchRequestBuilder.supportsWebSearch(
                 providerId: providerId,
                 baseURLHost: baseURLHost)

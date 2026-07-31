@@ -1,7 +1,8 @@
 import Foundation
 
 /// Pure URL and auth helpers for OpenAI-compatible text-generation routes. Most BYOK providers
-/// use `/chat/completions`; Qwen uses `/responses` while keeping the same compatible-mode base.
+/// use `/chat/completions`; Qwen uses `/responses` while keeping the same compatible-mode base,
+/// and DeepSeek `deepseek-v4-flash` uses `/responses` off the un-prefixed base.
 enum LLMWire {
     /// Mirror backend `chatCompletionsUrl`: trim trailing slashes; reuse if it already ends in
     /// /chat/completions; otherwise append.
@@ -22,6 +23,13 @@ enum LLMWire {
         if s.hasSuffix("/responses") { return URL(string: s) }
         if s.hasSuffix("/chat/completions") {
             s = String(s.dropLast("/chat/completions".count))
+        }
+        // DeepSeek 的 base URL 我们存的是 `https://api.deepseek.com/v1`，但 `/v1` 只是它
+        // Chat Completions 的 OpenAI 兼容前缀；Responses 文档给的 base_url 是不带 `/v1` 的
+        // `https://api.deepseek.com`。去掉再拼，命中官方文档过的那条路由。
+        // （Qwen 的 `/compatible-mode/v1` 不受影响 —— 只按 host 判断。）
+        if s.hasSuffix("/v1"), URL(string: s)?.host?.lowercased().contains("deepseek") == true {
+            s = String(s.dropLast("/v1".count))
         }
         return URL(string: s + "/responses")
     }
