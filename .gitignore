@@ -13,7 +13,7 @@ xcuserdata/
 macOS/Info.plist
 
 # Downloaded native libraries and models
-Vendor/
+/Vendor
 /models/
 *.onnx
 
