@@ -89,4 +89,26 @@ public struct VerificationAnchor: Codable, Sendable, Identifiable {
         self.preferredSources = preferredSources
         self.source = source
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, kind, status, query, preferredSources, source
+    }
+
+    /// Tolerant decode for `preferredSources` ONLY. The prompt pins the field to `[]`, but two
+    /// providers × 3 attempts each still filled it with free-text site names ("中国知网"), and one
+    /// out-of-enum value used to fail the whole `LegalSkillResponse` decode → fallback (live eval
+    /// 2026-07-31). Unknown entries are dropped (the query router falls back to
+    /// `defaultSource(for: kind)`); a missing array decodes as `[]`. Every other field stays
+    /// strict — `id`/`label`/`kind`/`status`/`query` reject malformed values exactly as before.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        label = try c.decode(String.self, forKey: .label)
+        kind = try c.decode(VerificationKind.self, forKey: .kind)
+        status = try c.decode(VerificationStatus.self, forKey: .status)
+        query = try c.decode(String.self, forKey: .query)
+        let rawSources = try c.decodeIfPresent([String].self, forKey: .preferredSources) ?? []
+        preferredSources = rawSources.compactMap { VerificationSourcePreference(rawValue: $0) }
+        source = try c.decodeIfPresent(VerifiedSource.self, forKey: .source)
+    }
 }

@@ -1,0 +1,254 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Responsay</title>
+        <item>
+            <title>1.7.2</title>
+            <pubDate>Thu, 30 Jul 2026 06:13:34 +0800</pubDate>
+            <sparkle:version>148</sparkle:version>
+            <sparkle:shortVersionString>1.7.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.7.2/Responsay.dmg" length="37343934" type="application/octet-stream" sparkle:edSignature="TvrZXITc4yE1cI/Y57lYRNbX1VpoBqHEOFNArQ5LIjEZcAd357rEy/C71eiAj74EcRPa5cwQ1H0Wc4gPHzlIAw=="/>
+        </item>
+        <item>
+            <title>1.7.1</title>
+            <pubDate>Wed, 29 Jul 2026 08:47:08 +0800</pubDate>
+            <sparkle:version>147</sparkle:version>
+            <sparkle:shortVersionString>1.7.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.7.1/Responsay.dmg" length="37314099" type="application/octet-stream" sparkle:edSignature="ZpOSyZOd/4qbYcFEW32G8mAJdRz2/M4wTPShXwihYJU9q3zYSLz6U+VuVN5Qzu9w0J1C4pCBPy8V7eImk/FdBw=="/>
+        </item>
+        <item>
+            <title>1.7.0</title>
+            <pubDate>Tue, 28 Jul 2026 08:27:29 +0800</pubDate>
+            <sparkle:version>146</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.7.0/Responsay.dmg" length="37426670" type="application/octet-stream" sparkle:edSignature="+tzyTfPbgDlmQ1qkYYOWS8ipHLxuXnwGnddhha5iuUprsl5xEAqrTPOGd61/Yo4vKtUXEZJFHyeEfTMdwkpgCw=="/>
+        </item>
+        <item>
+            <title>1.6.1</title>
+            <pubDate>Mon, 27 Jul 2026 10:35:12 +0800</pubDate>
+            <sparkle:version>145</sparkle:version>
+            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.6.1/Responsay.dmg" length="37333284" type="application/octet-stream" sparkle:edSignature="524oxIg10jU8XsHBPNDp47Bcm+bHlHv7kcPfqDaBF1HgTUeW+Tc4mIIFth8j9KT6l8aTtDD/1HtFOyw7JkTNBw=="/>
+        </item>
+        <item>
+            <title>1.6.0</title>
+            <pubDate>Mon, 27 Jul 2026 09:42:05 +0800</pubDate>
+            <sparkle:version>144</sparkle:version>
+            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.6.0/Responsay.dmg" length="37328020" type="application/octet-stream" sparkle:edSignature="9NbVXGwMaaejqIrjXXyxDu24OS9E/PNiFz7Og26mTlIeH3dfcFJmdTdKf0ZCMk0eiIGBwJao+oluQR/kW2BRDQ=="/>
+        </item>
+        <item>
+            <title>1.5.10</title>
+            <pubDate>Sun, 26 Jul 2026 06:46:11 +0800</pubDate>
+            <sparkle:version>143</sparkle:version>
+            <sparkle:shortVersionString>1.5.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.5.10/Responsay.dmg" length="37251065" type="application/octet-stream" sparkle:edSignature="hpMeqaPTc+gzBkfQlwKgmniKiIhsbFK4g9hgoB5QPLXl2bA9uoqxRr0jY5pQESW2YNhJH91TjjxFt37sYa3aCw=="/>
+        </item>
+        <item>
+            <title>1.5.9</title>
+            <pubDate>Sat, 25 Jul 2026 19:44:23 +0800</pubDate>
+            <sparkle:version>142</sparkle:version>
+            <sparkle:shortVersionString>1.5.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.9/Responsay-1.5.9.dmg" length="37265377" type="application/octet-stream" sparkle:edSignature="p0HVqX4ZXKaW3y3pDrcJRqbj2eGkHp+rtbKPqPSAWMQ9CIISHDfuw5MhWuY6UVFzcUpA4DubAzM+NbLfR8BZDg=="/>
+        </item>
+                <item>
+            <title>1.5.8</title>
+            <pubDate>Thu, 23 Jul 2026 07:31:40 +0800</pubDate>
+            <sparkle:version>141</sparkle:version>
+            <sparkle:shortVersionString>1.5.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.8/Responsay.dmg" length="35897835" type="application/octet-stream" sparkle:edSignature="yB3hvNTUm7zsLxSt8M0CvoTt7lY13rpABFZuRoG2RH4fwYW4LstS0RahB/+a93JNKWuMsA5+RNabLZPXA0WkCw=="/>
+        </item>
+        <item>
+            <title>1.5.7</title>
+            <pubDate>Thu, 23 Jul 2026 03:54:22 +0800</pubDate>
+            <sparkle:version>140</sparkle:version>
+            <sparkle:shortVersionString>1.5.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.7/Responsay.dmg" length="35983098" type="application/octet-stream" sparkle:edSignature="Z0shV4Da+NcDicvaYFwPPf+x8vu/ZFFUJOayYEejribK6aMhmJEE3oadgV9iUNqZJWUcc/DiGC6QWuS5KwxwAQ=="/>
+        </item>
+        <item>
+            <title>1.5.6</title>
+            <pubDate>Wed, 22 Jul 2026 17:28:19 +0800</pubDate>
+            <sparkle:version>139</sparkle:version>
+            <sparkle:shortVersionString>1.5.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.6/Responsay.dmg" length="35983217" type="application/octet-stream" sparkle:edSignature="V+VjNxX82bunLRWb6O8YpLsYkni1tmT5gyZkYGBSIAqUz9V7VFXbg1Vot0JimWL8DuuuQ/uLioBYCknu8mP0BQ=="/>
+        </item>
+        <item>
+            <title>1.5.5</title>
+            <pubDate>Wed, 22 Jul 2026 13:32:43 +0800</pubDate>
+            <sparkle:version>138</sparkle:version>
+            <sparkle:shortVersionString>1.5.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.5/Responsay.dmg" length="35937183" type="application/octet-stream" sparkle:edSignature="HwfVQ+y8e678VGfSfQhkoRoAv7FJcS0FNPLlAzld6L2ufrj2s6VI9kEzzTVrHV9J7B8w4z0H5BCGuu6rUZ1pAg=="/>
+        </item>
+        <item>
+            <title>1.5.4</title>
+            <pubDate>Wed, 22 Jul 2026 09:33:38 +0800</pubDate>
+            <sparkle:version>137</sparkle:version>
+            <sparkle:shortVersionString>1.5.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.4/Responsay.dmg" length="36040887" type="application/octet-stream" sparkle:edSignature="WMqeYqnnrr7A4wb5ho0qwj0DSf6Z8w5V96jiTLp/PtmDvuVYEzIJP2niEBuF/BDOdg+J25aRxmx+uoVVr73JDw=="/>
+        </item>
+        <item>
+            <title>1.5.2</title>
+            <pubDate>Sun, 20 Jul 2026 09:55:00 +0800</pubDate>
+            <sparkle:version>136</sparkle:version>
+            <sparkle:shortVersionString>1.5.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.2/Responsay.dmg" length="36016460" type="application/octet-stream" sparkle:edSignature="2bHdjh1PPkjmYygsb71bGhDMR6jMmQv3y5QZVaQnwL4KaB2CTGYmSvyJ1nGGlF2bVYLi8tCJdQpmUuZUnrtZDw=="/>
+        </item>
+        <item>
+            <title>1.5.1</title>
+            <pubDate>Sat, 11 Jul 2026 17:45:27 +0800</pubDate>
+            <sparkle:version>135</sparkle:version>
+            <sparkle:shortVersionString>1.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.1/Responsay.dmg" length="36008892" type="application/octet-stream" sparkle:edSignature="bA4gInPxRCOAJOluLx2/cTqcA8WBQFezgxKP2w+iBMbdCGzbwtqOTtjpiDdVyrRL5S35f3DDquHijB9IalyrCw=="/>
+        </item>
+        <item>
+            <title>1.5.0</title>
+            <pubDate>Sat, 11 Jul 2026 17:45:27 +0800</pubDate>
+            <sparkle:version>134</sparkle:version>
+            <sparkle:shortVersionString>1.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.5.0/Responsay.dmg" length="36009679" type="application/octet-stream" sparkle:edSignature="CcOicFJpavgxBks1AB4u/5G0u6Vso55kLd3TvZ1IIsqfcv9Im3+grzhHx3IyD639ctBGGPPJM+5T8Om5HMZtDA=="/>
+        </item>
+        <item>
+            <title>1.4.24</title>
+            <pubDate>Tue, 14 Jul 2026 04:44:56 +0800</pubDate>
+            <sparkle:version>132</sparkle:version>
+            <sparkle:shortVersionString>1.4.24</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.24/Responsay.dmg" length="36015992" type="application/octet-stream" sparkle:edSignature="Qrs98pYzbLGY/MIcaIe8AwqeEXbU1bFMne2TQvPPzHxqJphJ/oOyEXEgZvBD9nGQhq7WdDdXRCBVU/A28jCxAA=="/>
+        </item>
+        <item>
+            <title>1.4.23</title>
+            <pubDate>Tue, 14 Jul 2026 02:21:02 +0800</pubDate>
+            <sparkle:version>131</sparkle:version>
+            <sparkle:shortVersionString>1.4.23</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.23/Responsay.dmg" length="36015901" type="application/octet-stream" sparkle:edSignature="Zto9UeufeBOFslvdJwhMk08XaruCNUNUaVmqWUasZweQkcDHv6/IPApBYxMSxBnfRvGzxdADxkZMpa6QSi3/BQ=="/>
+        </item>
+        <item>
+            <title>1.4.22</title>
+            <pubDate>Tue, 14 Jul 2026 01:49:44 +0800</pubDate>
+            <sparkle:version>130</sparkle:version>
+            <sparkle:shortVersionString>1.4.22</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.22/Responsay.dmg" length="36014298" type="application/octet-stream" sparkle:edSignature="O0dcnJEoYjaK26q7kanONAwG9AOvTxfjDSsmEI/w7fwMQE2E+fUUC+e/iX+oBB2GOf3fy1OrcA5yAEC0c4GMCA=="/>
+        </item>
+        <item>
+            <title>1.4.21</title>
+            <pubDate>Tue, 14 Jul 2026 01:23:58 +0800</pubDate>
+            <sparkle:version>129</sparkle:version>
+            <sparkle:shortVersionString>1.4.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.21/Responsay.dmg" length="36021262" type="application/octet-stream" sparkle:edSignature="U4ZNs8bUyJ6aqM8HS2xnJq6iXcFgNAlBZjcyajk8xXBDWSYOjl8WWAVxADY+ctjipf6IvNhvZJEbhiW30RwRDA=="/>
+        </item>
+        <item>
+            <title>1.4.20</title>
+            <pubDate>Tue, 14 Jul 2026 01:07:54 +0800</pubDate>
+            <sparkle:version>128</sparkle:version>
+            <sparkle:shortVersionString>1.4.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.20/Responsay.dmg" length="36022873" type="application/octet-stream" sparkle:edSignature="8veJRr4pgDp/jAV2n/Ga+zQY4LWYUSuJ5eXGqixJW/HlfMQ7b5KaDe8obhMoL4GNYoTiFy07AbhMRSTwT+oRDg=="/>
+        </item>
+        <item>
+            <title>1.4.19</title>
+            <pubDate>Tue, 14 Jul 2026 00:48:05 +0800</pubDate>
+            <sparkle:version>127</sparkle:version>
+            <sparkle:shortVersionString>1.4.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.19/Responsay.dmg" length="36023285" type="application/octet-stream" sparkle:edSignature="zAn1QGTIQ9y2KI8q7z3Zx8jOnEPc+511S4Iv34P5lszXTfHSQdAuwr1bAVQwa8vZ0M7ydsOi3ZdRNWqULk4VAw=="/>
+        </item>
+        <item>
+            <title>1.4.18</title>
+            <pubDate>Mon, 13 Jul 2026 22:45:23 +0800</pubDate>
+            <sparkle:version>126</sparkle:version>
+            <sparkle:shortVersionString>1.4.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.18/Responsay.dmg" length="36019030" type="application/octet-stream" sparkle:edSignature="pqq7cJdDa465s9E0qzIyKTQUL9MKPJGKf5mVMNu/hzdqXuPYcAuSAowYNUpGE8ZNDKEyoAA77hWh48F8e4FgAg=="/>
+        </item>
+        <item>
+            <title>1.4.17</title>
+            <pubDate>Mon, 13 Jul 2026 06:37:41 +0800</pubDate>
+            <sparkle:version>125</sparkle:version>
+            <sparkle:shortVersionString>1.4.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.17/Responsay.dmg" length="36018452" type="application/octet-stream" sparkle:edSignature="SUw9Oh0LVPP1veqmAof9nAPva0CGOGIMd8WOOdOmD7HDods3WT+JP8FFwXOCJE//qADtPTZ40cmLqt6vrwKaCQ=="/>
+        </item>
+        <item>
+            <title>1.4.16</title>
+            <pubDate>Mon, 13 Jul 2026 06:11:49 +0800</pubDate>
+            <sparkle:version>124</sparkle:version>
+            <sparkle:shortVersionString>1.4.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.16/Responsay.dmg" length="36014577" type="application/octet-stream" sparkle:edSignature="sCDzbPesL49jI6zJvsxt183Z1ZNkZR6njFxH7Obm0Aew8Ih0JGSI/uqdaR80gAR6AEEM+sOSJtmFEupYpgKTAg=="/>
+        </item>
+        <item>
+            <title>1.4.15</title>
+            <pubDate>Mon, 13 Jul 2026 02:35:27 +0800</pubDate>
+            <sparkle:version>123</sparkle:version>
+            <sparkle:shortVersionString>1.4.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.15/Responsay.dmg" length="36016253" type="application/octet-stream" sparkle:edSignature="wq8WP3VOMX8fZx2M6tyPpCexR+/keIDNBkqZdPm5PTA8ERtNL+0tvtplcxWk7O+GkY3PqIiqC93mGodUvyZDDA=="/>
+        </item>
+        <item>
+            <title>1.4.14</title>
+            <pubDate>Sun, 12 Jul 2026 20:44:25 +0800</pubDate>
+            <sparkle:version>122</sparkle:version>
+            <sparkle:shortVersionString>1.4.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.14/Responsay.dmg" length="36007387" type="application/octet-stream" sparkle:edSignature="M/x5ZOalhMf/Np1sTjZIGh64SrLBjSBUaiXf7jEPc0Ql1HSe2XqpBcA6NqnrV+ddx6AlJH5F+PgLiQcS8kyLDw=="/>
+        </item>
+        <item>
+            <title>1.4.12</title>
+            <pubDate>Fri, 10 Jul 2026 20:22:02 +0800</pubDate>
+            <sparkle:version>120</sparkle:version>
+            <sparkle:shortVersionString>1.4.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.12/Responsay.dmg" length="35211181" type="application/octet-stream" sparkle:edSignature="vlRb+oHaKDng2v5RLgOaet7XT95jLFyQTVahYX6ClfMLn7aJkQFc/AiWJutPzbwio8+2jSFJDmM9xIYX+zdgDA=="/>
+        </item>
+        <item>
+            <title>1.4.11</title>
+            <pubDate>Mon, 06 Jul 2026 23:33:16 +0800</pubDate>
+            <sparkle:version>119</sparkle:version>
+            <sparkle:shortVersionString>1.4.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.11/Responsay.dmg" length="35087230" type="application/octet-stream" sparkle:edSignature="po+namddduaPHzlzwmdrxGROmjy1yNf2kHHY/kW9PBFD7nhNpeBBRk9n089CiM1G9++xuYXDosDaOPpVMUboDQ=="/>
+        </item>
+        <item>
+            <title>1.4.10</title>
+            <pubDate>Sun, 05 Jul 2026 18:05:20 +0800</pubDate>
+            <sparkle:version>118</sparkle:version>
+            <sparkle:shortVersionString>1.4.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.10/Responsay.dmg" length="35062168" type="application/octet-stream" sparkle:edSignature="BtDNbSlYcMXahLJpC2H5RXVcM2fjPY8Pu6ueRfFR7pc2Py4t5JIbL7QkzU4v9YtWh7kBA6gS6UiUHH/rIZmxAQ=="/>
+        </item>
+        <item>
+            <title>1.4.8</title>
+            <pubDate>Sun, 05 Jul 2026 18:05:20 +0800</pubDate>
+            <sparkle:version>116</sparkle:version>
+            <sparkle:shortVersionString>1.4.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.8/Responsay.dmg" length="35081813" type="application/octet-stream" sparkle:edSignature="pO2g4yh6uXLskmjv41NQBnITg8tugosB/upP/qDdZ1+b8u9UfuL16uT5TUKiHtFdnfdOrwkNmV6UEMtBKK2DAg=="/>
+        </item>
+        <item>
+            <title>1.4.7</title>
+            <pubDate>Sun, 05 Jul 2026 18:05:20 +0800</pubDate>
+            <sparkle:version>115</sparkle:version>
+            <sparkle:shortVersionString>1.4.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-releases/releases/download/v1.4.7/Responsay.dmg" length="34999642" type="application/octet-stream" sparkle:edSignature="CKwSBEmzgCwCElrFBwJO5boqA9MwkZr3mYI8S70haxxPrMxF7JuYygGjPhsh1ofZ7z2fkFS6FAa951xx+174DA=="/>
+        </item>
+    </channel>
+</rss>

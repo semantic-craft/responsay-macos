@@ -2,9 +2,10 @@ import Foundation
 
 /// A resolved BYOK LLM target for the App-direct path: which provider, where, which model,
 /// the key, and whether 思考(thinking) is on. The app builds this from
-/// `ProviderConfigDispatcher.resolve(.llm)` + the `byok.llm.thinking` toggle and hands it to
-/// `DirectTextRewriteAPI` (and its 241–244 siblings). Pure data, so the whole LLM path
-/// unit-tests without the Keychain or UserDefaults.
+/// `ProviderConfigDispatcher.resolve(.llm)` and hands it to `DirectTextRewriteAPI` (and its
+/// 241–244 siblings). Pure data, so the whole LLM path unit-tests without the Keychain or
+/// UserDefaults. `thinkingEnabled` is always `false` in the app — there is no user toggle
+/// (`LLMEndpointResolver`); it stays a field only so the wire layer knows which state to emit.
 public struct LLMEndpoint: Sendable, Equatable {
     public let providerId: String
     public let baseURL: String

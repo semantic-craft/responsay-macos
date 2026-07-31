@@ -57,6 +57,18 @@ enum IntentPlanPromptBuilder {
          "entities": []}
         (No "structure": ordinary prose omits it.)
 
+        Chained corrections — when the user corrects the same thing twice, e.g. \
+        「周三交，不对，周四交，还是不对，周五交。」 (five units): the plan has TWO supersessions \
+        forming a chain — {winner: 周四交 unit, loser: 周三交 unit, cue: first 不对} and \
+        {winner: 周五交 unit, loser: 周四交 unit, cue: 还是不对}. Each loser and each cue \
+        appears in exactly ONE supersession; NEVER point both supersessions at the first \
+        unit as loser — the second correction replaces the PREVIOUS replacement, not the \
+        original. COUNT CHECK before returning a "render" plan: the number of supersessions \
+        MUST equal the number of correction-role units — a second correction cue is NEVER \
+        left dangling after the first is resolved; resolve it (its loser is the previous \
+        winner) or, if you truly cannot tell what it corrects, return "needsReview". A \
+        render plan with 2 correction units and only 1 supersession is VOID.
+
         Hard rules — a plan that breaks any of them is discarded unused:
         1. "units" must contain EVERY source unit listed below exactly once, in the original \
         order, with its "source" reference copied byte-identically (sourceID, range, exactQuote). \

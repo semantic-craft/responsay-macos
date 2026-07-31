@@ -89,7 +89,7 @@ public struct LegalCaptureCoordinator {
             modelPreference: profile?.modelPreference ?? .askEachTime)
     }
 
-    /// Build a runnable card for one named skill (划词菜单 来源辅助检索 / 实务辅助 direct run).
+    /// Build a runnable card for one named skill (划词菜单 来源辅助检索 / 划词生成 direct run).
     public func candidateCard(forSkillId id: String) -> LegalCandidateCard? {
         runtime?.candidateCard(forSkillId: id)
     }

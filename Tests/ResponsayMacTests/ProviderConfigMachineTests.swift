@@ -38,7 +38,7 @@ struct ProviderConfigMachineTests {
         #expect(m.providerId == "qwen")
         #expect(m.region == .china)
         #expect(m.plan == .payg)
-        #expect(m.model == "qwen3.6-flash")
+        #expect(m.model == "qwen3.7-flash")
         #expect(m.baseURL == "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -61,6 +61,18 @@ struct ProviderConfigMachineTests {
         #expect(m.providerId == "openai")
         #expect(m.model == "gpt-custom")
         #expect(m.baseURL == "https://api.openai.com/v1")
+    }
+
+    @Test func loadReadsQwenWorkspaceIDAndDerivesDedicatedResponsesEndpoint() {
+        let d = freshDefaults("load-qwen-workspace")
+        d.set("qwen", forKey: "byok.llm.provider")
+        d.set("ws-abc123", forKey: "byok.llm.qwen.workspaceId")
+        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+
+        m.load()
+
+        #expect(m.workspaceID == "ws-abc123")
+        #expect(m.baseURL == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
     }
 
     @Test func loadIsIdempotent() {
@@ -136,7 +148,7 @@ struct ProviderConfigMachineTests {
 
     // MARK: - endpointBase(): region × plan derivation
 
-    @Test func endpointBaseFollowsRegionAndPlanForQwenLLM() {
+    @Test func endpointBaseFollowsRegionForQwenLLM() {
         let m = machine(.llm, suffix: "endpoint-base")
         m.load()  // qwen · china · payg
 
@@ -144,35 +156,44 @@ struct ProviderConfigMachineTests {
         m.planRaw = BillingPlan.payg.rawValue
         #expect(m.endpointBase() == "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
-        m.planRaw = BillingPlan.package.rawValue
-        #expect(m.endpointBase() == "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
-
         m.regionRaw = ProviderRegion.singapore.rawValue
-        m.planRaw = BillingPlan.payg.rawValue
         #expect(m.endpointBase() == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+
+        m.regionRaw = ProviderRegion.unitedStates.rawValue
+        #expect(m.endpointBase() == "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
     }
 
-    // MARK: - autoSwitchModel(): retarget only when uncustomized; no-op on shared default
+    @Test func qwenWorkspaceEndpointFollowsRegionAndRejectsUnsafeHostInput() {
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: " ws-abc123 ", region: .china)
+            == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .singapore)
+            == "https://ws-abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .germany)
+            == "https://ws-abc123.eu-central-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .japan)
+            == "https://ws-abc123.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1")
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .unitedStates) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123", region: .global) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "ws-abc123.evil.example", region: .china) == nil)
+        #expect(QwenWorkspaceEndpoint.baseURL(workspaceID: "https://evil.example", region: .china) == nil)
+    }
 
-    @Test func autoSwitchModelNoOpWhenPlansShareDefault() {
-        // Qwen LLM: 按量付费 and Token Plan both default to qwen3.6-flash → switching plans must
-        // NOT change a model the user set to that shared default.
-        let m = machine(.llm, suffix: "autoswitch-shared")
+    @Test func qwenWorkspaceIDChangeDerivesEndpointOrFallsBackToGenericHost() {
+        let m = machine(.llm, suffix: "workspace-change")
         m.load()
-        m.model = "qwen3.6-flash"
-        m.autoSwitchModel(from: BillingPlan.payg.rawValue, to: BillingPlan.package.rawValue)
-        #expect(m.model == "qwen3.6-flash")
+
+        m.workspaceID = "ws-abc123"
+        m.refreshBaseURLForSelection()
+        #expect(m.usesQwenWorkspaceEndpoint)
+        #expect(m.baseURL == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+
+        m.workspaceID = ""
+        m.refreshBaseURLForSelection()
+        #expect(!m.usesQwenWorkspaceEndpoint)
+        #expect(m.baseURL == "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
-    @Test func autoSwitchModelLeavesCustomizedModelAloneOnSharedDefault() {
-        // A model the user hand-edited away from the plan default is preserved: it neither equals
-        // the old default nor is empty, so the retarget guard skips it.
-        let m = machine(.llm, suffix: "autoswitch-custom")
-        m.load()
-        m.model = "qwen3.7-plus"
-        m.autoSwitchModel(from: BillingPlan.payg.rawValue, to: BillingPlan.package.rawValue)
-        #expect(m.model == "qwen3.7-plus")
-    }
+    // MARK: - autoSwitchModel(): retarget only when uncustomized
 
     @Test func autoSwitchModelNoOpWhenPlanUnchanged() {
         let m = machine(.llm, suffix: "autoswitch-same-plan")
@@ -197,11 +218,15 @@ struct ProviderConfigMachineTests {
         let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
         m.load()  // qwen
         m.model = "qwen3.7-plus"
+        m.workspaceID = "ws-abc123"
+        m.refreshBaseURLForSelection()
         m.persist()
         #expect(d.string(forKey: "byok.llm.qwen.model") == "qwen3.7-plus")
         #expect(d.string(forKey: "byok.llm.qwen.region") == ProviderRegion.china.rawValue)
         #expect(d.string(forKey: "byok.llm.qwen.plan") == BillingPlan.payg.rawValue)
-        #expect(d.string(forKey: "byok.llm.qwen.baseURL") == "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        #expect(d.string(forKey: "byok.llm.qwen.workspaceId") == "ws-abc123")
+        #expect(d.string(forKey: "byok.llm.qwen.baseURL")
+            == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
     }
 
     @Test func persistMirrorsToActiveKeyWhenProviderMatchesStored() {

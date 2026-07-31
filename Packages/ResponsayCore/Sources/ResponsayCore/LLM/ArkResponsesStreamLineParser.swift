@@ -1,16 +1,16 @@
 import Foundation
 
-/// Parses one line of a Volcengine Ark **Responses API** SSE stream into a `TextStreamEvent`.
+/// Parses one line of an OpenAI-compatible **Responses API** SSE stream into a `TextStreamEvent`.
 ///
-/// Doubao's web-search plugin lives on `/responses`, not `/chat/completions`, so its streaming
-/// frames use the OpenAI *Responses* event shape (not the chat `choices[].delta` shape):
+/// Qwen and Doubao web-search streams use the OpenAI *Responses* event shape (not the chat
+/// `choices[].delta` shape):
 ///   `data: {"type":"response.output_text.delta","delta":"…"}`  → `.delta`
 ///   `data: {"type":"response.completed", …}`                   → `.done`
 ///   `data: {"type":"response.failed","response":{"error":{"message":"…"}}}` → `.failed`
 ///   `data: [DONE]`                                             → `.done`
 ///
-/// Ark frames each event as an `event: <type>` line followed by a `data: <json>` line; the JSON
-/// itself carries `type`, so we only read `data:` lines. Reasoning/output-item/content-part
+/// Providers may frame each event as an `event: <type>` line followed by a `data: <json>` line;
+/// the JSON itself carries `type`, so we only read `data:` lines. Reasoning/output-item/content-part
 /// scaffolding events are ignored (return nil) — only text deltas and the terminal matter. Pure.
 public struct ArkResponsesStreamLineParser: TextStreamEventParser {
     public init() {}

@@ -1,6 +1,17 @@
 import Foundation
 import ResponsayCore
 
+extension Notification.Name {
+    /// Content-free invalidation: consumers re-read the effective snapshot off the main thread.
+    static let modelConfigurationDidChange = Notification.Name("ModelConfigurationDidChange")
+}
+
+enum ModelConfigurationEvents {
+    static func post() {
+        NotificationCenter.default.post(name: .modelConfigurationDidChange, object: nil)
+    }
+}
+
 /// Display snapshot of one model lane (ASR / LLM / TTS / OCR): the current selection,
 /// its resolved model id, whether it's local, its readiness, and the settings section
 /// that configures it. The single source for the 设置·模型 panel (378) and the overview
@@ -15,9 +26,12 @@ struct ModelLaneInfo: Identifiable, Equatable, Sendable {
     let systemImage: String
     let currentOptionId: String
     let currentTitle: String
+    let providerId: String
+    let plan: BillingPlan?
     let modelId: String
     let isLocal: Bool
     let readiness: ModelLaneReadiness
+    let readinessReason: ModelLaneReadinessReason
     let settingsSection: SettingsSection
 
     var id: String { lane.rawValue }
@@ -39,6 +53,14 @@ struct ModelLaneDisplay {
     }
 
     func lanes() -> [ModelLaneInfo] { [asr(), llm(), tts(), ocr()] }
+
+    static func providerStatusSummary(from lanes: [ModelLaneInfo]) -> ProviderStatusSummary {
+        func status(_ lane: ModelLaneInfo.Lane) -> ProviderStatus {
+            guard let snapshot = lanes.first(where: { $0.lane == lane }) else { return .unknown }
+            return .from(isConfigured: snapshot.readiness.isReady, isHealthy: true)
+        }
+        return ProviderStatusSummary(asr: status(.asr), llm: status(.llm), tts: status(.tts))
+    }
 
     /// The current selection id for a lane, read cheaply from `UserDefaults` only — no Keychain,
     /// no readiness. Single definition of "which option is selected per lane": every lane builder
@@ -63,32 +85,34 @@ struct ModelLaneDisplay {
         // (showing 模型 ID "apple" / 本机 for a selected cloud MiMo engine).
         let (base, _) = ModelRouteOptionID.parse(id)
         let engine = ASREngine.fromStoredValue(base) ?? .apple
+        let (_, plan) = ModelRouteOptionID.parse(id)
+        let state = readiness.asrState(optionId: id)
+        let config = engine.associatedProviderId.map {
+            readiness.resolvedConfig(.asr, providerId: $0, plan: plan)
+        }
         return ModelLaneInfo(
             lane: .asr,
             title: "语音识别",
             systemImage: "waveform",
             currentOptionId: id,
             currentTitle: engine.title,
-            modelId: asrModelId(engine),
+            providerId: config?.providerId ?? engine.rawValue,
+            plan: meaningfulPlan(config),
+            modelId: config?.model ?? asrModelId(engine),
             isLocal: engine.associatedProviderId == nil,
-            readiness: readiness.asr(optionId: id),
+            readiness: state.readiness,
+            readinessReason: state.reason,
             settingsSection: .asr)
     }
 
     private func asrModelId(_ engine: ASREngine) -> String {
-        guard let providerId = engine.associatedProviderId else {
-            switch engine {
-            case .sensevoiceLocal: return LocalModelSpec.senseVoiceSmall.id
-            case .qwen3LocalASR: return LocalModelSpec.qwen3ASR.id
-            case .fireRedASR2AEDLocal: return LocalModelSpec.fireRedASR2AED.id
-            case .funAsrNanoLocal: return LocalModelSpec.funAsrNano.id
-            default: return engine.rawValue
-            }
+        switch engine {
+        case .sensevoiceLocal: return LocalModelSpec.senseVoiceSmall.id
+        case .qwen3LocalASR: return LocalModelSpec.qwen3ASR.id
+        case .fireRedASR2AEDLocal: return LocalModelSpec.fireRedASR2AED.id
+        case .funAsrNanoLocal: return LocalModelSpec.funAsrNano.id
+        default: return engine.rawValue
         }
-        return configuredModel(
-            capability: .asr, providerId: providerId,
-            storedProvider: defaults.string(forKey: "byok.asr.provider") ?? "",
-            storedModel: defaults.string(forKey: "byok.asr.model") ?? "")
     }
 
     // MARK: - LLM
@@ -99,17 +123,27 @@ struct ModelLaneDisplay {
         // mirroring ModelLaneReadinessResolver.llm — otherwise the "#plan" suffix fails the
         // preset lookup and the model id falls back to the literal "默认模型".
         let (base, _) = ModelRouteOptionID.parse(id)
-        let preset = ProviderCatalog.presets(for: .llm).first { $0.id == base }
+        let (_, plan) = ModelRouteOptionID.parse(id)
+        let config = readiness.resolvedConfig(.llm, providerId: base, plan: plan)
+        let preset = ProviderCatalog.presets(for: .llm).first { $0.id == config.providerId }
+        let state = readiness.llmState(optionId: id)
+        // 技能平台模型显式分流时快照要能区分两个选择；跟随时保持单模型显示不变。
+        let skillModel = SkillPlatformModelSettings.explicitModel(
+            providerId: config.providerId, defaults: defaults)
+        let modelId = (skillModel == nil || skillModel == config.model)
+            ? config.model
+            : "\(config.model) · 技能 \(skillModel!)"
         return ModelLaneInfo(
             lane: .llm, title: "文本改写", systemImage: "sparkles",
             currentOptionId: id,
             currentTitle: preset?.displayName(for: .llm) ?? "自定义 OpenAI 兼容",
-            modelId: configuredModel(
-                capability: .llm, providerId: base,
-                storedProvider: defaults.string(forKey: "byok.llm.provider") ?? "",
-                storedModel: defaults.string(forKey: "byok.llm.model") ?? ""),
+            providerId: config.providerId,
+            plan: meaningfulPlan(config),
+            modelId: modelId,
             isLocal: false,
-            readiness: readiness.llm(optionId: id), settingsSection: .llm)
+            readiness: state.readiness,
+            readinessReason: state.reason,
+            settingsSection: .llm)
     }
 
     // MARK: - TTS
@@ -117,20 +151,18 @@ struct ModelLaneDisplay {
     private func tts() -> ModelLaneInfo {
         let id = Self.currentOptionId(for: .tts, defaults: defaults)
         let engine = TTSEngine(rawValue: id) ?? .sherpaKokoroLocal
-        let modelId: String
-        if let providerId = engine.providerID {
-            modelId = configuredModel(
-                capability: .tts, providerId: providerId,
-                storedProvider: defaults.string(forKey: "byok.tts.provider") ?? "",
-                storedModel: defaults.string(forKey: "byok.tts.model") ?? "")
-        } else {
-            modelId = LocalModelSpec.kokoroMultiLangV1_1.id
-        }
+        let config = engine.providerID.map { readiness.resolvedConfig(.tts, providerId: $0) }
+        let state = readiness.ttsState(optionId: id)
         return ModelLaneInfo(
             lane: .tts, title: "文本朗读", systemImage: "speaker.wave.2",
             currentOptionId: id, currentTitle: engine.title,
-            modelId: modelId, isLocal: engine.isLocal,
-            readiness: readiness.tts(optionId: id), settingsSection: .tts)
+            providerId: config?.providerId ?? engine.rawValue,
+            plan: meaningfulPlan(config),
+            modelId: config?.model ?? LocalModelSpec.kokoroMultiLangV1_1.id,
+            isLocal: engine.isLocal,
+            readiness: state.readiness,
+            readinessReason: state.reason,
+            settingsSection: .tts)
     }
 
     // MARK: - OCR
@@ -138,33 +170,25 @@ struct ModelLaneDisplay {
     private func ocr() -> ModelLaneInfo {
         let id = Self.currentOptionId(for: .ocr, defaults: defaults)
         let engine = OCREngine(rawValue: id) ?? .appleVision
+        let state = readiness.ocrState(optionId: id)
         return ModelLaneInfo(
             lane: .ocr, title: "图片识别", systemImage: "text.viewfinder",
             currentOptionId: id, currentTitle: engine.title,
+            providerId: engine.rawValue,
+            plan: nil,
             modelId: engine.modelLabel, isLocal: engine.isLocal,
-            readiness: readiness.ocr(optionId: id), settingsSection: .ocr)
+            readiness: state.readiness,
+            readinessReason: state.reason,
+            settingsSection: .ocr)
     }
 
     // MARK: - Shared
 
-    /// The configured model id for a cloud lane: the user's stored model if it targets the
-    /// selected provider, else that provider's catalog default. Mirrors the old
-    /// `ModelRouteSelectionSection.configuredModel`.
-    private func configuredModel(
-        capability: ModelCapability, providerId: String,
-        storedProvider: String, storedModel: String
-    ) -> String {
-        if CapabilitySelectionSync.providerMatches(storedProvider, providerId, capability: capability),
-           let model = nonEmpty(storedModel) {
-            return model
-        }
-        return ProviderCatalog.presets(for: capability)
-            .first { CapabilitySelectionSync.providerMatches($0.id, providerId, capability: capability) }?
-            .defaultModels[capability] ?? "默认模型"
-    }
-
-    private func nonEmpty(_ value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    private func meaningfulPlan(_ config: ResolvedProviderConfig?) -> BillingPlan? {
+        guard let config,
+              ProviderCatalog.providerHasMultipleBillingPlans(
+                config.providerId, capability: config.capability)
+        else { return nil }
+        return config.plan
     }
 }

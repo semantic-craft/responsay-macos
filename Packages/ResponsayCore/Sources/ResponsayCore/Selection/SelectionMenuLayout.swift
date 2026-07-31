@@ -1,6 +1,6 @@
 import Foundation
 
-/// A concrete item the 划词菜单 renders — a built-in action or an enabled practice skill.
+/// A concrete item the 划词菜单 renders — a built-in action or an enabled 划词生成 技能.
 /// Uniform `[icon][label]` (the grill outcome): third-party skills have no bespoke icon, so they
 /// fall back to a generic glyph and rely on their title.
 public enum SelectionMenuItem: Equatable, Sendable, Identifiable {
@@ -54,7 +54,7 @@ public struct SelectionMenuLayout: Codable, Equatable, Sendable {
     public static let configurableActions: [SelectionAction] =
         [.translate, .readAloud, .verify, .assistedSearch, .normalizeTypography, .ask, .addToDictionary]
 
-    /// Out-of-box order: 翻译/朗读 are the quick icon-row pair, then legal/research; practice skills
+    /// Out-of-box order: 翻译/朗读 are the quick icon-row pair, then legal/research; 划词生成 技能
     /// are dynamic and join on enable.
     public static let `default` = SelectionMenuLayout(
         entries: configurableActions.map { Entry(id: $0.rawValue) })
@@ -62,7 +62,7 @@ public struct SelectionMenuLayout: Codable, Equatable, Sendable {
     public func contains(_ id: String) -> Bool { entries.contains { $0.id == id } }
 
     /// Merge the items available **right now** (actions the resolver allows for this selection +
-    /// the user's enabled practice skills) with this layout. Returns what the menu renders:
+    /// the user's enabled 划词生成 技能) with this layout. Returns what the menu renders:
     /// visible layout entries in layout order that are currently available, then any available
     /// item not yet in the layout (a freshly-enabled skill / new action) appended visible.
     /// An entry that isn't currently available (action irrelevant to this selection, skill

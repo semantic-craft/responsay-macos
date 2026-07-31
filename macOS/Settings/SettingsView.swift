@@ -11,8 +11,6 @@ struct SettingsView: View {
     @AppStorage(ASREngine.defaultsKey) private var asrEngineRaw = ASREngine.apple.rawValue
     @AppStorage(OCREngine.defaultsKey) private var ocrEngineRaw = OCREngine.appleVision.rawValue
     @AppStorage(RealtimeQwenSettings.regionKey) private var realtimeRegionRaw = QwenRealtimeRegion.china.rawValue
-    @AppStorage(TokenPlanTextRouteSettings.plusModelKey) private var qwenPlusModel = TokenPlanTextRouteSettings.defaultPlusModel
-    @AppStorage(TokenPlanTextRouteSettings.flashModelKey) private var qwenFlashModel = TokenPlanTextRouteSettings.defaultFlashModel
     @AppStorage("startSound") private var startSound = true
     @AppStorage(InteractionSoundStyle.key) private var interactionSoundStyle = InteractionSoundStyle.pianoUpright.rawValue
     @AppStorage("launchAtLogin") private var launchAtLogin = false

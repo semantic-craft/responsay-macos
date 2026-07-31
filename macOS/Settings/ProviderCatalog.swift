@@ -33,11 +33,14 @@ enum ModelCapability: String, CaseIterable, Identifiable, Sendable {
 
 /// 区域 — changes the host. Only surfaced when a provider has more than one.
 enum ProviderRegion: String, CaseIterable, Sendable {
-    case china, singapore, europe, intl, global
+    case china, singapore, unitedStates, germany, japan, europe, intl, global
     var label: String {
         switch self {
         case .china: "国内"
         case .singapore: "新加坡"
+        case .unitedStates: "美国（弗吉尼亚）"
+        case .germany: "德国（法兰克福）"
+        case .japan: "日本（东京）"
         case .europe: "欧洲"
         case .intl: "海外"
         case .global: "全球"
@@ -46,7 +49,7 @@ enum ProviderRegion: String, CaseIterable, Sendable {
 }
 
 /// 计费 — for providers where the endpoint *and* key format differ by plan
-/// (verified: Qwen Coding Plan). Only surfaced when a provider has both.
+/// (verified: MiMo Token Plan). Only surfaced when a provider has both.
 enum BillingPlan: String, CaseIterable, Sendable {
     case payg, package
     var label: String {
@@ -60,6 +63,39 @@ enum BillingPlan: String, CaseIterable, Sendable {
 enum CredentialShape: Sendable {
     case apiKey
     case appIdAndToken
+}
+
+/// Builds the dedicated OpenAI-compatible Responses base URL for one Qwen business workspace.
+/// Workspace IDs become a DNS label, so accept only the documented `ws-…` shape instead of
+/// interpolating arbitrary user input into a host.
+enum QwenWorkspaceEndpoint {
+    static func normalizedWorkspaceID(_ rawValue: String) -> String? {
+        let candidate = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard candidate.hasPrefix("ws-"), candidate.count > 3, candidate.count <= 63 else { return nil }
+        let suffix = candidate.dropFirst(3)
+        guard suffix.unicodeScalars.allSatisfy({ scalar in
+            (48 ... 57).contains(scalar.value) || (97 ... 122).contains(scalar.value)
+        }) else { return nil }
+        return candidate
+    }
+
+    static func baseURL(workspaceID: String, region: ProviderRegion) -> String? {
+        guard let workspaceID = normalizedWorkspaceID(workspaceID) else { return nil }
+        let regionHost: String
+        switch region {
+        case .china:
+            regionHost = "cn-beijing"
+        case .singapore:
+            regionHost = "ap-southeast-1"
+        case .germany:
+            regionHost = "eu-central-1"
+        case .japan:
+            regionHost = "ap-northeast-1"
+        case .unitedStates, .europe, .intl, .global:
+            return nil
+        }
+        return "https://\(workspaceID).\(regionHost).maas.aliyuncs.com/compatible-mode/v1"
+    }
 }
 
 // MARK: - Preset model
@@ -92,10 +128,6 @@ struct ProviderPreset: Identifiable, Sendable {
     let endpoints: [EndpointVariant]
     let capabilityEndpoints: [ModelCapability: [EndpointVariant]]
     let defaultModels: [ModelCapability: String]
-    /// Per-plan default model, for providers whose billing plans default to different
-    /// models (Qwen: 按量付费 → qwen-flash, Token Plan → qwen3.6-flash). Falls back to
-    /// `defaultModels[capability]` when a plan has no specific override.
-    let planModelDefaults: [ModelCapability: [BillingPlan: String]]
     let keyLabel: String
     /// Shown next to the key field to prevent mis-billing (e.g. `sk-sp-…`).
     let keyFormatHint: String?
@@ -120,7 +152,6 @@ struct ProviderPreset: Identifiable, Sendable {
         endpoints: [EndpointVariant],
         capabilityEndpoints: [ModelCapability: [EndpointVariant]] = [:],
         defaultModels: [ModelCapability: String],
-        planModelDefaults: [ModelCapability: [BillingPlan: String]] = [:],
         keyLabel: String,
         keyFormatHint: String?,
         capabilityKeyFormatHints: [ModelCapability: String] = [:],
@@ -137,7 +168,6 @@ struct ProviderPreset: Identifiable, Sendable {
         self.endpoints = endpoints
         self.capabilityEndpoints = capabilityEndpoints
         self.defaultModels = defaultModels
-        self.planModelDefaults = planModelDefaults
         self.keyLabel = keyLabel
         self.keyFormatHint = keyFormatHint
         self.capabilityKeyFormatHints = capabilityKeyFormatHints
@@ -223,10 +253,8 @@ struct ProviderPreset: Identifiable, Sendable {
     func keyFormatHint(for capability: ModelCapability) -> String? {
         capabilityKeyFormatHints[capability] ?? keyFormatHint
     }
-    /// The default model for a capability under a specific billing plan, falling back to
-    /// the capability default when the plan has no specific override (Qwen Token Plan).
-    func defaultModel(for capability: ModelCapability, plan: BillingPlan) -> String? {
-        planModelDefaults[capability]?[plan] ?? defaultModels[capability]
+    func defaultModel(for capability: ModelCapability, plan _: BillingPlan) -> String? {
+        defaultModels[capability]
     }
     func presets(for capability: ModelCapability) -> Bool { capabilities.contains(capability) }
 }

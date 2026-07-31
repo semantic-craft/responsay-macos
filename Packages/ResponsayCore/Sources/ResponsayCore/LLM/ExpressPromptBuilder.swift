@@ -38,6 +38,7 @@ enum ExpressPromptBuilder {
                 "- This is intent re-expression, not literal translation: do not mirror source wording, patch clauses one by one, or add facts.",
                 "- Keep the utterance's meaning, intent, and politeness, and match the chosen register. If it is ALREADY idiomatic and natural in \(targetName), make only light touch-ups. If it is rough, broken, non-idiomatic, or word-for-word from Chinese, DO NOT patch its broken structure clause-by-clause — rebuild the whole sentence from scratch the way a native speaker would actually say it (recast structure, word order, and phrasing freely; the meaning stays, the original wording does not).",
                 "- If the utterance is primarily Chinese: treat it as intent for \(targetName), but do not invent facts, commitments, names, numbers, or deadlines.",
+                "- Personal names and proper nouns stay exactly as the user said them (\"Chen\" stays \"Chen\", never 陈 / 陈老师): do not translate, transliterate, or localize a name, and do not add titles or honorifics (老师/先生/Mr./Dr.) the user did not say.",
             ].joined(separator: "\n")),
             section("MICRO EXAMPLES", [
                 "Micro examples (learn the move, not the content):",

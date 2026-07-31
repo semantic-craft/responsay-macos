@@ -6,8 +6,8 @@ import ResponsayCore
 
 /// Renders the redesigned settings surface (5 domain groups + per-capability
 /// engine cards) to PNGs so the openless-style model configuration — provider
-/// picker, customizable Base URL / Model, Fetch-models / Validate, and the
-/// LLM-only 思考 toggle — can be reviewed visually without driving the GUI.
+/// picker, customizable Base URL / Model, Fetch-models / Validate — can be
+/// reviewed visually without driving the GUI.
 ///
 /// Each view is hosted in an off-screen `NSWindow` (exactly how the real app
 /// hosts `SettingsView()` via `NSHostingController`) so the SwiftUI lifecycle
@@ -46,9 +46,10 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
 
     private func clearBYOK(_ capability: String) {
         let d = UserDefaults.standard
-        for suffix in ["provider", "region", "plan", "model", "baseURL", "thinking"] {
+        for suffix in ["provider", "region", "plan", "model", "baseURL", "workspaceId"] {
             d.removeObject(forKey: "byok.\(capability).\(suffix)")
         }
+        d.removeObject(forKey: "byok.\(capability).qwen.workspaceId")
     }
 
     private func pumpRunLoop(seconds: TimeInterval) {
@@ -137,26 +138,13 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
     }
 
     /// LLM engine card in its out-of-box default: 通义千问 · 阿里云, Base URL +
-    /// Model prefilled from the catalog, 思考 toggle OFF, Validate / Fetch models.
+    /// Model prefilled from the catalog, Validate / Fetch models.
     func testLLMCardDefaultSnapshot() throws {
         clearBYOK("llm")
         let url = try capture(CapabilityCardView(capability: .llm),
-                              size: NSSize(width: 660, height: 560),
+                              size: NSSize(width: 660, height: 640),
                               named: "llm-card-default-qwen.png")
         print("SNAPSHOT llm-card-default -> \(url.path)")
-    }
-
-    /// LLM engine card configured for 通义千问 · 阿里云百炼 PAYG with 思考 ON.
-    func testLLMCardQwenThinkingSnapshot() throws {
-        clearBYOK("llm")
-        let d = UserDefaults.standard
-        d.set("qwen", forKey: "byok.llm.provider")
-        d.set(true, forKey: "byok.llm.thinking")
-        let url = try capture(CapabilityCardView(capability: .llm),
-                              size: NSSize(width: 660, height: 560),
-                              named: "llm-card-qwen-thinking-on.png")
-        print("SNAPSHOT llm-card-qwen -> \(url.path)")
-        clearBYOK("llm")
     }
 
     /// ASR + TTS engine cards (the other two per-capability panes).

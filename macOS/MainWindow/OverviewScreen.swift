@@ -8,7 +8,9 @@ import AppKit
 /// Warm-paper, Scheme B; config-free, nothing leaves the machine.
 struct OverviewScreen: View {
     @State private var metrics: OverviewMetrics = .empty
-    @State private var loaded = false
+    @State private var metricsLoaded = false
+    @State private var metricsUnavailable = false
+    @State private var metricsNonce = 0
     /// 「看演示」 sheet (issue 314) for rewatching the same demos shown during
     /// onboarding.
     @State private var showDemos = false
@@ -35,7 +37,12 @@ struct OverviewScreen: View {
             }
         }
         .background(appearanceStore.palette.bg)
-        .onAppear(perform: loadIfNeeded)
+        .task(id: metricsNonce) {
+            await refreshMetrics()
+        }
+        .task {
+            await refreshAtNextLocalMidnight()
+        }
         .task(id: lanesNonce) {
             // Keychain-backed readiness off the main thread; never block the 概览 render (398).
             let computed = await Task.detached(priority: .userInitiated) {
@@ -45,6 +52,13 @@ struct OverviewScreen: View {
             lanes = computed
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            metricsNonce &+= 1
+            lanesNonce &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .captureStoreDidChange)) { _ in
+            metricsNonce &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
             lanesNonce &+= 1
         }
         .sheet(isPresented: $showDemos) { demoSheet }
@@ -55,7 +69,7 @@ struct OverviewScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("主面板").font(.system(size: 22, weight: .semibold)).foregroundStyle(appearanceStore.palette.ink)
-            Text("今天与最近 7 天的听写概览 · 全部本机统计")
+            Text("今天与最近 7 天的听写概览 · 累计统计当前保留记录")
                 .font(.system(size: 12.5)).foregroundStyle(appearanceStore.palette.ink2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,11 +80,18 @@ struct OverviewScreen: View {
     // MARK: Stats strip
 
     private var statsStrip: some View {
-        HStack(spacing: 10) {
-            statCard("\(metrics.todayCharacterCount)", "字", "今天听写")
-            statCard("\(metrics.todaySegmentCount)", "段", "今天转写")
-            statCard("\(metrics.totalSegmentCount)", "段", "累计转写")
-            statCard(savedText, savedUnit, "省下打字")
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 10) {
+                statCard(metricText(metrics.todayCharacterCount), "字", "今天听写")
+                statCard(metricText(metrics.todaySegmentCount), "段", "今天转写")
+                statCard(metricText(metrics.totalSegmentCount), "段", "当前保留累计")
+                statCard(savedText, savedUnit, "估算省下打字")
+            }
+            Text(metricsUnavailable
+                 ? "暂时无法读取本机统计，请稍后重试。"
+                 : "累计与省时估算覆盖当前保留的全部记录；省时按 3.5 字/秒估算。")
+                .font(.system(size: 10.5))
+                .foregroundStyle(metricsUnavailable ? SettingsTheme.amber : appearanceStore.palette.ink3)
         }
     }
 
@@ -96,7 +117,15 @@ struct OverviewScreen: View {
                 Spacer()
                 Text("按字数").font(.system(size: 11)).foregroundStyle(appearanceStore.palette.ink3)
             }
-            if weekIsEmpty {
+            if metricsUnavailable {
+                Text("本机统计暂时不可用。")
+                    .font(.system(size: 12.5)).foregroundStyle(SettingsTheme.amber)
+                    .frame(maxWidth: .infinity).padding(.vertical, 30)
+            } else if !metricsLoaded {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity).padding(.vertical, 30)
+            } else if weekIsEmpty {
                 Text("还没有记录。按热键说一句试试。")
                     .font(.system(size: 12.5)).foregroundStyle(appearanceStore.palette.ink3)
                     .frame(maxWidth: .infinity).padding(.vertical, 30)
@@ -292,34 +321,52 @@ struct OverviewScreen: View {
 
     // MARK: Data
 
-    private func loadIfNeeded() {
-        guard !loaded else { return }
-        loaded = true
-        let items = (try? Self.makeStore().recent(500)) ?? []
-        metrics = OverviewMetricsBuilder().build(
-            from: items, now: Date(), status: Self.providerStatus())
+    private func refreshMetrics() async {
+        do {
+            let computed = try await Task.detached(priority: .utility) {
+                let status = ModelLaneDisplay.providerStatusSummary(
+                    from: ModelLaneDisplay().lanes())
+                return try Self.makeStore().overviewMetrics(
+                    now: Date(),
+                    calendar: .current,
+                    status: status,
+                    typingCharsPerSecond: OverviewMetricsBuilder.defaultTypingCharsPerSecond)
+            }.value
+            guard !Task.isCancelled else { return }
+            metrics = computed
+            metricsLoaded = true
+            metricsUnavailable = false
+        } catch {
+            guard !Task.isCancelled else { return }
+            metricsLoaded = false
+            metricsUnavailable = true
+        }
     }
 
-    private static func makeStore() -> CaptureStore {
+    private func refreshAtNextLocalMidnight() async {
+        while !Task.isCancelled {
+            let now = Date()
+            let calendar = Calendar.current
+            guard let midnight = calendar.nextDate(
+                after: now,
+                matching: DateComponents(hour: 0, minute: 0, second: 0),
+                matchingPolicy: .nextTime)
+            else { return }
+            do {
+                try await Task.sleep(for: .seconds(max(1, midnight.timeIntervalSince(now))))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            metricsNonce &+= 1
+        }
+    }
+
+    private nonisolated static func makeStore() -> CaptureStore {
         if let sqlite = try? SQLiteReviewStore.defaultStore() {
             return ReviewCaptureStore(reviewStore: sqlite)
         }
         return FileCaptureStore.defaultStore()
-    }
-
-    /// Configured-ness per lane: a local engine is ready without a key; a cloud
-    /// provider is ready once it has a key, else not configured. Not a live probe.
-    /// Internal (not private): MainWindowView reuses it for the provider-setup
-    /// prompt overlay (issues 254/255).
-    static func providerStatus() -> ProviderStatusSummary {
-        let dispatcher = ProviderConfigDispatcher()
-        func status(_ capability: ModelCapability) -> ProviderStatus {
-            let config = dispatcher.resolve(capability)
-            let isLocal = ProviderCatalog.presets(for: capability)
-                .first { $0.id == config.providerId }?.isLocal ?? false
-            return ProviderStatus.from(isConfigured: isLocal || config.hasKey, isHealthy: true)
-        }
-        return ProviderStatusSummary(asr: status(.asr), llm: status(.llm), tts: status(.tts))
     }
 
     // MARK: Helpers
@@ -328,14 +375,20 @@ struct OverviewScreen: View {
         metrics.last7Days.allSatisfy { $0.characterCount == 0 }
     }
 
+    private func metricText(_ value: Int) -> String {
+        metricsLoaded ? "\(value)" : "—"
+    }
+
     private var savedText: String {
+        guard metricsLoaded else { return "—" }
         let seconds = metrics.estimatedTypingSecondsSaved
         if seconds < 3600 { return "\(Int((seconds / 60).rounded()))" }
         return String(format: "%.1f", seconds / 3600)
     }
 
     private var savedUnit: String {
-        metrics.estimatedTypingSecondsSaved < 3600 ? "分钟" : "小时"
+        guard metricsLoaded else { return "" }
+        return metrics.estimatedTypingSecondsSaved < 3600 ? "分钟" : "小时"
     }
 
     private func weekday(_ date: Date) -> String {

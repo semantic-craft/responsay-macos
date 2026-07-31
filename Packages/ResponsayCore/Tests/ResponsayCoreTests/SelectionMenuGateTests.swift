@@ -3,7 +3,7 @@ import Foundation
 @testable import ResponsayCore
 
 /// The 划词菜单 activation contract: 翻译 / 朗读 / 加入词典 / 任意提问 are fixed; 引注源验 /
-/// 来源辅助检索 / 规范排版 appear only when their backing 技能平台 skill / 工具 is 激活.
+/// 来源辅助检索 / 规范排版 appear only when their backing 技能平台 skill / `SelectionTool` is 激活.
 struct SelectionMenuGateTests {
     private let fixed: [SelectionAction] = [.translate, .readAloud, .addToDictionary, .ask]
     private let verifySkill = "verification.fact_check.cn"

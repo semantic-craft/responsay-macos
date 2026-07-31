@@ -28,7 +28,7 @@ struct PolishPlainTextFallbackTests {
     // MARK: - Plain-text fallback (the bug fix)
 
     @Test func plainText_isAccepted_asTheTidiedResult() {
-        // qwen3.6-flash / token-plan often returns the tidied transcript as PLAIN TEXT.
+        // qwen3.6-flash may return the tidied transcript as PLAIN TEXT.
         let r = PolishPlainTextFallback.result(
             fromRaw: "今天天气不错，我们一起去图书馆看书。", input: "今天天气不错我们一起去图书馆看书")
         #expect(r?.text == "今天天气不错，我们一起去图书馆看书。")
