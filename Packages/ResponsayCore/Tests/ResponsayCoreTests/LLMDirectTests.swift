@@ -461,6 +461,49 @@ struct LLMResponseParsingTests {
         #expect(LLMResponseParsing.jsonObject(from: prosey)?["text"] as? String == "c")
         #expect(LLMResponseParsing.jsonObject(from: "no json here") == nil)
     }
+
+    // 2026-07-31 live eval：qwen3.7-flash 意图计划 4 次里 2 次在合法对象后多吐一个悬空
+    // `}`（raw-clue-announced-correct-1/3.json 签名），first-{…last-} 切片把它带进载荷，
+    // 严格解码必然沉没 → safeUnavailable。切片改为字符串感知的配平扫描。
+    @Test func straysTrailingBrace_isSlicedToBalancedObject() throws {
+        let raw = """
+        {"version": 1,
+         "decision": "render",
+         "units": [
+          {"source": {"exactQuote": "给我的学生何振杰写封邮件。", "range": {"length": 13, "location": 0}, "sourceID": "source-0000"}, "role": "content"}],
+         "supersessions": [],
+         "entities": ["entity-0000"]}
+        }
+        """
+        let data = try #require(LLMResponseParsing.jsonData(from: raw))
+        let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(obj["version"] as? Int == 1)
+        #expect(obj["decision"] as? String == "render")
+    }
+
+    @Test func fencedObjectWithTrailingJunk_stillDecodes() throws {
+        let raw = "```json\n{\"a\": 1}\n}\n```"
+        let obj = try #require(LLMResponseParsing.jsonObject(from: raw))
+        #expect(obj["a"] as? Int == 1)
+    }
+
+    @Test func bracesInsideStringValues_doNotEndTheScan() throws {
+        let raw = #"{"quote": "口播说“先 { 后 } 再 }”", "n": 2} 尾注"#
+        let obj = try #require(LLMResponseParsing.jsonObject(from: raw))
+        #expect(obj["n"] as? Int == 2)
+        #expect((obj["quote"] as? String)?.contains("}") == true)
+    }
+
+    @Test func escapedQuoteInsideString_doesNotBreakStringTracking() throws {
+        let raw = #"{"quote": "he said \"}\" loudly", "ok": true}}"#
+        let obj = try #require(LLMResponseParsing.jsonObject(from: raw))
+        #expect(obj["ok"] as? Bool == true)
+    }
+
+    @Test func truncatedPayload_keepsLegacyLastBraceSlice() {
+        // 不配平（截断）时保持旧行为：first-{…last-} 切片，交给下游严格解码报错。
+        #expect(LLMResponseParsing.slicedJSON(from: #"{"a": {"b": 1}"#) == #"{"a": {"b": 1}"#)
+    }
 }
 
 struct LLMChatClientStripThinkTests {
