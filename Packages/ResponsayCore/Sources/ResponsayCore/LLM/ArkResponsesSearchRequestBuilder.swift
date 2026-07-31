@@ -31,6 +31,9 @@ enum ArkResponsesSearchRequestBuilder {
         isOpenAI: Bool
     ) -> [String: Any] {
         var body: [String: Any] = ["model": model, "input": input, "stream": stream]
+        // App 自己传完整上下文、不用 response_id 续接；显式关闭服务端响应存储（与 Qwen
+        // Responses 的 store=false 决策一致，Ark 同样支持该字段）。
+        body["store"] = false
         if !isOpenAI { body["thinking"] = ["type": thinkingEnabled ? "enabled" : "disabled"] }
         if searchEnabled {
             // max_keyword caps parallel searches (cost); limit caps results per search — both

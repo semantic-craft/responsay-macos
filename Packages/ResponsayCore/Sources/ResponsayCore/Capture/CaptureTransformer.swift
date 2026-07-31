@@ -390,13 +390,13 @@ public final class CaptureTransformer {
 
     /// 规范排版的「段落重排」reflow 风格：只把硬换行拆断的行拼回段落、一字不改（系统提示词见
     /// `ChineseTypesetting.reflowSystemPrompt`）。复用 `rewriter` 走这个 pack，指纹护栏兜底改字风险。
-    private static let typesettingReflowStyle = RewriteStyle.pack(StylePack(
+    static let typesettingReflowStyle = RewriteStyle.pack(StylePack(
         id: "style.normative_typography_reflow.cn",
         name: "规范排版·段落重排",
         systemPrompt: ChineseTypesetting.reflowSystemPrompt,
         origin: .builtIn))
 
-    private static let selectionIdiomaticStyle = RewriteStyle.pack(StylePack(
+    static let selectionIdiomaticStyle = RewriteStyle.pack(StylePack(
         id: "style.selection_idiomatic_preview.en",
         name: "选区地道表达",
         systemPrompt: [
