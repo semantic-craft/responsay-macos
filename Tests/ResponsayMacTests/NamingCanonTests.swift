@@ -167,8 +167,7 @@ final class NamingCanonTests: XCTestCase {
             .sherpaKokoroLocal,
         ])
         XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "qwen-team" })
-        // Token Plan / 按量付费 are now billing plans inside qwen / mimo, not providers.
-        XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "qwen-token-plan" })
+        // Retired plan-specific provider ids stay absent from the provider picker.
         XCTAssertFalse(ProviderCatalog.all.contains { $0.id == "mimo-payg" })
     }
 
@@ -186,9 +185,32 @@ final class NamingCanonTests: XCTestCase {
         ])
     }
 
+    func testQwenLLMOffersPayAsYouGoEndpointsOnly() {
+        XCTAssertEqual(ProviderCatalog.qwen.plans(for: .llm), [.payg])
+        XCTAssertEqual(
+            ProviderCatalog.qwen.endpoints(for: .llm).map(\.baseURL),
+            [
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+                "",
+                "",
+            ])
+        XCTAssertEqual(
+            ProviderCatalog.qwen.endpoints(for: .llm)
+                .compactMap(\.note),
+            [
+                "百炼 Responses · 华北2（北京）",
+                "百炼 Responses · 新加坡",
+                "百炼 Responses · 美国（弗吉尼亚）",
+                "百炼 Responses · 德国（法兰克福，需 Workspace ID）",
+                "百炼 Responses · 日本（东京，需 Workspace ID）",
+            ])
+    }
+
     func testLLMPresetsDefaultToLatestFastModelOnly() {
         let expectedDefaults: [String: String] = [
-            "qwen": "qwen3.6-flash",
+            "qwen": "qwen3.7-flash",
             "doubao": "doubao-seed-2-1-turbo-260628",
             "mimo": "mimo-v2.5",
             "zhipu": "glm-5-turbo",
@@ -201,7 +223,7 @@ final class NamingCanonTests: XCTestCase {
         for (providerId, expectedModel) in expectedDefaults {
             let preset = ProviderCatalog.presets(for: .llm).first { $0.id == providerId }
             XCTAssertEqual(preset?.defaultModels[.llm], expectedModel)
-            // The default model is curated (qwen PAYG + Token Plan both default to qwen3.6-flash).
+            // The default model is curated and must be the first preset.
             XCTAssertEqual(preset?.presetModels[.llm]?.first, expectedModel)
             XCTAssertEqual(preset?.presetModels[.llm]?.contains(expectedModel), true)
         }

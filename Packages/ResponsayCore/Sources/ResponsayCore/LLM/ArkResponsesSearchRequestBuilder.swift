@@ -31,6 +31,9 @@ enum ArkResponsesSearchRequestBuilder {
         isOpenAI: Bool
     ) -> [String: Any] {
         var body: [String: Any] = ["model": model, "input": input, "stream": stream]
+        // App 自己传完整上下文、不用 response_id 续接；显式关闭服务端响应存储（与 Qwen
+        // Responses 的 store=false 决策一致，Ark 同样支持该字段）。
+        body["store"] = false
         if !isOpenAI { body["thinking"] = ["type": thinkingEnabled ? "enabled" : "disabled"] }
         if searchEnabled {
             // max_keyword caps parallel searches (cost); limit caps results per search — both
@@ -79,14 +82,7 @@ enum ArkResponsesSearchRequestBuilder {
     }
 
     static func responsesURL(base: String) -> URL? {
-        var s = base.trimmingCharacters(in: .whitespacesAndNewlines)
-        while s.hasSuffix("/") { s.removeLast() }
-        guard !s.isEmpty else { return nil }
-        if s.hasSuffix("/responses") { return URL(string: s) }
-        if s.hasSuffix("/chat/completions") {
-            s = String(s.dropLast("/chat/completions".count))
-        }
-        return URL(string: s + "/responses")
+        LLMWire.responsesURL(base: base)
     }
 
     private static func message(role: String, text: String) -> [String: Any] {

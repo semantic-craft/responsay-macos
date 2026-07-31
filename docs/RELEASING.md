@@ -5,12 +5,17 @@ It signs with the `Developer ID Application` certificate already in the login ke
 signs the Sparkle feed with the EdDSA key `generate_keys` stored there. Nothing is
 exported, and no signing material exists outside that machine.
 
+This repository's root `appcast.xml` is the canonical Sparkle feed. New builds read it from
+the repository's stable raw `main` URL. The old `https://responsay.com/appcast.xml` URL is a
+compatibility redirect for already-installed builds; cutting a release does not require a
+site-repository change or deployment.
+
 A GitHub-hosted release path used to exist alongside this one. It was removed: it had never
 completed a release, and it had no step that updated the live Sparkle feed, so following it
 produced a GitHub Release that no installed copy would ever learn about.
 
-The steps below are the whole procedure, in order. **Until step 8 lands, no installed copy
-knows an update exists.**
+The steps below are the whole procedure, in order. **Until step 6's appcast pull request
+lands, no installed copy knows an update exists.**
 
 ## Before you start
 
@@ -41,7 +46,25 @@ must belong to the team that owns the Developer ID certificate.
 ## 1. Bump the version
 
 Set `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`. Open a pull
-request — `main` is protected and requires one — and merge it once CI is green.
+request and merge it once CI is green.
+
+Nothing enforces either half automatically. The `main` ruleset requires a pull request and
+blocks unresolved review threads, but it has no required checks or approval requirement.
+The pull request is the review surface; CI is an additional safety signal, not a substitute
+for the local test suites below.
+
+Run both suites locally before tagging regardless of what CI says, because CI does not cover
+the same ground:
+
+```bash
+swift test --package-path Packages/ResponsayCore
+xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
+```
+
+The workflow only does `build-for-testing` for the macOS target, so those tests **compile**
+in CI and never **run** there — a failure in them leaves CI green. Its `macos-26` runners
+also queue for tens of minutes when GitHub is short on them, which is the usual reason a
+release ends up merged with CI still pending.
 
 ## 2. Tag the merge commit
 
@@ -108,38 +131,34 @@ resolve — the site's redirect depends on it.
 
 ## 6. Add the appcast item
 
-Copy the `<item>` block from `build/release/appcast.xml` into `public/appcast.xml` in the
-`responsay-site` repository, **inserted above the existing items**.
+Copy the `<item>` block from `build/release/appcast.xml` into this repository's root
+`appcast.xml`, **inserted above the existing items**, and merge it through a pull request.
+The feed is served from `main`, so the merge is what publishes the update.
 
 Do not re-run `generate_appcast` against that file: it prunes entries whose DMG is not in
 the working directory, which silently drops the published history. Confirm the diff is pure
 insertion — `git diff --numstat` should show zero deletions — and that the item count grew
 by exactly one.
 
-## 7. Deploy the site
-
-**Its Cloudflare Pages project has no Git provider**, so pushing the commit changes nothing
-on its own:
-
-```bash
-npm run build && npx wrangler pages deploy dist --project-name responsay --branch main
-```
-
-`git fetch` and confirm you are level with the remote **before** building. That repository
-also carries an unrelated product's release pages, so the remote can move between your
-build and your deploy. If a push is rejected, rebase and **rebuild** — deploying a `dist`
-built from the older base rolls back whatever landed in between.
-
-## 8. Confirm the live feed moved
+## 7. Confirm both feed URLs moved
 
 ```bash
 curl -sSL -o /dev/null -w "%{http_code} %{size_download}\n" https://responsay.com/Responsay.dmg
-curl -sS https://responsay.com/appcast.xml | grep -m1 -A2 '<item>'
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://responsay.com/appcast.xml
+curl -fsSL -o /tmp/appcast-canonical.xml \
+  https://raw.githubusercontent.com/semantic-craft/responsay-macos/main/appcast.xml
+curl -fsSL -o /tmp/appcast-legacy.xml https://responsay.com/appcast.xml
+cmp appcast.xml /tmp/appcast-canonical.xml
+cmp appcast.xml /tmp/appcast-legacy.xml
+grep -m1 -A2 '<item>' /tmp/appcast-canonical.xml
 ```
 
 The download must return `200` with the DMG's real byte count, and the newest appcast item
-must be the version you just cut. `SUFeedURL` itself never changes — Sparkle reads the
-newest item's `enclosure`, so this is the moment installed copies learn about the update.
+must be the version you just cut. Both `cmp` commands must be silent: new builds fetch the
+canonical URL, while versions through 1.7.0 keep polling the legacy redirect. GitHub's raw
+endpoint currently advertises a five-minute cache lifetime, so allow for that edge-cache
+window before treating a just-merged stale response as a failure. Once both paths expose
+the same newest item, installed copies can learn about the update.
 
 ## If something fails
 
@@ -150,3 +169,37 @@ home paths, signing identity hashes, and team IDs.
 
 A notarization submission that stalls at `In Progress` with no log is almost always the
 proxy problem described above, not an Apple queue delay.
+
+## Local debug signing
+
+This is not part of cutting a release, but it is the other place signing metadata belongs.
+
+Debug builds are ad-hoc signed by default so a clone with no certificates still builds.
+Ad-hoc code has no certificate to anchor to, so its designated requirement is a literal
+`cdhash` — the executable's own hash, different on every build. Keychain ACLs match an app
+by that requirement, so every rebuild looks like a new app and macOS asks for the login
+keychain password again; "Always Allow" only ever covers the build you clicked it on.
+
+If you hold a certificate, create `macOS/Signing.local.xcconfig` (gitignored,
+`#include?`-ed by `macOS/Signing.xcconfig`). All three settings are required — an identity
+alone fails with *"requires selecting either a development team or a provisioning
+profile"*:
+
+```
+CODE_SIGN_IDENTITY = Developer ID Application
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM = <your-team-id>
+```
+
+Your team id is the parenthesised code in `security find-identity -v -p codesigning`.
+Leave it out of any tracked file: the gate rejects a literal ten-character team id
+everywhere, this document included.
+
+The requirement then reads `anchor apple generic and identifier "…" and certificate
+leaf[subject.OU] = <team>`, which no longer mentions the binary, so it holds across
+rebuilds. Expect one last prompt after switching: the existing ACL entries still name the
+old `cdhash`. Verify with `codesign -d -r- <app>` — the line must not contain `cdhash`.
+
+Keep these settings out of `project.yml`: a target build setting outranks the target's
+xcconfig and would silence the local override. They are also why the leak scanner allows
+signing metadata in this file and refuses it elsewhere.

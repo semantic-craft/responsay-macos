@@ -113,18 +113,12 @@ struct SearchVerificationTests {
         #expect(SearchVerificationService.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
     }
 
-    @Test func supportsSearch_trueForQwenDashScopeNativeSourceResults() {
+    @Test func supportsSearch_trueForQwenResponsesSourceResults() {
         #expect(SearchVerificationService.supportsSearch(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
     @Test func supportsSearch_trueForDoubaoArkResponses() {
         #expect(SearchVerificationService.supportsSearch(providerId: "doubao", baseURLHost: "ark.cn-beijing.volces.com"))
-    }
-
-    @Test func supportsSearch_falseForQwenTokenPlanWithoutSourceResults() {
-        #expect(!SearchVerificationService.supportsSearch(
-            providerId: "qwen-token-plan",
-            baseURLHost: "token-plan.cn-beijing.maas.aliyuncs.com"))
     }
 
     @Test func supportsSearch_falseForDeepSeek() {

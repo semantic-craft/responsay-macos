@@ -3,8 +3,8 @@ import ResponsayCore
 
 /// 任意提问「联网搜索」的专属模型选择 + 候选解析。
 ///
-/// 联网搜索只对 Qwen(百炼/DashScope) / 智谱 / 小米Mimo 三家的 `/chat/completions` 生效
-/// (见 `LLMSearchControl`)。开了搜索却用不支持联网的主模型时，提问会被静默退回普通问答、
+/// 联网搜索由 `LLMSearchControl` 按服务商选择协议：Qwen(百炼/DashScope)走 `/responses`，
+/// 智谱 / 小米Mimo 走 `/chat/completions`。开了搜索却用不支持联网的主模型时，提问会被静默退回普通问答、
 /// 只能答到训练截止——所以把搜索这一问路由到一个**可联网的专属模型**(用户已配好密钥的)，
 /// 与主对话模型解耦。用户拍板:开搜索时由这个联网模型直接回答(不二段式)。
 ///
@@ -16,8 +16,8 @@ enum VoiceAssistantSearchModelSettings {
     static let key = "voiceAssistant.searchProvider"
 
     /// 支持联网搜索的 provider(canonical id)。顺序 = 自动模式的回退优先级。
-    /// Qwen/智谱/MiMo 走 `/chat/completions` + `LLMSearchControl`;doubao(火山方舟)与 openai 的联网
-    /// 只在 `/responses` 上,由 `DirectArkResponsesStreamingClient` 驱动(见 CaptureController+AskAnything)。
+    /// Qwen 走 `/responses` + `LLMSearchControl`;智谱/MiMo 走 `/chat/completions`;doubao(火山方舟)
+    /// 与 openai 的联网也走 `/responses`，由专用客户端驱动(见 CaptureController+AskAnything)。
     static let searchProviders = ["qwen", "zhipu", "mimo", "doubao", "openai"]
 
     /// 用户显式选择;自动 / 非法存值 → nil。
@@ -39,7 +39,11 @@ enum VoiceAssistantSearchModelSettings {
 
     /// 胶囊里露出的「联网模型署名」(对应设计稿 ask-anything-capsule Variant B):单字纹章 + 友好名。
     /// 名字用模型品牌(通义千问/智谱/MiMo),比 provider 公司名更贴近用户认知。非可联网 → nil。
+    /// 走独立检索服务时,署名的是检索服务本身(豆包搜索 / Perplexity)——搜的是它,不是主模型。
     static func capsuleSource(for providerId: String) -> CapsuleSearchSource? {
+        if let kind = WebSearchBackendKind(rawValue: providerId) {
+            return CapsuleSearchSource(monogram: kind.monogram, name: kind.displayName)
+        }
         switch providerId {
         case "qwen":   return CapsuleSearchSource(monogram: "通", name: "通义千问")
         case "zhipu":  return CapsuleSearchSource(monogram: "智", name: "智谱")

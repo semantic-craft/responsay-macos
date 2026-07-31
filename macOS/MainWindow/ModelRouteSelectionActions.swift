@@ -3,6 +3,7 @@ import ResponsayCore
 
 enum ModelRouteSelectionActions {
     static func applyASRSelection(_ id: String, defaults: UserDefaults = .standard) {
+        defer { ModelConfigurationEvents.post() }
         let (raw, plan) = ModelRouteOptionID.parse(id)
         defaults.set(raw, forKey: ASREngine.defaultsKey)
         guard let providerId = ASREngine(rawValue: raw)?.associatedProviderId else { return }
@@ -11,20 +12,24 @@ enum ModelRouteSelectionActions {
     }
 
     static func applyLLMSelection(_ id: String, defaults: UserDefaults = .standard) {
+        defer { ModelConfigurationEvents.post() }
         let (base, plan) = ModelRouteOptionID.parse(id)
         CapabilitySelectionSync.selectProvider(base, capability: .llm, defaults: defaults)
         if let plan { applyPlan(plan, providerId: base, capability: .llm, defaults: defaults) }
     }
 
     static func applyTTSSelection(_ id: String, defaults: UserDefaults = .standard) {
-        defaults.set(id, forKey: TTSEngine.defaultsKey)
+        defer { ModelConfigurationEvents.post() }
         if let providerId = TTSEngine(rawValue: id)?.providerID {
-            CapabilitySelectionSync.selectProvider(providerId, capability: .tts, defaults: defaults)
+            TTSActiveProvider.adopt(providerId, defaults: defaults)
+        } else {
+            defaults.set(id, forKey: TTSEngine.defaultsKey)
         }
     }
 
     static func applyOCRSelection(_ id: String, defaults: UserDefaults = .standard) {
         defaults.set(id, forKey: OCREngine.defaultsKey)
+        ModelConfigurationEvents.post()
     }
 
     /// Switch the active billing plan from the model picker: rewrite plan + Base URL + model so

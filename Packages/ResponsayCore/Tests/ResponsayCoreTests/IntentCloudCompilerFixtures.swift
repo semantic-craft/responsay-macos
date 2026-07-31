@@ -8,6 +8,17 @@ func intentStubSession() -> URLSession {
 }
 
 func intentCompletion(_ content: String) -> Data {
+    try! JSONSerialization.data(withJSONObject: [
+        "object": "response",
+        "status": "completed",
+        "output": [[
+            "type": "message",
+            "content": [["type": "output_text", "text": content]],
+        ]],
+    ])
+}
+
+func intentChatCompletion(_ content: String) -> Data {
     try! JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
 }
 

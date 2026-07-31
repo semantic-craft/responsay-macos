@@ -24,6 +24,8 @@ final class ModelLaneDisplayTests: XCTestCase {
     private func display(
         keys: [String: String] = [:],
         ocrKeys: [String: String] = [:],
+        asrLocalInstalled: Bool = true,
+        ttsLocalInstalled: Bool = true,
         ocrLocalInstalled: Bool = false
     ) -> ModelLaneDisplay {
         ModelLaneDisplay(
@@ -31,6 +33,8 @@ final class ModelLaneDisplayTests: XCTestCase {
             readiness: ModelLaneReadinessResolver(
                 dispatcher: ProviderConfigDispatcher(defaults: defaults, keyReader: { keys[$0] }),
                 ocrKeyReader: { ocrKeys[$0] },
+                asrLocalInstalled: { _ in asrLocalInstalled },
+                ttsLocalInstalled: { ttsLocalInstalled },
                 ocrLocalInstalled: { ocrLocalInstalled }))
     }
 
@@ -60,12 +64,15 @@ final class ModelLaneDisplayTests: XCTestCase {
 
         let unconfigured = display().lanes().first { $0.lane == .llm }!
         XCTAssertEqual(unconfigured.currentOptionId, "openai")
+        XCTAssertEqual(unconfigured.providerId, "openai")
         XCTAssertFalse(unconfigured.isLocal)
         XCTAssertEqual(unconfigured.readiness, .cloudUnconfigured)
+        XCTAssertEqual(unconfigured.readinessReason, .missingCredential)
 
         let account = CapabilityCredentialAccount.apiKeyAccount(providerId: "openai", capability: .llm)
         let ready = display(keys: [account: "sk-test"]).lanes().first { $0.lane == .llm }!
         XCTAssertEqual(ready.readiness, .cloudReady)
+        XCTAssertEqual(ready.readinessReason, .ready)
     }
 
     // Regression: a plan-tagged ASR selection ("cloud-mimo#package") must still resolve to the
@@ -79,6 +86,8 @@ final class ModelLaneDisplayTests: XCTestCase {
         XCTAssertFalse(asr.isLocal, "MiMo ASR must read as cloud, not fall back to local Apple")
         XCTAssertEqual(asr.badge, "云端")
         XCTAssertEqual(asr.modelId, "mimo-v2.5-asr", "must show MiMo's model id, not \"apple\"")
+        XCTAssertEqual(asr.providerId, "mimo")
+        XCTAssertNotNil(asr.plan)
     }
 
     // Regression: a plan-tagged LLM selection ("mimo#package") must still resolve the preset +
@@ -90,6 +99,8 @@ final class ModelLaneDisplayTests: XCTestCase {
         XCTAssertFalse(llm.isLocal)
         XCTAssertEqual(llm.modelId, "mimo-v2.5", "must show MiMo's model id, not the literal \"默认模型\"")
         XCTAssertNotEqual(llm.currentTitle, "自定义 OpenAI 兼容", "preset must resolve from the base id")
+        XCTAssertEqual(llm.providerId, "mimo")
+        XCTAssertNotNil(llm.plan)
     }
 
     func testOCRReflectsStoredEngine() {
@@ -111,5 +122,27 @@ final class ModelLaneDisplayTests: XCTestCase {
 
         let ready = display(ocrLocalInstalled: true).lanes().first { $0.lane == .ocr }!
         XCTAssertEqual(ready.readiness, .local)
+    }
+
+    func testSnapshotUsesDispatcherModelAndReportsInvalidEndpointReason() {
+        defaults.set("custom", forKey: "byok.llm.provider")
+        defaults.set(
+            "not-a-url",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "baseURL", providerId: "custom", capability: .llm))
+        defaults.set(
+            "private-model",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "model", providerId: "custom", capability: .llm))
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: "custom", capability: .llm)
+
+        let llm = display(keys: [account: "sk-test"]).lanes().first { $0.lane == .llm }!
+
+        XCTAssertEqual(llm.providerId, "custom")
+        XCTAssertEqual(llm.modelId, "private-model")
+        XCTAssertEqual(llm.readiness, .cloudUnconfigured)
+        XCTAssertEqual(llm.readinessReason, .invalidEndpoint)
+        XCTAssertEqual(llm.settingsSection, .llm)
     }
 }

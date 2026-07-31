@@ -141,7 +141,7 @@ public struct LegalSkillRuntime: Sendable {
     }
 
     /// Build a runnable card for one specific skill id — a **direct** (non-palette) run,
-    /// used by the 划词菜单's 来源辅助检索 / 实务辅助 entries which name the skill outright
+    /// used by the 划词菜单's 来源辅助检索 / 划词生成 entries which name the skill outright
     /// instead of routing through scene classification. `nil` when the id isn't in the
     /// registry. The card is identical to the one the palette would produce for that skill
     /// (same scene/stage/badges), so execution + run-history stay consistent.
@@ -183,7 +183,7 @@ public struct LegalSkillRuntime: Sendable {
         let envelope = LegalOutputValidator.Envelope(
             runId: response.runId, skillId: skill.id, scene: card.scene, stage: card.stage)
         let validated = await validator.validate(rawOutput: response.output, envelope: envelope) { broken in
-            let repair = assembler.repairPrompt(brokenOutput: broken)
+            let repair = assembler.repairPrompt(brokenOutput: broken, outputCards: skill.metadata.outputCards)
             let repairRequest = LegalSkillExecutionRequest(
                 skillId: skill.id, systemPrompt: repair.system, userPrompt: repair.user,
                 modelRoute: route, purpose: .legalSkill, isRepair: true)

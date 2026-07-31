@@ -8,7 +8,7 @@ import Foundation
 // against and the 技能平台 toggles write to. This per-skill set is now the ONLY gate —
 // the old `legalSkillsEnabled` 全局总开关 (legal/non-legal split) is retired.
 //
-// `nil` (never set) → the 5 default-enabled built-ins. `[]` (user turned everything
+// `nil` (never set) → the 7 default-enabled built-ins. `[]` (user turned everything
 // off) → empty, deliberately distinct from the default. Imported skills (122+) start
 // **disabled**, so they only appear after the user explicitly enables them.
 
@@ -18,10 +18,11 @@ public struct EnabledLegalSkillStore {
     // skills were deleted outright in 1.5.0 — the bundle now IS the curated set, so hiding
     // machinery on top of it had nothing left to hide.)
 
-    /// The 6 default-enabled built-in skill ids (one per first-class legal action).
+    /// The 7 default-enabled built-in skill ids (one per first-class legal action).
     public static let defaultEnabledIDs: Set<String> = [
         "academic.citation_formatting.cn",       // 引注转换
         "academic.counterargument.cn",           // 反方观点 (卡片 + 多轮对抗)
+        "academic.goal_brief.cn",                // 目标七问 (卡片 + 多轮完善)
         "academic.idea_planning.cn",             // 思路推演 (卡片 + 多轮对抗)
         "academic.prompt_optimization.cn",       // 提示词优化 (卡片 + 多轮完善)
         "research.search_strategy.cn",           // 检索策略 (backs 来源辅助检索)

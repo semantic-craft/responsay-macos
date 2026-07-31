@@ -4,6 +4,12 @@ public protocol ReviewStore: Sendable {
     func save(_ card: ReviewCard) throws
     func update(_ card: ReviewCard) throws
     func recent(_ limit: Int) throws -> [ReviewCard]
+    func overviewMetrics(
+        now: Date,
+        calendar: Calendar,
+        status: ProviderStatusSummary,
+        typingCharsPerSecond: Double
+    ) throws -> OverviewMetrics
     func due(now: Date, limit: Int) throws -> [ReviewCard]
     func count() throws -> Int
     func schemaVersion() throws -> Int

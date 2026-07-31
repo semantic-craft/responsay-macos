@@ -51,7 +51,7 @@ struct ProviderConfigDispatcher {
     }
 
     /// Resolve with an explicit billing plan — used by readiness to check a specific plan's key
-    /// (e.g. is the Token Plan slot configured?) regardless of the currently-stored plan.
+    /// regardless of the currently-stored plan.
     func resolve(_ capability: ModelCapability, providerId providerIdOverride: String, plan: BillingPlan) -> ResolvedProviderConfig {
         resolve(capability, providerIdOverride: providerIdOverride, planOverride: plan)
     }
@@ -76,14 +76,22 @@ struct ProviderConfigDispatcher {
             "model", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
         let storedBaseURL = CapabilityProviderConfigStore.string(
             "baseURL", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+        let storedWorkspaceID = CapabilityProviderConfigStore.string(
+            "workspaceId", providerId: providerId, capability: capability,
+            defaults: defaults, activeProviderId: storedProviderId)
 
         let region = ProviderRegion(rawValue: storedRegion ?? "")
             ?? preset.regions(for: capability).first ?? .global
-        let plan = planOverride ?? MiMoASRRouting.normalizedPlan(
+        let requestedPlan = planOverride ?? MiMoASRRouting.normalizedPlan(
             providerId: providerId,
             capability: capability,
             stored: BillingPlan(rawValue: storedPlan ?? ""),
             fallback: preset.plans(for: capability).first ?? .payg)
+        let availablePlans = preset.plans(for: capability)
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
+        let plan = availablePlans.contains(requestedPlan)
+            ? requestedPlan
+            : (availablePlans.first ?? .payg)
         let fixedQwenRealtime = capability == .asr && providerId == "qwen-asr-flash"
         let fixedQwenAudioTTS = capability == .tts && providerId == "qwen"
         let fixedProviderSurface = fixedQwenRealtime || fixedQwenAudioTTS
@@ -91,13 +99,18 @@ struct ProviderConfigDispatcher {
             ? (preset.defaultModel(for: capability, plan: plan) ?? "")
             : (nonEmpty(storedModel) ?? preset.defaultModel(for: capability, plan: plan) ?? "")
         let catalogBaseURL = preset.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? ""
-        let baseURL = fixedProviderSurface
+        let normalizedBaseURL = MiMoASRRouting.normalizedBaseURL(
+            providerId: providerId,
+            capability: capability,
+            stored: storedBaseURL,
+            fallback: catalogBaseURL)
+        let selectedBaseURL = fixedProviderSurface || requestedPlanIsUnavailable
             ? catalogBaseURL
-            : MiMoASRRouting.normalizedBaseURL(
-                providerId: providerId,
-                capability: capability,
-                stored: storedBaseURL,
-                fallback: catalogBaseURL)
+            : normalizedBaseURL
+        let qwenWorkspaceBaseURL = capability == .llm && providerId == "qwen"
+            ? QwenWorkspaceEndpoint.baseURL(workspaceID: storedWorkspaceID ?? "", region: region)
+            : nil
+        let baseURL = qwenWorkspaceBaseURL ?? selectedBaseURL
         // Local engines have no key; never surface one even if a stale Keychain item exists.
         let apiKey = preset.isLocal ? nil : apiKeyForProvider(
             providerId: providerId,
@@ -126,13 +139,9 @@ struct ProviderConfigDispatcher {
         capability: ModelCapability,
         plan: BillingPlan
     ) -> String? {
-        let primaryAccount = CapabilityCredentialAccount.apiKeyAccount(
-            providerId: providerId,
-            capability: capability,
-            plan: plan)
-        if let primary = nonEmpty(keyReader(primaryAccount)) { return primary }
-
-        return nil
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: providerId, capability: capability, plan: plan)
+        return nonEmpty(keyReader(account))
     }
 
     private static func defaultProviderId(_ presets: [ProviderPreset]) -> String {
@@ -140,12 +149,11 @@ struct ProviderConfigDispatcher {
         return presets.first?.id ?? "custom"
     }
 
-    /// Map retired/merged provider ids onto their surviving base provider so a stale
+    /// Map retained merged-provider aliases onto their surviving base provider so a stale
     /// stored selection resolves instead of silently falling back to the global default.
-    /// Token Plan / 按量付费 are now billing plans inside `qwen` / `mimo`, not providers.
     private static func canonicalProviderId(_ providerId: String) -> String {
         switch providerId {
-        case "qwen-team", "qwen-token-plan": return "qwen"
+        case "qwen-team": return "qwen"
         case "mimo-payg": return "mimo"
         default: return providerId
         }
