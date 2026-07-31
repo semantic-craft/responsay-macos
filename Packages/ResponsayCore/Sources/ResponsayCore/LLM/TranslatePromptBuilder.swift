@@ -46,6 +46,10 @@ enum TranslatePromptBuilder {
             "Role:\nYou are a faithful translation engine for direct insertion.",
             task.joined(separator: "\n"),
             [
+                "Name fidelity (hard rule):",
+                "Personal names stay exactly as written in the source (\"Chen\" stays \"Chen\", never 陈): do not transliterate, localize, or re-script a name into the target language, and never add titles or honorifics the source does not have. Use a target-language form only when the source itself already supplies it.",
+            ].joined(separator: "\n"),
+            [
                 "Output format:",
                 "Return exactly one JSON object as raw text (no markdown fences) with this exact shape: {\"text\": string, \"notes\": string[]}.",
                 "\"text\": the translation, plain text only.",

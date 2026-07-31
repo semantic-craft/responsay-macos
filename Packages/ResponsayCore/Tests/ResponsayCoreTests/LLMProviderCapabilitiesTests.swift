@@ -3,15 +3,19 @@ import Testing
 @testable import ResponsayCore
 
 struct LLMProviderCapabilitiesTests {
-    @Test func qwenCapabilitiesExposeFastChatStreamingUsageAndToolsButNoResponses() {
+    @Test func qwenCapabilitiesPreferResponsesWithOfficialToolsAndReasoningControl() {
         let caps = LLMProviderCapabilities.resolve(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com")
 
         #expect(caps.supportsChatCompletions)
-        #expect(!caps.supportsResponses)
-        #expect(caps.supportsStreamUsage)
+        #expect(caps.supportsResponses)
+        #expect(!caps.supportsStreamUsage)
         #expect(caps.supportsBatch)
         #expect(caps.builtinTools.contains(.webSearch))
         #expect(caps.authHeaderStyle == .bearer)
+        #expect(caps.thinkingControl == .reasoningEffort)
+        #expect(LLMProviderCapabilities.prefersResponses(
+            providerId: "qwen",
+            baseURLHost: "dashscope.aliyuncs.com"))
     }
 
     @Test func mimoCapabilitiesUseApiKeyAuthAndDisableResponsesOnlyFeatures() {
@@ -66,7 +70,7 @@ struct LLMProviderCapabilitiesTests {
     @Test func generationProfilePicksProviderActionDefaults() {
         let qwen = LLMGenerationProfile.resolve(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com", action: .rewrite)
         #expect(qwen.temperature == 0.2)
-        #expect(qwen.topP == 0.8)
+        #expect(qwen.topP == nil)
         #expect(qwen.timeout == 60)
         #expect(qwen.thinkingDefault == false)
 

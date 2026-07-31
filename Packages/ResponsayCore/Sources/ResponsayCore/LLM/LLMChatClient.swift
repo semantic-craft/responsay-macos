@@ -1,6 +1,8 @@
 import Foundation
 
-/// Executes an OpenAI-compatible chat request and returns the model's text content.
+/// Executes an OpenAI-compatible text request and returns the model's text content. It accepts
+/// both Responses (`output[].content[].text`) and Chat Completions (`choices[].message.content`)
+/// so the shared higher-level APIs remain provider-neutral.
 /// App-direct (epic 238): the app calls the BYOK provider straight, no backend. The session
 /// is injectable for headless tests (stub URLProtocol), mirroring `DirectCloudTTSEngine` (195).
 struct LLMChatClient: Sendable {
@@ -8,13 +10,11 @@ struct LLMChatClient: Sendable {
 
     init(session: URLSession = .shared) { self.session = session }
 
-    /// POST a prebuilt request; return the cleaned text content of choice 0.
+    /// POST a prebuilt request; return the cleaned assistant text.
     func execute(_ request: URLRequest) async throws -> String {
         let data = try await executeRaw(request)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = obj["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String else {
+              let content = Self.textContent(from: obj) else {
             throw LLMError.emptyContent
         }
         let cleaned = Self.stripThink(content).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,7 +22,7 @@ struct LLMChatClient: Sendable {
         return cleaned
     }
 
-    /// POST a prebuilt request and return the raw chat-completion body. Search
+    /// POST a prebuilt request and return the raw provider body. Search
     /// verification needs provider-side citation/search fields in addition to content.
     func executeRaw(_ request: URLRequest) async throws -> Data {
         let data: Data
@@ -39,6 +39,24 @@ struct LLMChatClient: Sendable {
             throw LLMError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
+    }
+
+    static func textContent(from object: [String: Any]) -> String? {
+        if let output = object["output"] as? [[String: Any]] {
+            let text = output.compactMap { item -> String? in
+                guard item["type"] as? String == "message",
+                      let parts = item["content"] as? [[String: Any]] else { return nil }
+                let joined = parts.compactMap { part -> String? in
+                    guard part["type"] as? String == "output_text" else { return nil }
+                    return part["text"] as? String
+                }.joined()
+                return joined.isEmpty ? nil : joined
+            }.joined()
+            if !text.isEmpty { return text }
+        }
+        guard let choices = object["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any] else { return nil }
+        return message["content"] as? String
     }
 
     /// Drop EVERY leaked `<think>…</think>` reasoning block — case-insensitive, tolerating

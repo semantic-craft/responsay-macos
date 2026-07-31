@@ -39,7 +39,7 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "SenseVoice ASR + Qwen LLM + Qwen TTS",
                 asr: .local(.sensevoiceLocal),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "Qwen3 local ASR + MiMo LLM + local Kokoro TTS",
@@ -49,12 +49,12 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "MiMo ASR + Qwen LLM + Qwen TTS",
                 asr: .cloud(.cloudMimo, providerId: "mimo", keyAccount: "byok.mimo.package", expectedModel: "mimo-v2.5-asr"),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "千问极速实时 ASR + Qwen LLM + local Kokoro TTS",
                 asr: .cloud(.cloudQwenASRFlashRealtime, providerId: "qwen-asr-flash", keyAccount: "byok.qwen-asr-flash", expectedModel: QwenRealtimeEndpoint.defaultModel),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.6-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
                 tts: .local(.sherpaKokoroLocal)),
             Scenario(
                 name: "OpenAI ASR + DeepSeek LLM + OpenAI TTS",

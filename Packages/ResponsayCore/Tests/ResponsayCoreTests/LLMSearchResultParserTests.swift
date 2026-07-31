@@ -58,6 +58,39 @@ struct LLMSearchResultParserTests {
         #expect(result.provider == "qwen")
     }
 
+    @Test func qwenResponses_parsesWebSearchCallSources() throws {
+        let json = """
+        {
+          "output": [
+            {
+              "type": "web_search_call",
+              "status": "completed",
+              "action": {
+                "type": "search",
+                "query": "民法典第五百七十七条",
+                "sources": [
+                  {"type": "url", "url": "https://flk.npc.gov.cn/detail2.html"}
+                ]
+              }
+            },
+            {
+              "type": "message",
+              "content": [{
+                "type": "output_text",
+                "text": "已检索到《民法典》第五百七十七条。",
+                "annotations": []
+              }]
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let result = try #require(LLMSearchResultParser.parse(responseData: json, providerId: "qwen"))
+        #expect(result.url == "https://flk.npc.gov.cn/detail2.html")
+        #expect(result.snippet.contains("民法典"))
+        #expect(result.provider == "qwen")
+    }
+
     // MARK: - Zhipu (web_search field)
 
     @Test func zhipu_parsesWebSearchField() throws {
@@ -226,63 +259,5 @@ struct LLMSearchResultParserTests {
         """.data(using: .utf8)!
         let result = LLMSearchResultParser.parse(responseData: json, providerId: "qwen")
         #expect(result == nil)
-    }
-}
-
-@Suite("DashScopeSearchResultParser — native source-returning search")
-struct DashScopeSearchResultParserTests {
-    @Test func parsesSearchInfoAndPrefersOfficialLawSource() throws {
-        let json = """
-        {
-          "output": {
-            "choices": [{
-              "message": {
-                "content": "已检索到《民法典》第五百七十七条。"
-              }
-            }],
-            "search_info": {
-              "search_results": [
-                {
-                  "site_name": "百科",
-                  "title": "民法典条文解读",
-                  "url": "https://example.com/civil-code-577"
-                },
-                {
-                  "site_name": "国家法律法规数据库",
-                  "title": "中华人民共和国民法典",
-                  "url": "https://flk.npc.gov.cn/detail2.html"
-                }
-              ]
-            }
-          }
-        }
-        """.data(using: .utf8)!
-
-        let result = try #require(DashScopeSearchResultParser.parse(
-            responseData: json,
-            providerId: "qwen",
-            kind: .law))
-        #expect(result.title == "中华人民共和国民法典")
-        #expect(result.url == "https://flk.npc.gov.cn/detail2.html")
-        #expect(result.snippet.contains("第五百七十七条"))
-        #expect(result.provider == "qwen")
-    }
-
-    @Test func returnsNilWhenSearchInfoHasNoUsableURL() {
-        let json = """
-        {
-          "output": {
-            "choices": [{ "message": { "content": "未找到。" } }],
-            "search_info": {
-              "search_results": [{ "title": "No URL" }]
-            }
-          }
-        }
-        """.data(using: .utf8)!
-
-        #expect(DashScopeSearchResultParser.parse(
-            responseData: json,
-            providerId: "qwen",
-            kind: .law) == nil)
     }
 }

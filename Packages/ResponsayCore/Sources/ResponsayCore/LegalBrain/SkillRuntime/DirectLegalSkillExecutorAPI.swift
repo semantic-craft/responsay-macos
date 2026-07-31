@@ -80,24 +80,6 @@ public struct DirectLegalSkillExecutorAPI: LegalSkillExecutorAPI {
             : anchor.query
         let system = "你是法律引用核验助手。只核验来源是否存在，不替用户作最终法律判断。"
         let user = SearchVerificationService.buildVerificationPrompt(query: query, kind: anchor.kind)
-        if DashScopeSearchRequestBuilder.supportsNativeSourceSearch(
-            providerId: endpoint.providerId,
-            baseURLHost: endpoint.host
-        ) {
-            let dashScope = try DashScopeSearchRequestBuilder.makeRequest(
-                endpoint: endpoint,
-                system: system,
-                user: user,
-                timeout: 90)
-            let data = try await client.executeRaw(dashScope)
-            guard let result = DashScopeSearchResultParser.parse(
-                responseData: data,
-                providerId: endpoint.providerId,
-                kind: anchor.kind) else {
-                return nil
-            }
-            return SearchVerificationService.toVerifiedSource(result)
-        }
         if ArkResponsesSearchRequestBuilder.supportsWebSearch(
             providerId: endpoint.providerId,
             baseURLHost: endpoint.host
@@ -113,13 +95,13 @@ public struct DirectLegalSkillExecutorAPI: LegalSkillExecutorAPI {
             }
             return SearchVerificationService.toVerifiedSource(result)
         }
-        let chat = try LLMChatRequestBuilder.makeRequest(
+        let request = try LLMChatRequestBuilder.makeRequest(
             endpoint: endpoint,
             system: system,
             user: user,
             searchEnabled: true,
             timeout: 90)
-        let data = try await client.executeRaw(chat)
+        let data = try await client.executeRaw(request)
         guard let result = LLMSearchResultParser.parse(responseData: data, providerId: endpoint.providerId) else {
             return nil
         }

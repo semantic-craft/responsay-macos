@@ -10,14 +10,13 @@ import Foundation
 /// reasoning by default. The `enabled` branches stay because the off state is per-vendor, not a
 /// blanket omission.
 ///
-/// Every BYOK LLM provider speaks OpenAI-compatible `/chat/completions`, so these are extra
-/// top-level body fields merged into that request.
+/// These are extra top-level body fields merged into the provider's selected text API request.
 enum LLMThinkingControl {
 
-    /// Extra `/chat/completions` body fields for the chosen 思考 state. Empty = emit nothing
+    /// Extra request body fields for the chosen 思考 state. Empty = emit nothing
     /// (the safe default for providers with no documented toggle — the model choice decides).
-    /// `streaming` matters for DashScope, whose `enable_thinking:true` is valid ONLY on a
-    /// streaming request (a non-streaming call with it set is a hard 400).
+    /// `streaming` remains part of the shared provider contract even though Qwen Responses uses
+    /// the same `reasoning.effort` shape for streaming and non-streaming calls.
     static func extraBody(
         providerId: String,
         model: String,
@@ -29,10 +28,7 @@ enum LLMThinkingControl {
         case .openAIReasoning:
             return openAIReasoning(model: model, enabled: enabled)
         case .dashScope:
-            // Qwen compatible-mode: `enable_thinking:true` is rejected on a NON-streaming request
-            // (DashScope 400 "enable_thinking must be set to false for non-streaming calls"), so
-            // it may only ride on the streaming path. Off is always safe.
-            return ["enable_thinking": enabled && streaming]
+            return ["reasoning": ["effort": enabled ? "medium" : "none"]]
         case .deepSeek:
             return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
         case .miniMax:
@@ -95,7 +91,7 @@ enum LLMThinkingControl {
     static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
         case "openai": return .openAIReasoning
-        case "qwen", "qwen-token-plan", "qwen-team": return .dashScope
+        case "qwen", "qwen-team": return .dashScope
         case "deepseek": return .deepSeek
         case "minimax": return .miniMax
         case "gemini": return .geminiCompat
