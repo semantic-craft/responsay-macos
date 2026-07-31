@@ -13,8 +13,8 @@ struct LLMSearchControlTests {
         #expect(LLMSearchControl.supportsSearch(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
-    @Test func zhipu_supportsSearch() {
-        #expect(LLMSearchControl.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
+    @Test func retiredZhipu_doesNotSupportSearch() {
+        #expect(!LLMSearchControl.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
     }
 
     @Test func mimo_supportsSearch() {
@@ -46,16 +46,15 @@ struct LLMSearchControlTests {
         #expect(LLMSearchControl.supportsSourceResults(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
-    @Test func mimo_zhipu_supportSourceResults() {
+    @Test func mimo_supportsSourceResults() {
         #expect(LLMSearchControl.supportsSourceResults(providerId: "mimo", baseURLHost: "api.xiaomimimo.com"))
         #expect(LLMSearchControl.supportsSourceResults(providerId: "mimo", baseURLHost: "token-plan-cn.xiaomimimo.com"))
-        #expect(LLMSearchControl.supportsSourceResults(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
     }
 
     // MARK: - searchEnabled: false → always empty
 
     @Test func searchDisabled_returnsEmpty_forAllProviders() {
-        let providers = ["qwen", "zhipu", "mimo", "deepseek", "openai", "ollama"]
+        let providers = ["qwen", "mimo", "deepseek", "openai", "ollama"]
         for id in providers {
             let params = LLMSearchControl.extraBody(providerId: id, baseURLHost: "", searchEnabled: false)
             #expect(params.isEmpty, "Expected empty for \(id) when search disabled")
@@ -78,21 +77,6 @@ struct LLMSearchControlTests {
         // forces the loop into the final text turn (mirrors Ark's production max_tool_calls).
         #expect(params["max_tool_calls"] as? Int == 3)
         #expect(params["enable_search"] == nil)
-    }
-
-    // MARK: - Zhipu: tools with web_search type
-
-    @Test func zhipu_searchEnabled_returnsWebSearchTool() throws {
-        let params = LLMSearchControl.extraBody(providerId: "zhipu", baseURLHost: "open.bigmodel.cn", searchEnabled: true)
-        let tools = try #require(params["tools"] as? [[String: Any]])
-        #expect(tools.count == 1)
-        let tool = tools[0]
-        #expect(tool["type"] as? String == "web_search")
-        let config = try #require(tool["web_search"] as? [String: Any])
-        #expect(config["enable"] as? Bool == true)
-        #expect(config["search_engine"] as? String == "search_pro")
-        #expect(config["search_result"] as? Bool == true)
-        #expect(params["tool_choice"] as? String == "auto")
     }
 
     // MARK: - MiMo: web_search tool
@@ -145,10 +129,12 @@ struct LLMSearchControlTests {
 
     // MARK: - Host-based fallback for custom endpoints
 
-    @Test func custom_bigmodelHost_resolvesToZhipu() throws {
+    @Test func customBigmodelHostDoesNotEnableRetiredVendorSearch() {
+        // 智谱退役后，指向其域名的自定义端点不再获得联网能力（豆包 ASR 的 bigmodel_nostream
+        // 是同名不同物，走 ASR 路径，不受影响）。
         let params = LLMSearchControl.extraBody(providerId: "custom", baseURLHost: "open.bigmodel.cn", searchEnabled: true)
-        let tools = try #require(params["tools"] as? [[String: Any]])
-        #expect(tools[0]["type"] as? String == "web_search")
+        #expect(params.isEmpty)
+        #expect(!LLMSearchControl.supportsSearch(providerId: "custom", baseURLHost: "open.bigmodel.cn"))
     }
 
     @Test func custom_xiaomimimoHost_resolvesToMiMo() throws {

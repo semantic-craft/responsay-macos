@@ -13,7 +13,6 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
     private static let keys: [String: String] = [
         "byok.qwen-asr-flash": "asr-qwen-flash-key",
         "byok.mimo.package": "mimo-shared-key",
-        "byok.zhipu": "zhipu-shared-key",
         "byok.openai": "asr-openai-key",
         "byok.qwen": "llm-qwen-key",
         "byok.deepseek": "llm-deepseek-key",
@@ -61,11 +60,6 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
                 asr: .cloud(.cloudOpenAI, providerId: "openai", keyAccount: "byok.openai", expectedModel: "gpt-4o-transcribe"),
                 llm: .cloud("deepseek", keyAccount: "byok.deepseek", expectedModel: "deepseek-v4-flash"),
                 tts: .cloud(.cloudOpenAI, keyAccount: "byok.tts.openai", expectedModel: "gpt-4o-mini-tts")),
-            Scenario(
-                name: "SenseVoice ASR + Zhipu LLM + local Kokoro TTS",
-                asr: .local(.sensevoiceLocal),
-                llm: .cloud("zhipu", keyAccount: "byok.zhipu", expectedModel: "glm-5-turbo"),
-                tts: .local(.sherpaKokoroLocal)),
         ]
 
         for scenario in scenarios {

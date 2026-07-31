@@ -21,7 +21,6 @@ final class NamingCanonTests: XCTestCase {
         "volcengine-tts": "火山引擎",
         "doubao": "火山引擎",
         "mimo": "小米Mimo",
-        "zhipu": "智谱GLM",
         "gemini": "Google Gemini",
         "deepseek": "DeepSeek",
         "minimax": "MiniMax",
@@ -180,7 +179,7 @@ final class NamingCanonTests: XCTestCase {
             "qwen", "volcengine-tts", "mimo", "minimax", "openai", "gemini", "custom",
         ])
         XCTAssertEqual(ProviderCatalog.presets(for: .llm).map(\.id), [
-            "qwen", "doubao", "mimo", "zhipu", "deepseek",
+            "qwen", "doubao", "mimo", "deepseek",
             "gemini", "openai", "custom",   // minimax 无此行：1.5.1 起 TTS-only
         ])
     }
@@ -213,7 +212,6 @@ final class NamingCanonTests: XCTestCase {
             "qwen": "qwen3.7-flash",
             "doubao": "doubao-seed-2-1-turbo-260628",
             "mimo": "mimo-v2.5",
-            "zhipu": "glm-5-turbo",
             "deepseek": "deepseek-v4-flash",
             "gemini": "gemini-3.5-flash-lite",
             "openai": "chat-latest",   // 7d02e454 改为 chat-latest（曾误期望 gpt-5.5）
@@ -250,8 +248,9 @@ final class NamingCanonTests: XCTestCase {
         XCTAssertEqual(
             ProviderCatalog.qwenASRRealtime.displayName(for: .asr),
             "阿里云百炼 · 千问极速实时")
-        XCTAssertFalse(ProviderCatalog.zhipu.capabilities.contains(.asr))
-        XCTAssertTrue(ProviderCatalog.zhipu.capabilities.contains(.llm))
+        // 智谱已退役：LLM 选择器里不再出现，preset 也已删除。
+        XCTAssertFalse(ProviderCatalog.presets(for: .llm).map(\.id).contains("zhipu"))
+        XCTAssertFalse(ProviderCatalog.all.map(\.id).contains("zhipu"))
         XCTAssertEqual(
             ProviderCatalog.doubao.displayName(for: .llm),
             "火山引擎 · 豆包 Seed")

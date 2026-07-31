@@ -290,6 +290,20 @@ enum BYOKKeychain {
         return value
     }
 
+    /// Delete one account's secret. `true` when the item is gone afterwards — including the
+    /// case where it never existed (`errSecItemNotFound`), so a retired-provider cleanup can
+    /// treat "nothing to remove" as success and not retry forever.
+    @discardableResult
+    static func delete(_ account: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
     static func write(_ value: String, account: String) {
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
