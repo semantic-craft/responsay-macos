@@ -18,6 +18,7 @@ public enum CaseCandidateSearchParser {
         \(query)
 
         严格要求：
+        0. 必须先调用联网搜索工具获取结果，再基于搜索结果输出；不要凭记忆作答。最多搜索 3 次、每次必须换不同的检索词，绝不用相同关键词重复搜索；搜完立即基于已有结果输出，结果不理想也如实输出（或返回空 candidates），不要继续搜。
         1. 只返回 JSON，不要任何解释文字。形如：
         {"candidates": [{"title": "案件标题", "summary": "含完整案号的简述，如（2023）X0000民初0号……", "sources": ["来源URL"], "typical": false}]}
         2. `summary` 必须包含你检索到的**完整案号**；两高典型案例无文书案号时 `typical` 置 true。

@@ -19,6 +19,15 @@ struct CapabilityCardView: View {
             capability: capability, preferredProviderId: preferredProviderId))
     }
 
+    /// 预设 + 拉取合并的模型菜单（听写模型与技能平台模型两个选择器共用一份）。
+    private var menuModels: [String] {
+        let presetList = machine.current.presetModels[capability] ?? []
+        if machine.fetchedModels.isEmpty { return presetList }
+        var combined = presetList
+        for m in machine.fetchedModels where !combined.contains(m) { combined.append(m) }
+        return combined
+    }
+
     /// Combined-picker selection ⇄ (regionRaw, planRaw). Picking an endpoint sets both, so the
     /// onChange handlers refresh the Base URL and (for Qwen) auto-switch the per-plan model.
     private var endpointSelection: Binding<String> {
@@ -58,6 +67,22 @@ struct CapabilityCardView: View {
             }
 
             credentialRows
+            if machine.isQwenLLM {
+                LabeledRow(label: "Workspace ID") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        WarmField(placeholder: "选填，如 ws-…", text: $machine.workspaceID)
+                        if let validationMessage = machine.workspaceIDValidationMessage {
+                            Text(validationMessage)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(machine.qwenWorkspaceHelp)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
+                        }
+                    }
+                }
+            }
             if machine.isFixedEndpoint {
                 // 千问极速实时 / 豆包流式 的端点与模型由 WSS 实时流式引擎 hardcode（忽略这里的值），
                 // 所以只读展示真实端点+模型，不给可编辑框，免得显示成历史批量配置误导。
@@ -78,18 +103,21 @@ struct CapabilityCardView: View {
                     }
                 }
             } else {
-                LabeledRow(label: "Base URL") { WarmField(placeholder: "https://…/v1", text: $machine.baseURL) }
-                LabeledRow(label: "模型 ID") {
+                LabeledRow(label: "Base URL") {
+                    if machine.usesQwenWorkspaceEndpoint {
+                        Text(machine.baseURL)
+                            .font(SettingsTheme.mono)
+                            .foregroundStyle(SettingsTheme.ink2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        WarmField(placeholder: "https://…/v1", text: $machine.baseURL)
+                    }
+                }
+                LabeledRow(label: capability == .llm ? "听写模型" : "模型 ID") {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             WarmField(placeholder: "model-name", text: $machine.model)
-                            let presetList = machine.current.presetModels[capability] ?? []
-                            let menuModels: [String] = {
-                                if machine.fetchedModels.isEmpty { return presetList }
-                                var combined = presetList
-                                for m in machine.fetchedModels where !combined.contains(m) { combined.append(m) }
-                                return combined
-                            }()
                             if !menuModels.isEmpty {
                                 Menu(machine.fetchedModels.isEmpty ? "可选 \(menuModels.count)" : "拉取 \(machine.fetchedModels.count)") {
                                     ForEach(menuModels, id: \.self) { name in
@@ -101,9 +129,30 @@ struct CapabilityCardView: View {
                         }
                         // 兜底：列表只是便捷选项，运行时用的就是这个文本框里的值。任何该服务支持的
                         // 模型 ID 直接手输即可调用，不必出现在预设或「拉取」结果里。
-                        Text("不在列表里也行：直接输入该服务支持的任意模型 ID 即可调用。")
+                        Text(capability == .llm
+                             ? "用于听写整理、改写、翻译等日常文字处理。不在列表里也行：直接输入该服务支持的任意模型 ID。"
+                             : "不在列表里也行：直接输入该服务支持的任意模型 ID 即可调用。")
                             .font(SettingsTheme.footnote)
                             .foregroundStyle(SettingsTheme.ink3)
+                    }
+                }
+                if capability == .llm {
+                    LabeledRow(label: "技能平台模型") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Menu(machine.skillModel.isEmpty
+                                 ? "跟随听写模型（当前 \(machine.model)）"
+                                 : machine.skillModel) {
+                                Button("跟随听写模型") { machine.skillModel = "" }
+                                Divider()
+                                ForEach(menuModels, id: \.self) { name in
+                                    Button(name) { machine.skillModel = name }
+                                }
+                            }
+                            Text("用于法律/学术技能卡片。默认跟随听写模型；想让技能用更强的模型（如 qwen3.7-max）就单独选一个，密钥与接入点两者共用。")
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -123,20 +172,6 @@ struct CapabilityCardView: View {
                     }
                 }
             }
-            if capability == .llm {
-                let thinkingSupported = LLMThinkingControl.supportsThinking(
-                    providerId: machine.providerId, baseURLHost: URL(string: machine.baseURL)?.host ?? "")
-                LabeledRow(label: "思考") {
-                    HStack(spacing: 8) {
-                        Toggle("", isOn: $machine.thinking).labelsHidden().toggleStyle(.switch)
-                            .disabled(!thinkingSupported)
-                        Text(!thinkingSupported ? "此服务方无官方思考参数，开关不生效"
-                             : (machine.thinking ? "开 · 模型先思考再作答（更慢、更细）"
-                                         : "关 · 直接作答（更快；默认）"))
-                            .font(SettingsTheme.footnote).foregroundStyle(SettingsTheme.ink3)
-                    }
-                }
-            }
             if !machine.isFixedEndpoint {
                 LabeledRow(label: "连接校验") {
                     HStack(spacing: 8) {
@@ -149,10 +184,9 @@ struct CapabilityCardView: View {
                 }
             }
         }
-        // 朗读 only: the active `byok.tts.provider` is what tells `TTSEngine.selected` a cloud
-        // voice is configured, and nothing else writes it from this card. ASR / LLM are excluded
-        // on purpose — their active provider is written in lockstep with the engine enum by the
-        // model-route picker, so writing it here alone would desync `asrEngine` from its config.
+        // 朗读 only: selecting a provider also selects its engine and restores its scoped runtime
+        // config; opening the card only backfills genuinely missing legacy state. ASR / LLM stay
+        // excluded because their route pickers own engine/provider synchronization separately.
         .onAppear {
             machine.load()
             guard capability == .tts else { return }
@@ -166,21 +200,22 @@ struct CapabilityCardView: View {
             guard capability == .tts else { return }
             TTSActiveProvider.adopt(machine.providerId, defaults: machine.defaults)
         }
-        .onChange(of: machine.regionRaw) { _, _ in machine.baseURL = machine.endpointBase(); machine.persist() }
+        .onChange(of: machine.regionRaw) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.planRaw) { old, new in
             machine.autoSwitchModel(from: old, to: new)
-            machine.baseURL = machine.endpointBase()
+            machine.refreshBaseURLForSelection()
             machine.reloadKeyForCurrentPlan()
             machine.persist()
         }
+        .onChange(of: machine.workspaceID) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.model) { _, _ in machine.persist() }
+        .onChange(of: machine.skillModel) { _, _ in machine.persist() }
         .onChange(of: machine.voice) { _, _ in machine.persist() }
         .onChange(of: machine.baseURL) { _, _ in machine.persist() }
         .onChange(of: machine.apiKey) { _, _ in machine.writeApiKey() }
         .onChange(of: machine.appId) { _, _ in machine.writeAppId() }
         .onChange(of: machine.accessToken) { _, _ in machine.writeAccessToken() }
         .onChange(of: machine.boostingTableId) { _, _ in machine.writeBoostingTableId() }
-        .onChange(of: machine.thinking) { _, _ in machine.persist() }
     }
 
     @ViewBuilder private var credentialRows: some View {
@@ -244,11 +279,14 @@ struct CapabilityCardView: View {
     private var statusColor: Color { machine.status.hasPrefix("✓") ? SettingsTheme.green : SettingsTheme.ink2 }
     /// Label for one endpoint in the combined 接入点 picker. Append the plan only where the
     /// region offers more than one (国内·按量付费 / 国内·Token Plan); single-plan regions stay
-    /// plain (新加坡 / 欧洲).
+    /// plain. Qwen uses the exact region label from the Responses documentation.
     private func endpointLabel(_ e: EndpointVariant) -> String {
         let plansInRegion = Set(machine.current.endpoints(for: capability)
             .filter { $0.region == e.region && !$0.baseURL.isEmpty }
             .map(\.plan))
-        return plansInRegion.count > 1 ? "\(e.region.label)·\(e.plan.label)" : e.region.label
+        let regionLabel = machine.current.id == "qwen" && e.region == .china
+            ? "华北2（北京）"
+            : e.region.label
+        return plansInRegion.count > 1 ? "\(regionLabel)·\(e.plan.label)" : regionLabel
     }
 }

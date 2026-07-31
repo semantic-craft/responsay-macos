@@ -11,9 +11,14 @@ enum LocalModelInstallActions {
         default:
             break
         }
+        ModelConfigurationEvents.post()
     }
 
     static func beforeDelete(_ spec: LocalModelSpec) {
         LocalEngineResidency.shared.unload(spec.id)
+    }
+
+    static func onDeleted() {
+        ModelConfigurationEvents.post()
     }
 }

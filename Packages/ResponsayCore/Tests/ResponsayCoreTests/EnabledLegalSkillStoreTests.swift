@@ -13,7 +13,7 @@ struct EnabledLegalSkillStoreTests {
     @Test func resolve_whenUnset_returnsTheDefaultBuiltins() {
         let ids = EnabledLegalSkillStore.resolve(stored: nil)
         #expect(ids == EnabledLegalSkillStore.defaultEnabledIDs)
-        #expect(ids.count == 6)   // 5 → 4 after retiring 案情分析与诉讼策略, → 5 with 思路推演, → 6 with 提示词优化
+        #expect(ids.count == 7)   // 5 → 4 after retiring 案情分析与诉讼策略, → 5 with 思路推演, → 6 with 提示词优化, → 7 with 目标七问
     }
 
     @Test func resolve_emptyStored_meansAllDisabled_notDefault() {

@@ -102,6 +102,20 @@ final class TTSEngineTests: XCTestCase {
         XCTAssertNil(TTSEngine.sherpaKokoroLocal.selectedVoiceID(defaults: defaults))
     }
 
+    /// 设置卡「音色」菜单里的每一项都必须在 TTS catalog 里 —— selectedVoiceID 拿 catalog.voices
+    /// 校验用户选中的音色,菜单有而 catalog 没有的项会被静默换回默认音色,用户听到的不是他选的人声。
+    /// (MiniMax 曾漏 male-qn-jingying / female-yujie / Sweet_Girl / Attractive_Girl 四项。)
+    func testEveryPresetVoiceOfferedByTheCardResolves() {
+        for preset in ProviderCatalog.all where !preset.presetVoices.isEmpty {
+            guard let catalog = TTSProviderCatalogPresets.catalog(for: preset.id) else { continue }
+            let known = Set(catalog.voices.map(\.id))
+            for voice in preset.presetVoices {
+                XCTAssertTrue(known.contains(voice.id),
+                              "\(preset.id) 菜单提供的音色 \(voice.id) 不在 TTS catalog 里,选中后会被丢回默认音色")
+            }
+        }
+    }
+
     func testSelectedVoiceHonorsValidStoredPickElseDefault() {
         let defaults = freshDefaults("voice-pick")
         let key = TTSEngine.cloudOpenAI.voiceDefaultsKey

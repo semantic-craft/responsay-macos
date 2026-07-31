@@ -25,21 +25,6 @@ enum CapabilityProviderConfigStore {
         return defaults.string(forKey: activeKey(suffix, capability: capability))
     }
 
-    static func bool(
-        _ suffix: String,
-        providerId: String,
-        capability: ModelCapability,
-        defaults: UserDefaults,
-        activeProviderId: String?
-    ) -> Bool {
-        let scoped = scopedKey(suffix, providerId: providerId, capability: capability)
-        if defaults.object(forKey: scoped) != nil { return defaults.bool(forKey: scoped) }
-        guard CapabilitySelectionSync.providerMatches(activeProviderId, providerId, capability: capability) else {
-            return false
-        }
-        return defaults.bool(forKey: activeKey(suffix, capability: capability))
-    }
-
     static func set(
         _ value: Any,
         suffix: String,

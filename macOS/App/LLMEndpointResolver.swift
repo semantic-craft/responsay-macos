@@ -3,10 +3,12 @@ import ResponsayCore
 
 /// Bridges the BYOK 「模型与密钥」LLM card to the App-direct path (epic 238). `resolveText`
 /// (rewrite / translate / express / legal) resolves the BYOK cloud card, or `nil` → backend fallback.
+///
+/// 思考 is **forced off** on every path — rewrite, chat and 联网搜索 alike. There is no user
+/// toggle: the app never surfaces a reasoning trace, and thinking only makes every action slower.
+/// `LLMThinkingControl` still emits each provider's official "off" parameter, which is what
+/// actually keeps DeepSeek / Gemini / Ollama / MiniMax from reasoning by default.
 enum LLMEndpointResolver {
-    /// UserDefaults key the LLM card's 思考 toggle writes (`byok.llm.thinking`).
-    static let thinkingKey = "byok.llm.thinking"
-
     /// Surfaced when no model is configured at all (no BYOK key). App-direct is the only path now
     /// that the backend LLM routes are retired (245), so this gives actionable setup guidance
     /// instead of a confusing connection failure.
@@ -15,23 +17,41 @@ enum LLMEndpointResolver {
             "还没配置可用模型。请在 设置 →「文本改写连接配置」填一个自带 Key。")
     }
 
-    /// Text REWRITE actions (express / polish / rewrite / translate / legal). Thinking is
-    /// **always off** (435) — a structured rewrite gains nothing from reasoning and it's slow —
-    /// decoupled from the global 思考 toggle. Resolves the BYOK cloud card (nil if unconfigured).
+    /// Text REWRITE actions (express / polish / rewrite / translate / legal). Resolves the BYOK
+    /// cloud card (nil if unconfigured).
     static func resolveText(
         defaults: UserDefaults = .standard,
         dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
     ) -> LLMEndpoint? {
-        resolve(purpose: .rewrite, defaults: defaults, dispatcher: dispatcher)
+        resolve(dispatcher: dispatcher)
     }
 
-    /// Open CHAT (voice assistant / 任意提问). Honors the user's global 思考 toggle (435) — the
-    /// one surface where reasoning is the user's call. Same provider resolution as `resolveText`.
+    /// Open CHAT (voice assistant / 任意提问). Same provider resolution as `resolveText`.
     static func resolveChat(
         defaults: UserDefaults = .standard,
         dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
     ) -> LLMEndpoint? {
-        resolve(purpose: .chat, defaults: defaults, dispatcher: dispatcher)
+        resolve(dispatcher: dispatcher)
+    }
+
+    /// 技能平台 lane（`LegalSkillRuntime` 技能执行、技能 JSON 修复、无独立检索服务时的技能搜索）。
+    /// 与听写 lane 共享同一提供商解析结果 —— provider / Base URL（含 Workspace 派生）/ 凭据完全一致，
+    /// 只有 model 可能不同：用户显式选了技能平台模型就覆盖；空 = 跟随听写模型（旧配置兼容路径）。
+    static func resolveSkill(
+        defaults: UserDefaults = .standard,
+        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+    ) -> LLMEndpoint? {
+        guard let base = resolve(dispatcher: dispatcher) else { return nil }
+        guard let override = SkillPlatformModelSettings.explicitModel(
+            providerId: base.providerId, defaults: defaults),
+            override != base.model
+        else { return base }
+        return LLMEndpoint(
+            providerId: base.providerId,
+            baseURL: base.baseURL,
+            model: override,
+            apiKey: base.apiKey,
+            thinkingEnabled: base.thinkingEnabled)
     }
 
     /// 任意提问 联网搜索专属端点。Resolves the user's chosen (or 自动) search-capable provider
@@ -43,8 +63,6 @@ enum LLMEndpointResolver {
         defaults: UserDefaults = .standard,
         dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
     ) -> LLMEndpoint? {
-        let thinking = LLMThinkingPolicy.thinkingEnabled(
-            purpose: .chat, globalToggle: defaults.bool(forKey: thinkingKey))
         var candidates = VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults)
         // 自动:若当前主模型本就可联网,优先用它,省得另配密钥(且保持旧行为)。
         if VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults) == nil {
@@ -55,34 +73,28 @@ enum LLMEndpointResolver {
         }
         for providerId in candidates {
             let cfg = dispatcher.resolve(.llm, providerId: providerId)
-            guard cfg.hasKey else { continue }
+            guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { continue }
             let endpoint = LLMEndpoint(
                 providerId: cfg.providerId,
                 baseURL: cfg.baseURL,
                 model: cfg.model,
                 apiKey: cfg.apiKey,
-                thinkingEnabled: thinking)
+                thinkingEnabled: false)
             if endpoint.isConfigured { return endpoint }
         }
         return nil
     }
 
-    /// Shared resolution for text + chat: the only difference is whether thinking is enabled,
-    /// decided by `LLMThinkingPolicy` from the purpose + the global toggle.
-    private static func resolve(
-        purpose: LLMThinkingPurpose,
-        defaults: UserDefaults,
-        dispatcher: ProviderConfigDispatcher
-    ) -> LLMEndpoint? {
-        let thinking = LLMThinkingPolicy.thinkingEnabled(
-            purpose: purpose, globalToggle: defaults.bool(forKey: thinkingKey))
+    /// Shared resolution for text + chat.
+    private static func resolve(dispatcher: ProviderConfigDispatcher) -> LLMEndpoint? {
         let cfg = dispatcher.resolve(.llm)
+        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
         let endpoint = LLMEndpoint(
             providerId: cfg.providerId,
             baseURL: cfg.baseURL,
             model: cfg.model,
             apiKey: cfg.apiKey,
-            thinkingEnabled: thinking)
+            thinkingEnabled: false)
         return endpoint.isConfigured ? endpoint : nil
     }
 
@@ -104,12 +116,13 @@ enum LLMEndpointResolver {
         dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
     ) -> LLMEndpoint? {
         let cfg = dispatcher.resolve(.llm)
+        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
         let endpoint = LLMEndpoint(
             providerId: cfg.providerId,
             baseURL: cfg.baseURL,
             model: cfg.model,
             apiKey: cfg.apiKey,
-            thinkingEnabled: defaults.bool(forKey: thinkingKey))
+            thinkingEnabled: false)
         return endpoint.isConfigured ? endpoint : nil
     }
 }

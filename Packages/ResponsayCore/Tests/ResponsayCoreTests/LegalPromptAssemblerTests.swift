@@ -23,8 +23,28 @@ struct LegalPromptAssemblerTests {
         #expect(prompt.system.contains("无法确认"))              // [待核] hard constraint
         #expect(prompt.system.contains("LEGAL_OUTPUT/v1"))       // strict-JSON instruction
         #expect(prompt.user.contains("被告拖欠货款"))            // selected text
-        #expect(prompt.user.contains("litigation"))             // scene
+        // Scene/stage reach the model as natural Chinese only — raw enum values leaked into
+        // outputs verbatim (live eval 2026-07-31: `argumentDrafting` in user-facing text).
+        #expect(prompt.user.contains("诉讼"))
+        #expect(prompt.user.contains("文书起草"))
+        #expect(prompt.user.contains("litigation") == false)
+        #expect(prompt.user.contains("briefDrafting") == false)
         #expect(prompt.user.contains("事实与理由"))              // nearby heading
+    }
+
+    @Test func assemble_stageNamesCoverAllCases_withoutRawEnumEcho() {
+        // Every stage/scene must map to a Chinese name that is not the raw enum value, so no
+        // internal identifier can ever ride into a prompt (and from there into model output).
+        for stage in LegalStage.allCases {
+            let name = LegalPromptAssembler.stageName(stage)
+            #expect(!name.isEmpty)
+            #expect(name != stage.rawValue)
+        }
+        for scene in LegalScene.allCases {
+            let name = LegalPromptAssembler.sceneName(scene)
+            #expect(!name.isEmpty)
+            #expect(name != scene.rawValue)
+        }
     }
 
     @Test func assemble_includesProfileSubsetWhenProvided() throws {
@@ -75,11 +95,31 @@ struct LegalPromptAssemblerTests {
         #expect(fallbackLines == 1)   // conceptMap + riskMatrix both → fallbackText, deduped
     }
 
-    @Test func repairPrompt_asksToFixJSONOnly() {
-        let prompt = assembler.repairPrompt(brokenOutput: "{ not json ,, }")
-        #expect(prompt.system.contains("只修复"))
+    @Test func repairPrompt_allowsValueDomainFixes_preservesContent_andCarriesOutputSchema() {
+        // Live finding (qwen3.7-plus): without the schema the repair pass cannot fix
+        // structural errors like insertableParagraph content misplaced into `insertables`.
+        // Live finding (doubao-2.1-pro + qwen3.7-max, 2026-07-31): the old "不要改变任何内容"
+        // blanket ban stopped the model from deleting out-of-enum `preferredSources` values,
+        // so the repair round reproduced the same illegal JSON and fell back. The repair
+        // prompt must permit structure + value-domain correction while pinning the content.
+        let prompt = assembler.repairPrompt(
+            brokenOutput: "{ not json ,, }", outputCards: [.strategyRecommendation, .insertableParagraph])
+        #expect(prompt.system.contains("允许修正"))
+        #expect(prompt.system.contains("preferredSources 恢复为空数组"))
+        #expect(prompt.system.contains("不得新增或删除事实"))
         #expect(prompt.system.contains("[待核]"))
+        #expect(prompt.system.contains("不要改变任何内容") == false)   // the blanket ban is gone
+        #expect(prompt.system.contains("\"insertableParagraph\""))   // card shapes included
+        #expect(prompt.system.contains("顶层 insertables 恒为空数组"))
         #expect(prompt.user == "{ not json ,, }")
+    }
+
+    @Test func outputSchema_pinsPreferredSourcesEmpty() {
+        // Both providers filled `preferredSources` with free-text site names 6/6 when the
+        // schema line showed a bare `[]` without an instruction (live eval 2026-07-31).
+        let schema = LegalPromptAssembler.outputSchema(for: [.counterargument, .verificationTodos])
+        #expect(schema.contains("preferredSources 恒为空数组"))
+        #expect(schema.contains("不要写入网站名"))
     }
 
     // 191 — active matter context is injected for case-consistency; off-path stays byte-identical.

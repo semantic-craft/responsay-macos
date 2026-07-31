@@ -1,13 +1,14 @@
 import Foundation
 
-/// A deterministic 划词 tool that is **not** an LLM skill (so it has no `*.LEGAL_SKILL.md`
-/// entry) yet still follows the 技能平台 activation model: it appears in the 划词菜单 only once
-/// 激活, exactly like the skill-backed actions. Today the only member is 规范排版
-/// (`normalizeTypography`) — the rule-based Chinese typesetting cleanup shipped in 1.5.4.
+/// A rule-driven 划词 skill with no `*.LEGAL_SKILL.md` behind it, which still follows the 技能平台
+/// activation model: it appears in the 划词菜单 only once 激活, exactly like the skill-backed
+/// actions. Today the only member is 规范排版 (`normalizeTypography`) — the rule-based Chinese
+/// typesetting cleanup shipped in 1.5.4.
 ///
-/// Tools are activated in the 技能平台「工具」区 and gate their matching `SelectionAction` via
-/// `SelectionAction.gate` → `.tool(_)`. `rawValue` is the persisted id, namespaced `tool.*` so it
-/// never collides with a skill id in shared storage / logs.
+/// It lists under 技能平台›写作技能›排版整理 — it acts on the selection in place, so to the user it is
+/// a writing skill; the separate「工具」分区 it used to occupy is gone. 激活 gates the matching
+/// `SelectionAction` via `SelectionAction.gate` → `.tool(_)`. `rawValue` is the persisted id, kept on
+/// the `tool.*` namespace so existing 激活 state survives — and it never collides with a skill id.
 public enum SelectionTool: String, Sendable, Equatable, CaseIterable, Identifiable {
     case normalizeTypography = "tool.normalize_typography"
 

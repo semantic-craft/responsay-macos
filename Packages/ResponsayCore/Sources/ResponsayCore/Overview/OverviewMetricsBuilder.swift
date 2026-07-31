@@ -16,21 +16,13 @@ public struct OverviewMetricsBuilder: Sendable {
         status: ProviderStatusSummary = .unknown,
         typingCharsPerSecond: Double = OverviewMetricsBuilder.defaultTypingCharsPerSecond
     ) -> OverviewMetrics {
-        let todayItems = items.filter { calendar.isDate($0.createdAt, inSameDayAs: now) }
-        let todayCharacters = todayItems.reduce(0) { $0 + Self.characterCount($1) }
-        let totalCharacters = items.reduce(0) { $0 + Self.characterCount($1) }
-
-        let rate = typingCharsPerSecond > 0 ? typingCharsPerSecond : Self.defaultTypingCharsPerSecond
-        let secondsSaved = Double(totalCharacters) / rate
-
-        return OverviewMetrics(
-            todayCharacterCount: todayCharacters,
-            todaySegmentCount: todayItems.count,
-            totalSegmentCount: items.count,
-            estimatedTypingSecondsSaved: secondsSaved,
-            last7Days: Self.last7Days(items: items, now: now, calendar: calendar),
-            providerStatus: status
-        )
+        var accumulator = OverviewMetricsAccumulator(
+            now: now,
+            calendar: calendar,
+            status: status,
+            typingCharsPerSecond: typingCharsPerSecond)
+        items.forEach { accumulator.add($0) }
+        return accumulator.metrics()
     }
 
     // MARK: - Helpers
@@ -38,20 +30,88 @@ public struct OverviewMetricsBuilder: Sendable {
     /// The character total for one item — the approved result if present, else the
     /// retained source. A record with neither contributes zero.
     static func characterCount(_ item: CaptureItem) -> Int {
-        item.idiomatic.isEmpty ? (item.sourceText?.count ?? 0) : item.idiomatic.count
+        visibleText(finalText: item.idiomatic, sourceText: item.sourceText)?.count ?? 0
     }
 
-    /// Exactly 7 day buckets, oldest → newest, ending on `now`'s day.
-    static func last7Days(items: [CaptureItem], now: Date, calendar: Calendar) -> [OverviewDayBucket] {
+    static func visibleText(finalText: String, sourceText: String?) -> String? {
+        let final = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !final.isEmpty { return final }
+        let source = sourceText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return source.isEmpty ? nil : source
+    }
+}
+
+/// Fixed-size accumulator used by both array-backed and SQLite-backed stores.
+/// It never retains transcript text and keeps exactly seven local-calendar buckets.
+struct OverviewMetricsAccumulator {
+    private let now: Date
+    private let calendar: Calendar
+    private let status: ProviderStatusSummary
+    private let typingCharsPerSecond: Double
+    private let bucketDates: [Date]
+    private var bucketSegmentCounts = Array(repeating: 0, count: 7)
+    private var bucketCharacterCounts = Array(repeating: 0, count: 7)
+    private var todayCharacterCount = 0
+    private var todaySegmentCount = 0
+    private var totalCharacterCount = 0
+    private var totalSegmentCount = 0
+
+    init(
+        now: Date,
+        calendar: Calendar,
+        status: ProviderStatusSummary,
+        typingCharsPerSecond: Double
+    ) {
+        self.now = now
+        self.calendar = calendar
+        self.status = status
+        self.typingCharsPerSecond = typingCharsPerSecond > 0
+            ? typingCharsPerSecond
+            : OverviewMetricsBuilder.defaultTypingCharsPerSecond
         let startOfToday = calendar.startOfDay(for: now)
-        return (0..<7).reversed().map { offset -> OverviewDayBucket in
-            let day = calendar.date(byAdding: .day, value: -offset, to: startOfToday) ?? startOfToday
-            let dayItems = items.filter { calendar.isDate($0.createdAt, inSameDayAs: day) }
-            return OverviewDayBucket(
-                date: day,
-                segmentCount: dayItems.count,
-                characterCount: dayItems.reduce(0) { $0 + characterCount($1) }
-            )
+        bucketDates = (0..<7).reversed().map {
+            calendar.date(byAdding: .day, value: -$0, to: startOfToday) ?? startOfToday
         }
+    }
+
+    mutating func add(_ item: CaptureItem) {
+        add(createdAt: item.createdAt, finalText: item.idiomatic, sourceText: item.sourceText)
+    }
+
+    mutating func add(createdAt: Date, finalText: String, sourceText: String?) {
+        guard let text = OverviewMetricsBuilder.visibleText(
+            finalText: finalText,
+            sourceText: sourceText)
+        else { return }
+
+        let characterCount = text.count
+        totalSegmentCount += 1
+        totalCharacterCount += characterCount
+
+        if calendar.isDate(createdAt, inSameDayAs: now) {
+            todaySegmentCount += 1
+            todayCharacterCount += characterCount
+        }
+        if let index = bucketDates.firstIndex(where: {
+            calendar.isDate(createdAt, inSameDayAs: $0)
+        }) {
+            bucketSegmentCounts[index] += 1
+            bucketCharacterCounts[index] += characterCount
+        }
+    }
+
+    func metrics() -> OverviewMetrics {
+        OverviewMetrics(
+            todayCharacterCount: todayCharacterCount,
+            todaySegmentCount: todaySegmentCount,
+            totalSegmentCount: totalSegmentCount,
+            estimatedTypingSecondsSaved: Double(totalCharacterCount) / typingCharsPerSecond,
+            last7Days: bucketDates.indices.map {
+                OverviewDayBucket(
+                    date: bucketDates[$0],
+                    segmentCount: bucketSegmentCounts[$0],
+                    characterCount: bucketCharacterCounts[$0])
+            },
+            providerStatus: status)
     }
 }

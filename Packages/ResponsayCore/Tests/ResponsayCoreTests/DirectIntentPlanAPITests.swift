@@ -17,7 +17,7 @@ struct DirectIntentPlanAPITests {
         #expect(plan.decision == .render)
         #expect(plan.units.count == 3)
         #expect(plan.supersessions.count == 1)
-        #expect(IntentStubURLProtocol.requestURL?.absoluteString.hasSuffix("/chat/completions") == true)
+        #expect(IntentStubURLProtocol.requestURL?.absoluteString.hasSuffix("/responses") == true)
     }
 
     @Test func thinkingIsForcedOffEvenWhenTheUserToggleIsOn() async throws {
@@ -28,7 +28,8 @@ struct DirectIntentPlanAPITests {
         _ = try await api.compile(intentCorrectionInput())
         let body = try JSONSerialization.jsonObject(
             with: IntentStubURLProtocol.requestBody) as? [String: Any]
-        #expect(body?["enable_thinking"] as? Bool == false)
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect(body?["enable_thinking"] == nil)
         #expect(body?["stream"] as? Bool == false)
         #expect(body?["model"] as? String == "qwen-flash")
     }

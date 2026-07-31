@@ -1,21 +1,22 @@
 import Foundation
 
-/// 思考开关 fan-out (PRD 2026-06-09, epic 238): one global on/off maps to each provider's
+/// 思考 fan-out (PRD 2026-06-09, epic 238): maps the requested on/off state to each provider's
 /// OWN official thinking parameter, chosen by `provider_id` first and the base-URL host as a
 /// fallback (so a 自定义 endpoint pointing at a known vendor still gets the right field). No
-/// per-model whitelist — we branch only at the channel level (openless's design). Default off.
+/// per-model whitelist — we branch only at the channel level (openless's design).
 ///
-/// Every BYOK LLM provider speaks OpenAI-compatible `/chat/completions`, so these are extra
-/// top-level body fields merged into that request.
+/// The app always asks for **off** (`LLMEndpointResolver` — no user toggle), and emitting the
+/// explicit off parameter is exactly what keeps DeepSeek / Gemini / Ollama / MiniMax from
+/// reasoning by default. The `enabled` branches stay because the off state is per-vendor, not a
+/// blanket omission.
 ///
-/// `public` only so the settings UI can call `supportsThinking`; the body/channel mapping stays
-/// internal.
-public enum LLMThinkingControl {
+/// These are extra top-level body fields merged into the provider's selected text API request.
+enum LLMThinkingControl {
 
-    /// Extra `/chat/completions` body fields for the chosen 思考 state. Empty = emit nothing
+    /// Extra request body fields for the chosen 思考 state. Empty = emit nothing
     /// (the safe default for providers with no documented toggle — the model choice decides).
-    /// `streaming` matters for DashScope, whose `enable_thinking:true` is valid ONLY on a
-    /// streaming request (a non-streaming call with it set is a hard 400).
+    /// `streaming` remains part of the shared provider contract even though Qwen Responses uses
+    /// the same `reasoning.effort` shape for streaming and non-streaming calls.
     static func extraBody(
         providerId: String,
         model: String,
@@ -27,10 +28,7 @@ public enum LLMThinkingControl {
         case .openAIReasoning:
             return openAIReasoning(model: model, enabled: enabled)
         case .dashScope:
-            // Qwen compatible-mode: `enable_thinking:true` is rejected on a NON-streaming request
-            // (DashScope 400 "enable_thinking must be set to false for non-streaming calls"), so
-            // it may only ride on the streaming path. Off is always safe.
-            return ["enable_thinking": enabled && streaming]
+            return ["reasoning": ["effort": enabled ? "medium" : "none"]]
         case .deepSeek:
             return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
         case .miniMax:
@@ -88,19 +86,12 @@ public enum LLMThinkingControl {
         return ["reasoning_effort": enabled ? "medium" : "low"]
     }
 
-    /// Whether this provider/endpoint exposes an official 思考 parameter the toggle can drive.
-    /// `false` (e.g. Kimi) means the toggle is a no-op for that provider — the
-    /// settings UI surfaces that so the switch never silently does nothing.
-    public static func supportsThinking(providerId: String, baseURLHost: String) -> Bool {
-        channel(providerId: providerId, host: baseURLHost) != .none
-    }
-
     enum Channel { case openAIReasoning, dashScope, deepSeek, miniMax, openRouter, geminiCompat, mimo, zhipu, doubao, ollama, none }
 
     static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
         case "openai": return .openAIReasoning
-        case "qwen", "qwen-token-plan", "qwen-team": return .dashScope
+        case "qwen", "qwen-team": return .dashScope
         case "deepseek": return .deepSeek
         case "minimax": return .miniMax
         case "gemini": return .geminiCompat

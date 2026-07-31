@@ -71,6 +71,9 @@ struct SettingsModelsPane: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshNonce &+= 1   // re-resolve Keychain-backed readiness after editing keys elsewhere
         }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            refreshNonce &+= 1
+        }
     }
 
     private var allReady: Bool { lanes.allSatisfy { $0.readiness.isReady } }
@@ -125,10 +128,10 @@ struct SettingsModelsPane: View {
                     Image(systemName: "arrow.down.circle.fill")
                         .foregroundStyle(SettingsTheme.amber)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("本机模型未下载")
+                        Text(lane.readinessReason.title)
                             .font(SettingsTheme.footnote.weight(.semibold))
                             .foregroundStyle(SettingsTheme.ink)
-                        Text("下载后即可离线使用")
+                        Text(lane.readinessReason.detail)
                             .font(.system(size: SkinMetrics.fsCaption))
                             .foregroundStyle(SettingsTheme.ink3)
                     }
@@ -158,10 +161,10 @@ struct SettingsModelsPane: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(SettingsTheme.amber)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("未配置 · 去填密钥")
+                        Text(lane.readinessReason.title)
                             .font(SettingsTheme.footnote.weight(.semibold))
                             .foregroundStyle(SettingsTheme.ink)
-                        Text("该云端模型还没有密钥，现在配置后即可使用")
+                        Text(lane.readinessReason.detail)
                             .font(.system(size: SkinMetrics.fsCaption))
                             .foregroundStyle(SettingsTheme.ink3)
                     }

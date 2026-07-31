@@ -1,9 +1,8 @@
 import XCTest
 @testable import ResponsayMac
 
-/// 朗读卡片补写 `byok.tts.provider`：配好云端 TTS 却仍默认离线 Kokoro 的回归测试。
-/// 卡片只写 `byok.tts.<id>.*` + 钥匙串，从不写 active provider，而 `TTSEngine.selected`
-/// 的云端优先分支正是读它 —— 于是那段逻辑永远走不到。
+/// Keeps the TTS route, active provider and provider-scoped runtime configuration synchronized,
+/// including launch migration for installs that retained config but lost both route pointers.
 final class TTSActiveProviderTests: XCTestCase {
 
     /// 主回归：设置页配好阿里云 TTS(有 scoped 配置)但没手选过引擎 → 认领为 active provider,
@@ -53,15 +52,38 @@ final class TTSActiveProviderTests: XCTestCase {
     func testExplicitAdoptWritesEvenWhenProviderHasNoConfigYet() {
         let defaults = freshDefaults("explicit-switch")
         defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("OldProviderVoice", forKey: "byok.tts.voice")
 
         TTSActiveProvider.adopt("gemini", defaults: defaults)
 
         XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "gemini")
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudGemini.rawValue)
         XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudGemini)
+        XCTAssertNil(defaults.string(forKey: "byok.tts.gemini.voice"))
+        XCTAssertNotEqual(defaults.string(forKey: "byok.tts.voice"), "OldProviderVoice")
     }
 
-    /// 认领 ≠ 重置:只写 provider 一个键,用户在卡片里选的音色/模型/端点原样保留
-    /// (对照 `CapabilitySelectionSync.selectProvider`,那条路会用 preset 默认值覆写这些字段)。
+    /// Explicitly choosing a provider in the connection card is also a route choice. It must
+    /// replace a stale/local engine pick and restore that provider's scoped configuration into
+    /// the active keys consumed by the runtime engine.
+    func testExplicitAdoptReplacesLocalEngineAndRestoresScopedConfig() {
+        let defaults = freshDefaults("explicit-replaces-local")
+        defaults.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
+        defaults.set("custom-mimo-tts", forKey: "byok.tts.mimo.model")
+        defaults.set("Mia", forKey: "byok.tts.mimo.voice")
+        defaults.set("https://api.xiaomimimo.com/v1", forKey: "byok.tts.mimo.baseURL")
+
+        TTSActiveProvider.adopt("mimo", defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudMimo.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "mimo")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "custom-mimo-tts")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "Mia")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.baseURL"), "https://api.xiaomimimo.com/v1")
+    }
+
+    /// Activating a provider mirrors its scoped values to the runtime keys without mutating or
+    /// replacing the user's durable model / voice / endpoint configuration.
     func testAdoptDoesNotResetTheUsersStoredConfig() {
         let defaults = freshDefaults("adopt-preserves-config")
         defaults.set("qwen-audio-3.0-tts-flash", forKey: "byok.tts.qwen.model")
@@ -73,17 +95,116 @@ final class TTSActiveProviderTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.model"), "qwen-audio-3.0-tts-flash")
         XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.voice"), "loongeva_v3.6")
         XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.baseURL"), "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "qwen-audio-3.0-tts-flash")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "loongeva_v3.6")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.baseURL"), "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
     }
 
-    /// 显式选过引擎仍然优先于补写出来的 provider(`TTSEngine.selected` 的先后顺序不变)。
-    func testExplicitEnginePickStillWinsAfterBackfill() {
+    /// Merely opening a configured cloud card must not override an explicit local route. Leaving
+    /// the provider unset also avoids recreating the contradictory dual state at the next launch.
+    func testBackfillDoesNotOverrideExplicitLocalEnginePick() {
         let defaults = freshDefaults("explicit-engine-wins")
         defaults.set("qwen-audio-3.0-tts-flash", forKey: "byok.tts.qwen.model")
         defaults.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
 
         TTSActiveProvider.adoptShownProviderIfUnset("qwen", hasCredential: true, defaults: defaults)
 
+        XCTAssertNil(defaults.string(forKey: "byok.tts.provider"))
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
+    }
+
+    /// Exact pre-fix/update shape: the old shared fields and the matching scoped profile survived,
+    /// but both route pointers are absent. Launch reconciliation must recover the unique provider
+    /// before the menu/overview asks `TTSEngine.selected` and persists both pointers.
+    func testLaunchReconcileRestoresUniqueLegacyConfiguredProvider() {
+        let defaults = freshDefaults("launch-legacy-config")
+        defaults.set("qwen3-tts-flash", forKey: "byok.tts.model")
+        defaults.set("wss://dashscope.aliyuncs.com/api-ws/v1/inference", forKey: "byok.tts.baseURL")
+        defaults.set("qwen3-tts-flash", forKey: "byok.tts.qwen.model")
+        defaults.set("wss://dashscope.aliyuncs.com/api-ws/v1/inference", forKey: "byok.tts.qwen.baseURL")
+        defaults.set("mimo-v2.5-tts", forKey: "byok.tts.mimo.model")
+        defaults.set("https://api.xiaomimimo.com/v1", forKey: "byok.tts.mimo.baseURL")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
         XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "qwen")
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudQwen.rawValue)
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudQwen)
+    }
+
+    func testLaunchReconcilePersistsTheRetiredDoubaoCompatibilityRoute() {
+        let defaults = freshDefaults("launch-retired-doubao")
+        defaults.set("cloud-doubao", forKey: TTSEngine.defaultsKey)
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "qwen")
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudQwen.rawValue)
+    }
+
+    /// Newer partial state: active provider exists but the engine pointer does not. Restore the
+    /// engine and copy the provider-scoped values instead of resetting them to catalog defaults.
+    func testLaunchReconcileRestoresEngineFromActiveProviderWithoutResettingConfig() {
+        let defaults = freshDefaults("launch-provider-only")
+        defaults.set("mimo", forKey: "byok.tts.provider")
+        defaults.set("custom-mimo-tts", forKey: "byok.tts.mimo.model")
+        defaults.set("Mia", forKey: "byok.tts.mimo.voice")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudMimo.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "custom-mimo-tts")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "Mia")
+    }
+
+    /// Existing explicit routes remain authoritative. Reconciliation repairs the provider/config
+    /// side to the selected cloud engine rather than letting an unrelated card override the route.
+    func testLaunchReconcileRepairsProviderToExplicitCloudEngine() {
+        let defaults = freshDefaults("launch-engine-wins")
+        defaults.set(TTSEngine.cloudMimo.rawValue, forKey: TTSEngine.defaultsKey)
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("custom-mimo-tts", forKey: "byok.tts.mimo.model")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "mimo")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "custom-mimo-tts")
+        XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudMimo.rawValue)
+    }
+
+    /// Older installs could have a coherent route while keeping customized runtime values only
+    /// in the shared active keys. Reconciliation must migrate those values into the matching
+    /// provider profile before catalog fallbacks can replace them.
+    func testLaunchReconcileMigratesLegacyActiveConfigForMatchingProvider() {
+        let defaults = freshDefaults("launch-migrate-active-config")
+        defaults.set(TTSEngine.cloudMimo.rawValue, forKey: TTSEngine.defaultsKey)
+        defaults.set("mimo", forKey: "byok.tts.provider")
+        defaults.set("legacy-custom-model", forKey: "byok.tts.model")
+        defaults.set("LegacyVoice", forKey: "byok.tts.voice")
+        defaults.set("https://tts.example.com/v1", forKey: "byok.tts.baseURL")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "legacy-custom-model")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "LegacyVoice")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.baseURL"), "https://tts.example.com/v1")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.model"), "legacy-custom-model")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.voice"), "LegacyVoice")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.baseURL"), "https://tts.example.com/v1")
+    }
+
+    /// Multiple matching archived profiles are not enough evidence of the user's active route.
+    /// The migration must leave both pointers unset instead of choosing by catalog order.
+    func testLaunchReconcileDoesNotGuessWhenLegacyConfigIsAmbiguous() {
+        let defaults = freshDefaults("launch-ambiguous")
+        defaults.set("custom-shared-model", forKey: "byok.tts.model")
+        defaults.set("custom-shared-model", forKey: "byok.tts.qwen.model")
+        defaults.set("custom-shared-model", forKey: "byok.tts.mimo.model")
+
+        TTSActiveProvider.reconcileAtLaunch(defaults: defaults)
+
+        XCTAssertNil(defaults.string(forKey: "byok.tts.provider"))
+        XCTAssertNil(defaults.string(forKey: TTSEngine.defaultsKey))
         XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
     }
 

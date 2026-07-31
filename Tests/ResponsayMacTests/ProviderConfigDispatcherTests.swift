@@ -34,7 +34,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.region, .china)
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -195,23 +195,54 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
     }
 
-    // Token Plan is now a billing plan inside `qwen`: selecting qwen + package resolves to the
-    // Token Plan endpoint and its plan-specific default model (qwen3.6-flash).
-    func testQwenTokenPlanPlanResolvesTokenPlanEndpointAndModel() {
+    func testQwenWorkspaceIDOverridesBaseURLWithRegionalDedicatedResponsesEndpoint() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        defaults.set(BillingPlan.package.rawValue, forKey: "byok.llm.plan")
-        // Multi-plan provider stores keys per plan: Token Plan key lives at byok.qwen.package.
-        let config = dispatcher(keys: ["byok.qwen.package": "token-plan-secret"]).resolve(.llm)
+        defaults.set("ws-abc123", forKey: "byok.llm.qwen.workspaceId")
 
-        XCTAssertEqual(config.providerId, "qwen")
-        XCTAssertEqual(config.region, .china)
-        XCTAssertEqual(config.plan, .package)
-        XCTAssertEqual(config.baseURL, "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
-        XCTAssertEqual(config.model, "qwen3.6-flash")
-        XCTAssertEqual(config.apiKey, "token-plan-secret")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.germany.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.eu-central-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.japan.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://ws-abc123.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1")
+
+        defaults.set(ProviderRegion.unitedStates.rawValue, forKey: "byok.llm.qwen.region")
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
+    }
+
+    func testInvalidQwenWorkspaceIDCannotInjectAHost() {
+        defaults.set("qwen", forKey: "byok.llm.provider")
+        defaults.set("ws-abc123.evil.example", forKey: "byok.llm.qwen.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.llm).baseURL,
+            "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    }
+
+    func testQwenWorkspaceIDDoesNotChangeQwenTTSProtocolEndpoint() {
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("ws-abc123", forKey: "byok.tts.qwen.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.tts).baseURL,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
     }
 
     func testExplicitBaseURLAndModelWinOverCatalog() {
@@ -255,8 +286,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(dispatcher().resolve(.llm).providerId, "qwen")
     }
 
-    // Legacy `qwen-team` / `qwen-token-plan` ids now canonicalize onto the surviving `qwen`
-    // provider (Token Plan is a plan within it), falling to qwen's 按量付费 defaults.
+    // Legacy provider ids canonicalize onto the surviving Qwen PAYG route.
     func testLegacyQwenTeamLLMSelectionCanonicalizesToQwen() {
         defaults.set("qwen-team", forKey: "byok.llm.provider")
 
@@ -264,7 +294,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
 
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.6-flash")
+        XCTAssertEqual(config.model, "qwen3.7-flash")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -284,8 +314,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
     // MARK: Keys
 
     func testKeyIsReadFromKeychainByProviderId() {
-        // qwen is multi-plan; default plan is 按量付费, so the key lives at byok.qwen.payg.
-        let config = dispatcher(keys: ["byok.qwen.payg": "dashscope-secret"]).resolve(.llm)
+        let config = dispatcher(keys: ["byok.qwen": "dashscope-secret"]).resolve(.llm)
         XCTAssertEqual(config.apiKey, "dashscope-secret")
         XCTAssertTrue(config.hasKey)
     }
@@ -303,8 +332,8 @@ final class ProviderConfigDispatcherTests: XCTestCase {
             CapabilityCredentialAccount.apiKeyAccount(providerId: "mimo", capability: .tts, plan: .package),
             "byok.tts.mimo.package")
         XCTAssertEqual(
-            CapabilityCredentialAccount.apiKeyAccount(providerId: "qwen", capability: .llm, plan: .package),
-            "byok.qwen.package")
+            CapabilityCredentialAccount.apiKeyAccount(providerId: "qwen", capability: .llm, plan: .payg),
+            "byok.qwen")
         // single-plan provider ignores the plan and keeps its shared slot
         XCTAssertEqual(
             CapabilityCredentialAccount.apiKeyAccount(providerId: "openai", capability: .llm, plan: .package),

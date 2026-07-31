@@ -297,7 +297,9 @@ final class CloudTTSTests: XCTestCase {
         defaults.set("minimax", forKey: "byok.tts.provider")
         defaults.set("https://api.minimaxi.com/v1", forKey: "byok.tts.baseURL")
         defaults.set("speech-2.8-turbo", forKey: "byok.tts.model")
-        defaults.set("English_Deep-VoicedGentleman", forKey: "byok.tts.voice")
+        // 音色取「可选」菜单里真实提供的一项：selectedVoiceID 会拿 catalog.voices 校验用户的选择,
+        // 菜单有而 catalog 没有的音色会被静默丢回默认音色。
+        defaults.set("female-yujie", forKey: "byok.tts.voice")
 
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.lastRequestBody = nil
@@ -324,7 +326,7 @@ final class CloudTTSTests: XCTestCase {
         XCTAssertEqual(body["model"] as? String, "speech-2.8-turbo")
         XCTAssertEqual(body["text"] as? String, "hello")
         XCTAssertEqual((body["voice_setting"] as? [String: Any])?["voice_id"] as? String,
-                       "English_Deep-VoicedGentleman")
+                       "female-yujie")
         XCTAssertEqual((body["voice_setting"] as? [String: Any])?["speed"] as? Double, 0.8)
     }
 

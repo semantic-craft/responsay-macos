@@ -94,4 +94,44 @@ struct LegalOutputValidatorTests {
         let r = await validator.validate(rawOutput: fenced, envelope: env) { _ in "" }
         #expect(r.summary == "去围栏")
     }
+
+    @Test func decode_dropsFreeTextPreferredSources_keepsEverythingElseStrict() async {
+        // Live eval 2026-07-31: doubao-2.1-pro AND qwen3.7-max filled `preferredSources` with
+        // free-text site names 6/6, and one out-of-enum value failed the entire decode →
+        // fallbackText. The tolerant decode drops unknown entries (query routing falls back to
+        // `defaultSource(for: kind)`), keeps valid enum values, and must NOT relax any other
+        // field: an invalid `kind` still fails the anchor decode.
+        var repairCalls = 0
+        let json = """
+        {"summary":"反方演练",
+         "cards":[{"counterargument":{"title":"t","thesis":"th","implicitPremises":["p"],
+           "items":[{"id":"c1","counterargument":"ca","basis":"b","replyStrategy":"r"}]}}],
+         "verificationAnchors":[
+           {"id":"a1","label":"《个人信息保护法》第19条","kind":"law","status":"pending",
+            "query":"个人信息保护法 第十九条","preferredSources":["全国人大官网","国家法律法规数据库"]},
+           {"id":"a2","label":"动态同意研究","kind":"scholarlyArticle","status":"pending",
+            "query":"动态同意","preferredSources":["中国知网","cnki"]}]}
+        """
+        let r = await validator.validate(rawOutput: json, envelope: env) { _ in repairCalls += 1; return "" }
+        #expect(repairCalls == 0)                                   // no repair round needed
+        if case .counterargument = r.cards.first {} else {
+            Issue.record("expected counterargument card, got fallback/other")
+        }
+        #expect(r.verificationAnchors.count == 2)
+        #expect(r.verificationAnchors[0].preferredSources.isEmpty)  // free text dropped
+        #expect(r.verificationAnchors[1].preferredSources == [.cnki]) // valid enum value kept
+        #expect(r.verificationAnchors[0].status == .pending)
+    }
+
+    @Test func decode_invalidAnchorKind_staysStrict() async {
+        // The preferredSources tolerance must not leak into other anchor fields.
+        let json = """
+        {"summary":"s","cards":[],
+         "verificationAnchors":[{"id":"a1","label":"l","kind":"website","status":"pending","query":"q"}]}
+        """
+        let r = await validator.validate(rawOutput: json, envelope: env) { _ in "" }
+        if case .fallbackText = r.cards.first {} else {
+            Issue.record("expected fallback: an out-of-enum kind must still fail the strict decode")
+        }
+    }
 }

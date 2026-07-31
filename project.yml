@@ -5,8 +5,8 @@ options:
   developmentLanguage: zh-Hans
 settings:
   base:
-    MARKETING_VERSION: "1.5.10"
-    CURRENT_PROJECT_VERSION: "143"
+    MARKETING_VERSION: "1.7.2"
+    CURRENT_PROJECT_VERSION: "148"
     SWIFT_VERSION: "6.0"
 packages:
   ResponsayCore:
@@ -52,7 +52,7 @@ targets:
               - responsay
         NSMicrophoneUsageDescription: "法言需要访问麦克风，以把语音转换为文字。"
         NSSpeechRecognitionUsageDescription: "法言需要使用语音识别，将语音转换为文字。"
-        SUFeedURL: "https://responsay.com/appcast.xml"
+        SUFeedURL: "https://raw.githubusercontent.com/semantic-craft/responsay-macos/main/appcast.xml"
         SUPublicEDKey: "3Ze0A+sHbvkQ8CLlDUIcYvm7BJS4IJLU1rNEX66F9R4=" # gitleaks:allow -- public Sparkle verification key
         SUEnableAutomaticChecks: true
         CFBundleLocalizations:
@@ -74,11 +74,13 @@ targets:
         OTHER_LDFLAGS:
           - -lc++
       configs:
-        Debug:
-          CODE_SIGN_IDENTITY: "-"
         Release:
           ENABLE_HARDENED_RUNTIME: YES
           CODE_SIGN_ENTITLEMENTS: macOS/Responsay.entitlements
+    # Debug signing lives in the xcconfig so a maintainer can override the identity
+    # locally; a build setting written here would take precedence and defeat that.
+    configFiles:
+      Debug: macOS/Signing.xcconfig
   ResponsayMacTests:
     type: bundle.unit-test
     platform: macOS
