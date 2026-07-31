@@ -16,9 +16,10 @@ enum VoiceAssistantSearchModelSettings {
     static let key = "voiceAssistant.searchProvider"
 
     /// 支持联网搜索的 provider(canonical id)。顺序 = 自动模式的回退优先级。
-    /// Qwen 走 `/responses` + `LLMSearchControl`;MiMo 走 `/chat/completions`;doubao(火山方舟)
-    /// 与 openai 的联网也走 `/responses`，由专用客户端驱动(见 CaptureController+AskAnything)。
-    static let searchProviders = ["qwen", "mimo", "doubao", "openai"]
+    /// Qwen 与 DeepSeek 走 `/responses` + `LLMSearchControl`;MiMo 走 `/chat/completions`;
+    /// doubao(火山方舟)与 openai 的联网也走 `/responses`，由专用客户端驱动
+    /// (见 CaptureController+AskAnything)。
+    static let searchProviders = ["qwen", "mimo", "doubao", "openai", "deepseek"]
 
     /// 用户显式选择;自动 / 非法存值 → nil。
     static func preferredProviderId(defaults: UserDefaults = .standard) -> String? {
@@ -49,6 +50,7 @@ enum VoiceAssistantSearchModelSettings {
         case "mimo":   return CapsuleSearchSource(monogram: "Mi", name: "MiMo")
         case "doubao": return CapsuleSearchSource(monogram: "豆", name: "豆包")
         case "openai": return CapsuleSearchSource(monogram: "O", name: "OpenAI")
+        case "deepseek": return CapsuleSearchSource(monogram: "DS", name: "DeepSeek")
         default:       return nil
         }
     }

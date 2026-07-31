@@ -208,7 +208,8 @@ extension ProviderCatalog {
         endpoints: [.init(.global, .payg, "https://api.deepseek.com/v1")],
         defaultModels: [.llm: "deepseek-v4-flash"],
         keyLabel: "DeepSeek API Key", keyFormatHint: "sk-…",
-        builtinSearch: false, isCustom: false, isLocal: false,
+        // 联网靠 Responses 的服务端 web_search 工具，只有 deepseek-v4-flash 走那条路由。
+        builtinSearch: true, isCustom: false, isLocal: false,
         presetModels: [.llm: ["deepseek-v4-flash"]])
 
     static let openAI = ProviderPreset(

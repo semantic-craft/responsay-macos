@@ -8,9 +8,9 @@ public protocol StreamingChatClient: Sendable {
     func stream(messages: [[String: String]]) -> AsyncThrowingStream<TextStreamEvent, Error>
 }
 
-/// A generic streaming text client that accepts a raw array of messages. Qwen uses the Responses
-/// request/event shape; remaining providers retain Chat Completions. The SSE byte loop, HTTP gate,
-/// and cancellation live in `SSEStreamTransport`.
+/// A generic streaming text client that accepts a raw array of messages. Qwen and DeepSeek
+/// `deepseek-v4-flash` use the Responses request/event shape; remaining providers retain Chat
+/// Completions. The SSE byte loop, HTTP gate, and cancellation live in `SSEStreamTransport`.
 public final class DirectStreamingChatClient: StreamingChatClient {
     private let endpoint: LLMEndpoint
     private let searchEnabled: Bool
@@ -25,6 +25,7 @@ public final class DirectStreamingChatClient: StreamingChatClient {
     public func stream(messages: [[String: String]]) -> AsyncThrowingStream<TextStreamEvent, Error> {
         if LLMProviderCapabilities.prefersResponses(
             providerId: endpoint.providerId,
+            model: endpoint.model,
             baseURLHost: endpoint.host
         ) {
             return responsesStream(messages: messages)
@@ -57,6 +58,7 @@ public final class DirectStreamingChatClient: StreamingChatClient {
             }
             for (key, value) in LLMSearchControl.extraBody(
                 providerId: endpoint.providerId,
+                model: endpoint.model,
                 baseURLHost: endpoint.host,
                 searchEnabled: searchEnabled) {
                 body[key] = value
@@ -102,6 +104,7 @@ public final class DirectStreamingChatClient: StreamingChatClient {
             }
             for (key, value) in LLMSearchControl.extraBody(
                 providerId: endpoint.providerId,
+                model: endpoint.model,
                 baseURLHost: endpoint.host,
                 searchEnabled: searchEnabled) {
                 body[key] = value

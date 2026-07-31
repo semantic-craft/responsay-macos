@@ -110,19 +110,28 @@ struct SearchVerificationTests {
     // MARK: - supportsSearch check
 
     @Test func supportsSearch_falseForRetiredZhipu() {
-        #expect(!SearchVerificationService.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
+        #expect(!SearchVerificationService.supportsSearch(
+            providerId: "zhipu", model: "glm-4", baseURLHost: "open.bigmodel.cn"))
     }
 
     @Test func supportsSearch_trueForQwenResponsesSourceResults() {
-        #expect(SearchVerificationService.supportsSearch(providerId: "qwen", baseURLHost: "dashscope.aliyuncs.com"))
+        #expect(SearchVerificationService.supportsSearch(
+            providerId: "qwen", model: "qwen-plus", baseURLHost: "dashscope.aliyuncs.com"))
     }
 
     @Test func supportsSearch_trueForDoubaoArkResponses() {
-        #expect(SearchVerificationService.supportsSearch(providerId: "doubao", baseURLHost: "ark.cn-beijing.volces.com"))
+        #expect(SearchVerificationService.supportsSearch(
+            providerId: "doubao", model: "doubao-seed-2-1-turbo-260628",
+            baseURLHost: "ark.cn-beijing.volces.com"))
     }
 
-    @Test func supportsSearch_falseForDeepSeek() {
-        #expect(!SearchVerificationService.supportsSearch(providerId: "deepseek", baseURLHost: "api.deepseek.com"))
+    /// DeepSeek 迁到 Responses 后带上了服务端 web_search，因此 v4-flash 可以喂核验；
+    /// 仍走 /chat/completions 的模型不行。
+    @Test func supportsSearch_deepSeekOnlyOnResponsesModel() {
+        #expect(SearchVerificationService.supportsSearch(
+            providerId: "deepseek", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+        #expect(!SearchVerificationService.supportsSearch(
+            providerId: "deepseek", model: "deepseek-chat", baseURLHost: "api.deepseek.com"))
     }
 
     // MARK: - Anchor status discipline

@@ -113,6 +113,24 @@ struct LLMThinkingControlTests {
         #expect((body("doubao", "doubao-seed-2-0-lite-260428", false, host: "ark.cn-beijing.volces.com")["thinking"] as? [String: String])?["type"] == "disabled")
     }
 
+    /// DeepSeek 思考默认是开的，而两种 API 的开关不同名：Responses 的 `deepseek-v4-flash` 只认
+    /// `reasoning.effort:"none"`，Chat Completions 的其余模型只认 `thinking.type:"disabled"`。
+    /// 发错那一边会被静默忽略 → 模型照常思考，输入法每次改写都白等一段思维链。
+    @Test func deepseekV4Flash_disablesThinkingViaResponsesReasoningEffort() {
+        let off = body("deepseek", "deepseek-v4-flash", false, host: "api.deepseek.com")
+        #expect((off["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect(off["thinking"] == nil)                     // chat-only 字段不会漏发
+        let on = body("deepseek", "deepseek-v4-flash", true, host: "api.deepseek.com")
+        #expect((on["reasoning"] as? [String: String])?["effort"] == "high")
+        // 流式与非流式同形。
+        let streamed = body("deepseek", "deepseek-v4-flash", false, host: "api.deepseek.com", streaming: true)
+        #expect((streamed["reasoning"] as? [String: String])?["effort"] == "none")
+        // 仍走 Chat Completions 的模型保持旧开关，不能被改成 reasoning.effort。
+        let pro = body("deepseek", "deepseek-v4-pro", false, host: "api.deepseek.com")
+        #expect((pro["thinking"] as? [String: String])?["type"] == "disabled")
+        #expect(pro["reasoning"] == nil)
+    }
+
     // 423 — MiniMax OpenAI-compat /v1: M3's interleaved thinking is injected as <think>…</think>
     // INTO `content` by default, which corrupts our structured-JSON replies. `reasoning_split:true`
     // relocates the trace to a separate `reasoning_details` field so `content` stays clean JSON.
@@ -180,6 +198,25 @@ struct LLMWireTests {
         #expect(LLMWire.chatCompletionsURL(base: "   ") == nil)
     }
 
+    /// DeepSeek 的 Responses 文档只给了不带 `/v1` 的 base_url，而我们存的卡片是
+    /// `https://api.deepseek.com/v1`（它 Chat Completions 的兼容前缀）——拼之前得摘掉。
+    @Test func responsesURL_dropsDeepSeekV1PrefixOnly() {
+        #expect(LLMWire.responsesURL(base: "https://api.deepseek.com/v1")?.absoluteString
+                == "https://api.deepseek.com/responses")
+        #expect(LLMWire.responsesURL(base: "https://api.deepseek.com")?.absoluteString
+                == "https://api.deepseek.com/responses")
+        #expect(LLMWire.responsesURL(base: "https://api.deepseek.com/v1/chat/completions")?.absoluteString
+                == "https://api.deepseek.com/responses")
+        // 已经是完整 /responses 的照旧复用。
+        #expect(LLMWire.responsesURL(base: "https://api.deepseek.com/responses")?.absoluteString
+                == "https://api.deepseek.com/responses")
+        // 只按 host 判断：Qwen 的 /compatible-mode/v1 必须原样保留。
+        #expect(LLMWire.responsesURL(base: "https://dashscope.aliyuncs.com/compatible-mode/v1")?.absoluteString
+                == "https://dashscope.aliyuncs.com/compatible-mode/v1/responses")
+        #expect(LLMWire.responsesURL(base: "https://api.openai.com/v1")?.absoluteString
+                == "https://api.openai.com/v1/responses")
+    }
+
     @Test func modelsURL_normalizes() {
         #expect(LLMWire.modelsURL(base: "https://api.openai.com/v1")?.absoluteString == "https://api.openai.com/v1/models")
         #expect(LLMWire.modelsURL(base: "https://x.com/v1/chat/completions")?.absoluteString == "https://x.com/v1/models")
@@ -234,6 +271,46 @@ struct LLMChatRequestBuilderTests {
             #expect(body?["store"] as? Bool == false)
             #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
             #expect(body?["messages"] == nil)
+        }
+    }
+
+    /// DeepSeek `deepseek-v4-flash` 的完整 Responses 线形：命中不带 `/v1` 的 `/responses`、
+    /// 用 `input` 而不是 `messages`、并用 `reasoning.effort:"none"` 关掉默认开着的思考。
+    @Test func buildsDeepSeekV4FlashResponsesShapeBody() throws {
+        let ep = LLMEndpoint(providerId: "deepseek", baseURL: "https://api.deepseek.com/v1",
+                             model: "deepseek-v4-flash", apiKey: "sk-ds", thinkingEnabled: false)
+        let req = try LLMChatRequestBuilder.makeRequest(endpoint: ep, system: "SYS", user: "USR")
+
+        #expect(req.url?.absoluteString == "https://api.deepseek.com/responses")
+        #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer sk-ds")
+        let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
+        #expect(body?["model"] as? String == "deepseek-v4-flash")
+        #expect(body?["stream"] as? Bool == false)
+        let input = body?["input"] as? [[String: String]]
+        #expect(input?.first?["role"] == "system")
+        #expect(input?.first?["content"] == "SYS")
+        #expect(input?.last?["role"] == "user")
+        #expect(input?.last?["content"] == "USR")
+        #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
+        #expect(body?["messages"] == nil)
+        #expect(body?["thinking"] == nil)
+        // temperature/top_p 官方支持（思考关掉后才生效），沿用既有生成档位。
+        #expect(body?["temperature"] as? Double == 0.2)
+    }
+
+    /// v4-pro / deepseek-chat 尚未被 Responses 支持，必须原样留在 /chat/completions。
+    @Test func deepSeekNonFlashModelsStayOnChatCompletions() throws {
+        for model in ["deepseek-v4-pro", "deepseek-chat"] {
+            let ep = LLMEndpoint(providerId: "deepseek", baseURL: "https://api.deepseek.com/v1",
+                                 model: model, apiKey: "sk-ds", thinkingEnabled: false)
+            let req = try LLMChatRequestBuilder.makeRequest(endpoint: ep, system: "SYS", user: "USR")
+            #expect(req.url?.absoluteString == "https://api.deepseek.com/v1/chat/completions")
+            let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
+            #expect(body?["messages"] != nil)
+            #expect(body?["input"] == nil)
+            #expect(body?["store"] == nil)
+            #expect((body?["thinking"] as? [String: String])?["type"] == "disabled")
+            #expect(body?["reasoning"] == nil)
         }
     }
 

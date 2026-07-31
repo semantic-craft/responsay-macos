@@ -91,6 +91,49 @@ struct LLMSearchResultParserTests {
         #expect(result.provider == "qwen")
     }
 
+    // MARK: - DeepSeek Responses (no action.sources — falls back to the URL in the prose)
+
+    /// 实测形状（2026-07-31，deepseek-v4-flash + 服务端 web_search）：DeepSeek 的
+    /// `web_search_call.action` 只有 `{type:search, queries:[…]}`（无 URL）或
+    /// `{type:open_page, url:"…#ws_call_id=…"}`（常见 status:failed），**没有** Qwen 的
+    /// `action.sources`。所以来源只能从正文兜底取——这条链路必须保持有效，否则 DeepSeek
+    /// 的 [待核] 核验会一直空手而归。
+    @Test func deepseekResponses_noActionSources_fallsBackToProseURL() throws {
+        let json = """
+        {
+          "output": [
+            {"type": "web_search_call", "status": "completed",
+             "action": {"type": "search", "queries": ["民法典第五百七十七条", "ws_call_id=call_00"]}},
+            {"type": "web_search_call", "status": "failed",
+             "action": {"type": "open_page", "url": "https://example.invalid/x#ws_call_id=call_01"}},
+            {"type": "message",
+             "content": [{"type": "output_text",
+                          "text": "依据《民法典》第五百七十七条，见 https://flk.npc.gov.cn/detail2.html 。"}]}
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let result = try #require(LLMSearchResultParser.parse(responseData: json, providerId: "deepseek"))
+        // 正文里的真链接胜出——不能拿抓取失败的 open_page URL（还挂着 ws_call_id 尾巴）当来源。
+        #expect(result.url == "https://flk.npc.gov.cn/detail2.html")
+        #expect(!result.url.contains("ws_call_id"))
+        #expect(result.provider == "deepseek")
+    }
+
+    /// 搜了但正文里没有链接 → nil，不是编一个。搜不到 ≠ 不存在。
+    @Test func deepseekResponses_searchedButNoURL_returnsNil() {
+        let json = """
+        {
+          "output": [
+            {"type": "web_search_call", "status": "completed",
+             "action": {"type": "search", "queries": ["查无此条"]}},
+            {"type": "message", "content": [{"type": "output_text", "text": "没有找到相关条文。"}]}
+          ]
+        }
+        """.data(using: .utf8)!
+        #expect(LLMSearchResultParser.parse(responseData: json, providerId: "deepseek") == nil)
+    }
+
     // MARK: - MiMo (official annotations url_citation)
 
     @Test func mimo_parsesUrlCitationAnnotations() throws {

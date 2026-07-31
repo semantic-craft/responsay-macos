@@ -33,7 +33,7 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
     }
 
     func testPreferredNonSearchProviderFallsBackToAuto() {
-        defaults.set("deepseek", forKey: VoiceAssistantSearchModelSettings.key)  // 不可联网
+        defaults.set("minimax", forKey: VoiceAssistantSearchModelSettings.key)  // 不可联网
         XCTAssertNil(VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults))
     }
 
@@ -41,13 +41,20 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
 
     func testAutoCandidatesAreDefaultOrder() {
         XCTAssertEqual(VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults),
-                       ["qwen", "mimo", "doubao", "openai"])
+                       ["qwen", "mimo", "doubao", "openai", "deepseek"])
     }
 
     func testPreferredCandidateFirstThenRest() {
         defaults.set("mimo", forKey: VoiceAssistantSearchModelSettings.key)
         XCTAssertEqual(VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults),
-                       ["mimo", "qwen", "doubao", "openai"])
+                       ["mimo", "qwen", "doubao", "openai", "deepseek"])
+    }
+
+    /// DeepSeek 迁到 Responses 后带上了服务端 web_search，所以它现在是可选的联网 provider。
+    func testDeepSeekIsSelectableSearchProvider() {
+        defaults.set("deepseek", forKey: VoiceAssistantSearchModelSettings.key)
+        XCTAssertEqual(VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults), "deepseek")
+        XCTAssertEqual(VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults).first, "deepseek")
     }
 
     // MARK: - displayName
@@ -91,6 +98,8 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
                        CapsuleSearchSource(monogram: "Mi", name: "MiMo"))
         XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "doubao"),
                        CapsuleSearchSource(monogram: "豆", name: "豆包"))
-        XCTAssertNil(VoiceAssistantSearchModelSettings.capsuleSource(for: "deepseek"))
+        XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "deepseek"),
+                       CapsuleSearchSource(monogram: "DS", name: "DeepSeek"))
+        XCTAssertNil(VoiceAssistantSearchModelSettings.capsuleSource(for: "minimax"))
     }
 }
