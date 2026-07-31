@@ -160,15 +160,6 @@ extension ProviderCatalog {
             PresetVoice(id: "苏打", displayName: "苏打 (男·中文)")
         ])
 
-    static let zhipu = ProviderPreset(
-        id: "zhipu", displayName: "智谱GLM",
-        capabilities: [.llm], credentialShape: .apiKey,
-        endpoints: [.init(.china, .payg, "https://open.bigmodel.cn/api/paas/v4")],
-        defaultModels: [.llm: "glm-5-turbo"],
-        keyLabel: "智谱 API Key", keyFormatHint: nil,
-        builtinSearch: true, isCustom: false, isLocal: false,
-        presetModels: [.llm: ["glm-5-turbo"]])
-
     static let minimax = ProviderPreset(
         id: "minimax", displayName: "MiniMax",
         // TTS-only since 1.5.1 (user decision 2026-07-20): the LLM lane opened in 423 is retired —

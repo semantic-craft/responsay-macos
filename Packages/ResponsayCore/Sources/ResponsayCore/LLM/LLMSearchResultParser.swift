@@ -7,7 +7,6 @@ import Foundation
 // - MiMo: `annotations` array with `url_citation` entries
 // - Doubao/Ark Responses: `output[].content[].annotations`
 // - Kimi/legacy MiMo: `search_results` array in the message object
-// - Zhipu: `web_search` array in the message object
 // - Qwen Responses: `web_search_call.action.sources` plus output text/annotations
 // - Legacy Qwen Chat: inline `[ref]` citations in content text
 // - Fallback: extract URL from plain content text
@@ -46,11 +45,6 @@ public enum LLMSearchResultParser {
 
         // Try structured search results next (Kimi, legacy MiMo shapes)
         if let result = parseSearchResults(message, providerId: providerId) {
-            return result
-        }
-
-        // Try Zhipu's web_search field
-        if let result = parseWebSearch(message, providerId: providerId) {
             return result
         }
 
@@ -100,9 +94,6 @@ public enum LLMSearchResultParser {
             if let result = parseSearchResults(item, providerId: providerId) {
                 return result
             }
-            if let result = parseWebSearch(item, providerId: providerId) {
-                return result
-            }
             guard let content = item["content"] as? [[String: Any]] else { continue }
             for part in content {
                 let text = part["text"] as? String ?? ""
@@ -149,18 +140,6 @@ public enum LLMSearchResultParser {
               let first = results.first else { return nil }
         let title = first["title"] as? String ?? ""
         let url = first["url"] as? String ?? first["link"] as? String ?? ""
-        let snippet = first["content"] as? String ?? ""
-        guard !url.isEmpty else { return nil }
-        return SearchResult(title: title, url: url, snippet: snippet, provider: providerId)
-    }
-
-    // MARK: - Zhipu web_search field
-
-    private static func parseWebSearch(_ message: [String: Any], providerId: String) -> SearchResult? {
-        guard let results = message["web_search"] as? [[String: Any]],
-              let first = results.first else { return nil }
-        let title = first["title"] as? String ?? ""
-        let url = first["link"] as? String ?? first["url"] as? String ?? ""
         let snippet = first["content"] as? String ?? ""
         guard !url.isEmpty else { return nil }
         return SearchResult(title: title, url: url, snippet: snippet, provider: providerId)

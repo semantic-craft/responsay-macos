@@ -28,8 +28,8 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
     }
 
     func testPreferredValidProvider() {
-        defaults.set("zhipu", forKey: VoiceAssistantSearchModelSettings.key)
-        XCTAssertEqual(VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults), "zhipu")
+        defaults.set("mimo", forKey: VoiceAssistantSearchModelSettings.key)
+        XCTAssertEqual(VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults), "mimo")
     }
 
     func testPreferredNonSearchProviderFallsBackToAuto() {
@@ -41,20 +41,20 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
 
     func testAutoCandidatesAreDefaultOrder() {
         XCTAssertEqual(VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults),
-                       ["qwen", "zhipu", "mimo", "doubao", "openai"])
+                       ["qwen", "mimo", "doubao", "openai"])
     }
 
     func testPreferredCandidateFirstThenRest() {
         defaults.set("mimo", forKey: VoiceAssistantSearchModelSettings.key)
         XCTAssertEqual(VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults),
-                       ["mimo", "qwen", "zhipu", "doubao", "openai"])
+                       ["mimo", "qwen", "doubao", "openai"])
     }
 
     // MARK: - displayName
 
     func testDisplayNames() {
         XCTAssertEqual(VoiceAssistantSearchModelSettings.displayName(for: "qwen"), "阿里云百炼")
-        XCTAssertEqual(VoiceAssistantSearchModelSettings.displayName(for: "zhipu"), "智谱GLM")
+        XCTAssertEqual(VoiceAssistantSearchModelSettings.displayName(for: "mimo"), "小米Mimo")
         XCTAssertEqual(VoiceAssistantSearchModelSettings.displayName(for: "mimo"), "小米Mimo")
     }
 
@@ -86,8 +86,7 @@ final class VoiceAssistantSearchModelSettingsTests: XCTestCase {
     func testCapsuleSourceMapping() {
         XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "qwen"),
                        CapsuleSearchSource(monogram: "通", name: "通义千问"))
-        XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "zhipu"),
-                       CapsuleSearchSource(monogram: "智", name: "智谱"))
+        XCTAssertNil(VoiceAssistantSearchModelSettings.capsuleSource(for: "zhipu"))   // 已退役
         XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "mimo"),
                        CapsuleSearchSource(monogram: "Mi", name: "MiMo"))
         XCTAssertEqual(VoiceAssistantSearchModelSettings.capsuleSource(for: "doubao"),

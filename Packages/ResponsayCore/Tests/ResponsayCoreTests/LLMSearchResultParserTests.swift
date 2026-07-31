@@ -91,30 +91,6 @@ struct LLMSearchResultParserTests {
         #expect(result.provider == "qwen")
     }
 
-    // MARK: - Zhipu (web_search field)
-
-    @Test func zhipu_parsesWebSearchField() throws {
-        let json = """
-        {
-          "choices": [{
-            "message": {
-              "content": "根据搜索结果，民法典第577条规定了违约责任。",
-              "web_search": [{
-                "title": "中华人民共和国民法典",
-                "link": "https://www.pkulaw.com/chl/abc123",
-                "content": "第五百七十七条　当事人一方不履行合同义务..."
-              }]
-            }
-          }]
-        }
-        """.data(using: .utf8)!
-        let result = try #require(LLMSearchResultParser.parse(responseData: json, providerId: "zhipu"))
-        #expect(result.title == "中华人民共和国民法典")
-        #expect(result.url.contains("pkulaw.com"))
-        #expect(result.snippet.contains("五百七十七条"))
-        #expect(result.provider == "zhipu")
-    }
-
     // MARK: - MiMo (official annotations url_citation)
 
     @Test func mimo_parsesUrlCitationAnnotations() throws {
