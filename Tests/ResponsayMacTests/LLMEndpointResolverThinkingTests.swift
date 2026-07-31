@@ -2,8 +2,8 @@ import XCTest
 import ResponsayCore
 @testable import ResponsayMac
 
-/// 435 — the resolver wiring of `LLMThinkingPolicy`: text REWRITE is always thinking-off
-/// regardless of the global 思考 toggle; open CHAT (voice assistant / 任意提问) honors it.
+/// 思考 is forced off on every resolver path — there is no user toggle, and a stale
+/// `byok.llm.thinking` left in UserDefaults by an older build must not turn it back on.
 /// Pure given an injected dispatcher + defaults (no Keychain, no app launch).
 final class LLMEndpointResolverThinkingTests: XCTestCase {
     private var defaults: UserDefaults!
@@ -27,27 +27,29 @@ final class LLMEndpointResolverThinkingTests: XCTestCase {
         ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in "sk-test" })
     }
 
-    func testRewriteForcesThinkingOffEvenWhenGlobalToggleOn() {
-        defaults.set(true, forKey: LLMEndpointResolver.thinkingKey)
+    func testRewriteIsThinkingOff() {
         let endpoint = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: configuredDispatcher)
         XCTAssertEqual(endpoint?.thinkingEnabled, false)
     }
 
-    func testChatHonorsGlobalToggleOn() {
-        defaults.set(true, forKey: LLMEndpointResolver.thinkingKey)
-        let endpoint = LLMEndpointResolver.resolveChat(defaults: defaults, dispatcher: configuredDispatcher)
-        XCTAssertEqual(endpoint?.thinkingEnabled, true)
-    }
-
-    func testChatHonorsGlobalToggleOff() {
-        defaults.set(false, forKey: LLMEndpointResolver.thinkingKey)
+    func testChatIsThinkingOff() {
         let endpoint = LLMEndpointResolver.resolveChat(defaults: defaults, dispatcher: configuredDispatcher)
         XCTAssertEqual(endpoint?.thinkingEnabled, false)
     }
 
-    func testRewriteStaysOffWhenToggleOff() {
-        defaults.set(false, forKey: LLMEndpointResolver.thinkingKey)
-        let endpoint = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: configuredDispatcher)
+    func testSearchIsThinkingOff() {
+        let endpoint = LLMEndpointResolver.resolveSearch(defaults: defaults, dispatcher: configuredDispatcher)
         XCTAssertEqual(endpoint?.thinkingEnabled, false)
+    }
+
+    /// A legacy on-toggle in UserDefaults is ignored — the key is no longer read at all.
+    func testStaleLegacyToggleIsIgnored() {
+        defaults.set(true, forKey: "byok.llm.thinking")
+        XCTAssertEqual(
+            LLMEndpointResolver.resolveChat(defaults: defaults, dispatcher: configuredDispatcher)?.thinkingEnabled,
+            false)
+        XCTAssertEqual(
+            LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: configuredDispatcher)?.thinkingEnabled,
+            false)
     }
 }

@@ -3,13 +3,13 @@ import Foundation
 /// The opinionated, context-aware actions a text selection can route to
 /// (ADR-0022). Redesigned 划词菜单 (Claude Design "Selection Menu"): a resting icon
 /// row of instant tools (翻译 / 朗读) expands a labeled smart row centred on the
-/// legal-research loop (来源核验 / 来源辅助检索 / 实务辅助 / 任意提问). `ask` (任意提问) is the
+/// legal-research loop (来源核验 / 来源辅助检索 / 任意提问). `ask` (任意提问) is the
 /// open-chat escape hatch — it now also absorbs 改写, which was dropped. Only the
 /// chosen main transform auto-inserts (ADR-0019); everything else previews / opens
 /// a panel / opens authoritative sources.
 ///
-/// `实务辅助` is NOT a `SelectionAction` — it is a dropdown of enabled practice /
-/// academic skills, handled in the menu view itself (each pick runs one skill).
+/// The 划词生成 技能 are NOT `SelectionAction`s — each enabled one is flattened into the
+/// menu as its own row, handled in the menu view itself (picking it runs that skill).
 public enum SelectionAction: String, Sendable, Equatable, CaseIterable {
     case verify          // 引注源验: 选中 → 自动联网核对法条/案例/文献 → 结果卡（命中跳库核对 / 未命中标「疑似杜撰·待核」/ 卡内可手动挑库）
     case assistedSearch  // 来源辅助检索: 选区 → 可直接粘贴的知网/法宝高级检索式
@@ -66,8 +66,9 @@ public enum SelectionAction: String, Sendable, Equatable, CaseIterable {
 public extension SelectionAction {
     /// What controls this action's presence in the 划词菜单. The fixed functions (翻译 / 朗读 /
     /// 加入词典 / 任意提问) are `.always`; the rest appear only once their backing 技能平台 skill
-    /// (`.skill`) or 工具 (`.tool`) is 激活. `SelectionMenuGate` evaluates this against the user's
-    /// enable-state — the resolver stays purely content-driven and unaware of activation.
+    /// (`.skill`) or rule-driven `SelectionTool` (`.tool`) is 激活. `SelectionMenuGate` evaluates
+    /// this against the user's enable-state — the resolver stays purely content-driven and unaware
+    /// of activation.
     enum Gate: Equatable, Sendable {
         case always
         case skill(id: String)

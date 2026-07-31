@@ -33,6 +33,8 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // register a second set of global hotkeys / mic engine.
         if !underTest, SingleInstanceGuard.terminateIfDuplicate() { return }
 
+        if !underTest { TTSActiveProvider.reconcileAtLaunch() }
+
         // LOGIN-ITEM-001: re-register the login item if the stored "开机自启" pref says ON but
         // macOS dropped the registration (happens on every app-bundle replace). Without this,
         // the toggle shows ON forever while launch-at-login silently never fires.

@@ -51,6 +51,10 @@ struct TTSProviderCatalogPresetsTests {
             "French_Male_Speech_New", "French_MovieLeadFemale",
             "Japanese_IntellectualSenior", "Japanese_DecisivePrincess",
             "Korean_SweetGirl", "Korean_CheerfulBoyfriend",
+            // 设置卡「音色」菜单提供、而 catalog 一度漏掉的四项:TTSEngine.selectedVoiceID 拿
+            // catalog.voices 校验用户的选择,漏掉就等于用户选了也被静默换回 male-qn-qingse。
+            // macOS 端的全量交叉校验在 TTSEngineTests,但 CI 只跑 ResponsayCore,故在此钉死。
+            "male-qn-jingying", "female-yujie", "Sweet_Girl", "Attractive_Girl",
         ] {
             #expect(ids.contains(required), "missing MiniMax voice \(required)")
         }

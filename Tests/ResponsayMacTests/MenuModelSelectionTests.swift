@@ -112,12 +112,57 @@ final class MenuModelSelectionTests: XCTestCase {
 
     func testConfiguredOptionsKeepsCurrentEvenWhenUnconfigured() {
         // The active route is always shown so the user can see what's on, even if its
-        // key was cleared — but other unconfigured providers stay hidden. qwen LLM is
-        // multi-plan, so its options are plan-tagged ids (`qwen#payg` / `qwen#package`);
-        // the current selection is the 按量付费 default variant.
-        let visible = visibleLLM(current: "qwen#payg")   // qwen has no key in this resolver
-        XCTAssertTrue(visible.contains("qwen#payg"))
+        // key was cleared — but other unconfigured providers stay hidden.
+        let visible = visibleLLM(current: "qwen")   // qwen has no key in this resolver
+        XCTAssertTrue(visible.contains("qwen"))
         XCTAssertFalse(visible.contains("deepseek"))
+    }
+
+    // MARK: - Current-route status suffixes
+
+    func testASRCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "OpenAI",
+                readiness: resolver().asr(optionId: ASREngine.cloudOpenAI.rawValue),
+                isCurrent: true),
+            "OpenAI（未配置）")
+    }
+
+    func testLLMCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "DeepSeek",
+                readiness: resolver().llm(optionId: "deepseek"),
+                isCurrent: true),
+            "DeepSeek（未配置）")
+    }
+
+    func testTTSCurrentCloudTitleMarksUnconfigured() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "MiniMax",
+                readiness: resolver().tts(optionId: TTSEngine.cloudMiniMax.rawValue),
+                isCurrent: true),
+            "MiniMax（未配置）")
+    }
+
+    func testCurrentLocalTitleMarksMissingDownload() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle(
+                "本机离线 Kokoro",
+                readiness: resolver().tts(optionId: TTSEngine.sherpaKokoroLocal.rawValue),
+                isCurrent: true),
+            "本机离线 Kokoro（未下载）")
+    }
+
+    func testReadyOrNonCurrentTitleHasNoStatusSuffix() {
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle("Apple", readiness: .local, isCurrent: true),
+            "Apple")
+        XCTAssertEqual(
+            MenuModelSelection.statusTitle("DeepSeek", readiness: .cloudUnconfigured, isCurrent: false),
+            "DeepSeek")
     }
 
     // MARK: - Custom OpenAI-compatible provider end-to-end
@@ -125,6 +170,14 @@ final class MenuModelSelectionTests: XCTestCase {
     func testCustomLLMProviderAppearsOnceKeyed() {
         // Verifies the custom provider feature: a user who saved a key for 「自定义 OpenAI
         // 兼容」sees it in the quick picker; without a key it stays hidden.
+        defaults.set(
+            "https://my-host.example/v1",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "baseURL", providerId: "custom", capability: .llm))
+        defaults.set(
+            "my-private-model",
+            forKey: CapabilityProviderConfigStore.scopedKey(
+                "model", providerId: "custom", capability: .llm))
         let account = CapabilityCredentialAccount.apiKeyAccount(providerId: "custom", capability: .llm)
         XCTAssertFalse(visibleLLM(current: "offline").contains("custom"))
         XCTAssertTrue(visibleLLM(current: "offline", keys: [account: "sk-user"]).contains("custom"))

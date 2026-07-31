@@ -26,15 +26,17 @@ final class ProviderConfigMachine {
     var regionRaw = ""
     var planRaw = ""
     var model = ""
+    /// LLM only — 技能平台模型；空串 = 跟随听写模型（`SkillPlatformModelSettings` 同一约定）。
+    var skillModel = ""
     var voice = ""
     var baseURL = ""
+    var workspaceID = ""
     var apiKey = ""
     var appId = ""
     var accessToken = ""
     var boostingTableId = ""
     var status = ""
     var fetchedModels: [String] = []
-    var thinking = false
 
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
@@ -67,16 +69,46 @@ final class ProviderConfigMachine {
         capability == .asr && (providerId == "qwen-asr-flash" || providerId == "volcengine-flash")
     }
 
+    var isQwenLLM: Bool { capability == .llm && providerId == "qwen" }
+
+    var qwenWorkspaceBaseURL: String? {
+        guard isQwenLLM else { return nil }
+        return QwenWorkspaceEndpoint.baseURL(workspaceID: workspaceID, region: region)
+    }
+
+    var usesQwenWorkspaceEndpoint: Bool { qwenWorkspaceBaseURL != nil }
+
+    var workspaceIDValidationMessage: String? {
+        guard isQwenLLM else { return nil }
+        let trimmed = workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, QwenWorkspaceEndpoint.normalizedWorkspaceID(trimmed) == nil else { return nil }
+        return "格式应为 ws- 后接字母或数字；请只填 Workspace ID，不要填完整 Host。"
+    }
+
+    var qwenWorkspaceHelp: String {
+        switch region {
+        case .unitedStates:
+            return "美国（弗吉尼亚）按文档使用 dashscope-us 通用域名，不拼接 Workspace ID。"
+        case .germany, .japan:
+            return "此接入点须填写 Workspace ID，应用会生成对应地域的专属 Responses 地址。"
+        default:
+            return "留空使用仍兼容的通用域名；填写后按接入点生成业务空间专属 Responses 地址。"
+        }
+    }
+
     var currentRegions: [ProviderRegion] { current.regions(for: capability) }
     var currentPlans: [BillingPlan] { current.plans(for: capability) }
     var region: ProviderRegion { ProviderRegion(rawValue: regionRaw) ?? currentRegions.first ?? .global }
-    var plan: BillingPlan { BillingPlan(rawValue: planRaw) ?? currentPlans.first ?? .payg }
+    var plan: BillingPlan {
+        let candidate = BillingPlan(rawValue: planRaw) ?? currentPlans.first ?? .payg
+        return currentPlans.contains(candidate) ? candidate : (currentPlans.first ?? .payg)
+    }
 
     /// All non-empty endpoints (region × plan) for this capability, shown in one combined
     /// 「接入点」dropdown so 按量付费 / Token Plan sit next to 国内/新加坡/欧洲 instead of being
     /// separate providers (the Base URL below follows the pick).
     var endpointChoices: [EndpointVariant] {
-        current.endpoints(for: capability).filter { !$0.baseURL.isEmpty }
+        current.endpoints(for: capability).filter { !$0.baseURL.isEmpty || isQwenLLM }
     }
 
     // MARK: Keys
@@ -97,19 +129,40 @@ final class ProviderConfigMachine {
         let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
         let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
         regionRaw = scopedString("region", providerId: pid, activeProviderId: storedProvider) ?? defaultRegion
-        planRaw = MiMoASRRouting.normalizedPlanRaw(providerId: pid, capability: capability,
-                                                   storedRaw: scopedString("plan", providerId: pid, activeProviderId: storedProvider),
-                                                   fallbackRaw: defaultPlan)
+        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
+            providerId: pid, capability: capability,
+            storedRaw: scopedString("plan", providerId: pid, activeProviderId: storedProvider),
+            fallbackRaw: defaultPlan)
+        let availablePlans = prov.plans(for: capability)
+        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
+        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
+        workspaceID = capability == .llm && pid == "qwen"
+            ? (scopedString("workspaceId", providerId: pid, activeProviderId: storedProvider) ?? "")
+            : ""
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: pid, activeProviderId: storedProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
         let r = ProviderRegion(rawValue: regionRaw) ?? .global
         let pl = BillingPlan(rawValue: planRaw) ?? .payg
-        baseURL = MiMoASRRouting.normalizedBaseURL(
-            providerId: pid, capability: capability,
-            stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
-            fallback: prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? "")
+        let catalogBaseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? ""
+        baseURL = requestedPlanIsUnavailable
+            ? catalogBaseURL
+            : MiMoASRRouting.normalizedBaseURL(
+                providerId: pid, capability: capability,
+                stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
+                fallback: catalogBaseURL)
+        if let workspaceBaseURL = qwenWorkspaceBaseURL {
+            baseURL = workspaceBaseURL
+        }
+        if requestedPlanIsUnavailable {
+            setScoped(planRaw, suffix: "plan")
+            setScoped(baseURL, suffix: "baseURL")
+        }
         let shouldPersist = MiMoASRRouting.shouldPersistNormalizedDefaults(providerId: pid, capability: capability)
         if CapabilitySelectionSync.providerMatches(storedProvider, pid, capability: capability), shouldPersist {
             setScoped(planRaw, suffix: "plan")
@@ -124,14 +177,10 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: pid, capability: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg)) ?? ""
+        apiKey = readApiKey(providerId: pid, plan: plan)
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
-        thinking = CapabilityProviderConfigStore.bool(
-            "thinking", providerId: pid, capability: capability, defaults: d, activeProviderId: storedProvider)
     }
 
     func defaultProviderId() -> String {
@@ -145,18 +194,38 @@ final class ProviderConfigMachine {
         let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
         let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
         regionRaw = scopedString("region", providerId: prov.id, activeProviderId: activeProvider) ?? defaultRegion
-        planRaw = MiMoASRRouting.normalizedPlanRaw(providerId: prov.id, capability: capability,
-                                                   storedRaw: scopedString("plan", providerId: prov.id, activeProviderId: activeProvider),
-                                                   fallbackRaw: defaultPlan)
+        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
+            providerId: prov.id, capability: capability,
+            storedRaw: scopedString("plan", providerId: prov.id, activeProviderId: activeProvider),
+            fallbackRaw: defaultPlan)
+        let availablePlans = prov.plans(for: capability)
+        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
+        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
+        workspaceID = capability == .llm && prov.id == "qwen"
+            ? (scopedString("workspaceId", providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            : ""
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
         baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
                                 plan: BillingPlan(rawValue: planRaw) ?? .payg)?.baseURL ?? ""
-        baseURL = MiMoASRRouting.normalizedBaseURL(
-            providerId: prov.id, capability: capability,
-            stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
+        if !requestedPlanIsUnavailable {
+            baseURL = MiMoASRRouting.normalizedBaseURL(
+                providerId: prov.id, capability: capability,
+                stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
+        }
+        if let workspaceBaseURL = qwenWorkspaceBaseURL {
+            baseURL = workspaceBaseURL
+        }
+        if requestedPlanIsUnavailable {
+            setScoped(planRaw, suffix: "plan")
+            setScoped(baseURL, suffix: "baseURL")
+        }
         if capability == .asr, prov.id == "qwen-asr-flash" || prov.id == "volcengine-flash" {
             let pl = BillingPlan(rawValue: planRaw) ?? .payg
             baseURL = prov.endpoint(for: capability,
@@ -165,34 +234,34 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: prov.id, capability: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg)) ?? ""
+        apiKey = readApiKey(providerId: prov.id, plan: plan)
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
-        thinking = CapabilityProviderConfigStore.bool(
-            "thinking", providerId: prov.id, capability: capability, defaults: defaults, activeProviderId: activeProvider)
         status = ""
         fetchedModels = []
     }
 
     func endpointBase() -> String {
-        current.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? baseURL
+        qwenWorkspaceBaseURL
+            ?? current.endpoint(for: capability, region: region, plan: plan)?.baseURL
+            ?? baseURL
+    }
+
+    func refreshBaseURLForSelection() {
+        baseURL = endpointBase()
     }
 
     /// Load the API key stored for the current plan. 按量付费 and Token Plan keep separate keys
     /// (sk- vs tp-), so switching the 接入点 dropdown shows that plan's key (or blank) instead
     /// of carrying the other plan's key over and sending it to the wrong host → 401.
     func reloadKeyForCurrentPlan() {
-        apiKey = BYOKKeychain.read(
-            CapabilityCredentialAccount.apiKeyAccount(
-                providerId: providerId, capability: capability, plan: plan)) ?? ""
+        apiKey = readApiKey(providerId: providerId, plan: plan)
     }
 
     /// When the billing plan changes and the user hasn't customized the model away from the old
     /// plan's default, retarget it to the new plan's default. No-op when both plans share a default
-    /// (Qwen 按量付费/Token Plan 现都默认 qwen3.6-flash；MiMo → mimo-v2.5).
+    /// (MiMo plans currently share the mimo-v2.5 default).
     func autoSwitchModel(from oldPlanRaw: String, to newPlanRaw: String) {
         guard let oldPlan = BillingPlan(rawValue: oldPlanRaw),
               let newPlan = BillingPlan(rawValue: newPlanRaw),
@@ -210,9 +279,16 @@ final class ProviderConfigMachine {
         setScoped(regionRaw, suffix: "region")
         setScoped(planRaw, suffix: "plan")
         setScoped(model, suffix: "model")
+        if capability == .llm {
+            setScoped(skillModel.trimmingCharacters(in: .whitespacesAndNewlines),
+                      suffix: SkillPlatformModelSettings.suffix)
+        }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
-        setScoped(thinking, suffix: "thinking")
+        if isQwenLLM {
+            setScoped(workspaceID.trimmingCharacters(in: .whitespacesAndNewlines), suffix: "workspaceId")
+        }
+        ModelConfigurationEvents.post()
     }
 
     func scopedString(_ suffix: String, providerId pid: String, activeProviderId: String?) -> String? {
@@ -249,5 +325,11 @@ final class ProviderConfigMachine {
         defaults.set(
             boostingTableId.trimmingCharacters(in: .whitespacesAndNewlines),
             forKey: "byok.\(providerId).boostingTableId")
+    }
+
+    private func readApiKey(providerId: String, plan: BillingPlan) -> String {
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: providerId, capability: capability, plan: plan)
+        return BYOKKeychain.read(account) ?? ""
     }
 }

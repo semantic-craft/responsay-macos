@@ -62,6 +62,24 @@ struct IntentPlanPromptBuilderTests {
         #expect(system.contains("side note") || system.contains("sideNote"))
     }
 
+    @Test func systemPromptShowsChainedCorrectionExample() {
+        // Live eval 2026-07-31 (INTENT.correction-chain 1/3 invalidRelationship): with only a
+        // single-correction example, the model sometimes pointed both supersessions at the
+        // FIRST unit as loser — the verifier rejects a duplicated loser. The prompt must show
+        // the chain shape (B over A, then C over B) concretely.
+        let system = IntentPlanPromptBuilder.build(intentCorrectionInput()).system
+        #expect(system.contains("Chained corrections"))
+        #expect(system.contains("周三交，不对，周四交，还是不对，周五交"))
+        #expect(system.contains("exactly ONE supersession"))
+        #expect(system.contains("NEVER point both supersessions at the first"))
+        // Live finding round 2 (qwen3.7-flash ~50%): the model marked BOTH cues as
+        // correction but emitted only ONE supersession, leaving the second cue dangling —
+        // the verifier's cueIDs == correctionIDs check rejects that. The prompt must state
+        // the count invariant outright.
+        #expect(system.contains("MUST equal the number of correction-role units"))
+        #expect(system.contains("only 1 supersession is VOID"))
+    }
+
     @Test func allowedContextEntersPromptAsBoundedUntrustedData() {
         // #564 — the ALLOWED context (gate applied upstream: nil when 屏幕上下文 off) enters as
         // a minimal, capped, explicitly-untrusted block. Full-page text and URLs never do.

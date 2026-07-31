@@ -80,6 +80,7 @@ struct SnapOCRPanelView: View {
                 Button {
                     guard option != engine else { return }
                     engineRaw = option.rawValue
+                    ModelConfigurationEvents.post()
                     reOCR()
                 } label: {
                     if option == engine { Label(option.title, systemImage: "checkmark") }

@@ -47,6 +47,23 @@ final class ModelLaneSelectionRoundTripTests: XCTestCase {
         }
     }
 
+    func testSelectionPostsContentFreeModelConfigurationEvent() {
+        let event = expectation(description: "model configuration invalidated")
+        let token = NotificationCenter.default.addObserver(
+            forName: .modelConfigurationDidChange,
+            object: nil,
+            queue: nil
+        ) { note in
+            XCTAssertNil(note.object)
+            event.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        ModelRouteSelectionActions.applyLLMSelection("openai", defaults: defaults)
+
+        wait(for: [event], timeout: 0.1)
+    }
+
     /// The exact value the SwiftUI Picker reads back (`lane.currentOptionId`) must equal the
     /// applied option — this is what makes the dropdown show the new choice instead of reverting.
     func testASRLanePickerValueMatchesAppliedOption() {

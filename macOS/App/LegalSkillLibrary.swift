@@ -15,6 +15,15 @@ struct LegalSkillInventory {
         bundledSkills.filter { SkillCategorizer.category(for: $0) == .legal }
     }
 
+    /// Style cards that still belong in 技能平台. Built-in dictation presets are selected beside
+    /// 改写力度, so the dictation lane shows imported extensions only; the writing lane keeps its
+    /// bundled choices and imported extensions.
+    func platformStyleSkills(for lane: SkillLane) -> [LegalSkillCompiled] {
+        let bundled = lane == .writing ? bundledEverydaySkills : []
+        let imported = importedSkills.filter { SkillCategorizer.category(for: $0) == .everydayOffice }
+        return (bundled + imported).filter { $0.metadata.lanes.contains(lane) }
+    }
+
     var verificationSkills: [LegalSkillCompiled] {
         bundledLegalSkills.filter(Self.isVerificationSkill)
     }
@@ -23,14 +32,18 @@ struct LegalSkillInventory {
         bundledLegalSkills.filter { $0.id.contains("research") }
     }
 
-    var practicalSkills: [LegalSkillCompiled] {
-        bundledLegalSkills.filter(Self.isPracticeSkill)
+    /// 技能平台›写作技能›划词生成 — the bundled generation skills that get no dedicated 划词菜单
+    /// entry of their own (i.e. everything except 来源核验 / 来源检索).
+    var selectionGenerationSkills: [LegalSkillCompiled] {
+        bundledLegalSkills.filter(Self.isSelectionGenerationSkill)
     }
 
-    func enabledPracticeSkills(enabledIDs: Set<String>) -> [LegalSkillCompiled] {
+    /// The same set as `selectionGenerationSkills` plus imported ones, narrowed to what the user
+    /// has 激活 — one flat 划词菜单 row per skill.
+    func enabledSelectionGenerationSkills(enabledIDs: Set<String>) -> [LegalSkillCompiled] {
         (bundledSkills + importedSkills)
             .filter { SkillCategorizer.category(for: $0) == .legal }
-            .filter(Self.isPracticeSkill)
+            .filter(Self.isSelectionGenerationSkill)
             .filter { enabledIDs.contains($0.id) }
             .sorted { $0.id < $1.id }
     }
@@ -39,7 +52,10 @@ struct LegalSkillInventory {
         skill.id.contains("verification")
     }
 
-    private static func isPracticeSkill(_ skill: LegalSkillCompiled) -> Bool {
+    /// Defined by exclusion on purpose: 来源核验 (`verification.*`) and 来源检索 (`research.*`) are
+    /// the two generation skills with their own named 划词菜单 entries; every other generation skill
+    /// — bundled or imported — belongs to 划词生成.
+    private static func isSelectionGenerationSkill(_ skill: LegalSkillCompiled) -> Bool {
         !isVerificationSkill(skill) && !skill.id.contains("research")
     }
 }
@@ -80,8 +96,8 @@ struct LegalSkillLibrary {
         return LegalSkillInventory(bundledSkills: bundled, importedSkills: imported)
     }
 
-    func enabledPracticeSkills() -> [LegalSkillCompiled] {
-        loadInventory().enabledPracticeSkills(enabledIDs: enabledSkillIDs)
+    func enabledSelectionGenerationSkills() -> [LegalSkillCompiled] {
+        loadInventory().enabledSelectionGenerationSkills(enabledIDs: enabledSkillIDs)
     }
 
     /// The interaction shape declared by the skill with this id (bundled or imported).

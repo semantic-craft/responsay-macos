@@ -93,9 +93,9 @@ private func providersUnderTest() -> [ProviderUnderTest] {
             model: "deepseek-v4-flash", apiKey: key)))
     }
     if let key = env("QWEN_KEY") {
-        providers.append(.init(name: "qwen3.6-flash", endpoint: LLMEndpoint(
+        providers.append(.init(name: "qwen3.7-flash", endpoint: LLMEndpoint(
             providerId: "qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model: "qwen3.6-flash", apiKey: key)))
+            model: "qwen3.7-flash", apiKey: key)))
     }
     if let key = env("DOUBAO_KEY") {
         providers.append(.init(name: "doubao-seed-2.1-turbo", endpoint: LLMEndpoint(
