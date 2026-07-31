@@ -2,8 +2,8 @@ import Foundation
 
 /// Parses one line of an OpenAI-compatible **Responses API** SSE stream into a `TextStreamEvent`.
 ///
-/// Qwen and Doubao web-search streams use the OpenAI *Responses* event shape (not the chat
-/// `choices[].delta` shape):
+/// Qwen, DeepSeek `deepseek-v4-flash`, and Doubao web-search streams use the OpenAI *Responses*
+/// event shape (not the chat `choices[].delta` shape):
 ///   `data: {"type":"response.output_text.delta","delta":"…"}`  → `.delta`
 ///   `data: {"type":"response.completed", …}`                   → `.done`
 ///   `data: {"type":"response.failed","response":{"error":{"message":"…"}}}` → `.failed`

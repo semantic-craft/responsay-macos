@@ -155,6 +155,24 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
                 authHeaderStyle: .bearer,
                 thinkingControl: .ollamaReasoning,
                 allowsGenerationParameters: true)
+        case .deepseek:
+            return .init(
+                supportsChatCompletions: true,
+                supportsResponses: true,
+                supportsStreamUsage: false,
+                supportsThinkingControl: true,
+                supportsJSONMode: false,
+                supportsPartialMode: false,
+                supportsContextCache: false,
+                supportsBatch: false,
+                // web_search 是 Responses 上的服务端工具，因此只对 v4-flash 生效 ——
+                // 逐模型收窄在 `LLMSearchControl.channel`。
+                builtinTools: [.webSearch],
+                authHeaderStyle: .bearer,
+                // v4-flash 走 Responses → reasoning.effort；其余模型仍走 Chat Completions 的
+                // thinking.type，逐模型分支在 `LLMThinkingControl`。
+                thinkingControl: .reasoningEffort,
+                allowsGenerationParameters: true)
         case .otherKnown:
             return .init(
                 supportsChatCompletions: true,
@@ -187,13 +205,25 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
     }
 
     /// Qwen's current text models use the provider's OpenAI-compatible Responses API for all
-    /// production generation paths. Other providers retain their existing ordinary-generation
-    /// route; Doubao/OpenAI still opt into Responses only in their dedicated search adapter.
-    public static func prefersResponses(providerId: String, baseURLHost: String) -> Bool {
-        channel(providerId: providerId, host: baseURLHost) == .qwen
+    /// production generation paths, and DeepSeek does for the models it has migrated. Other
+    /// providers retain their existing ordinary-generation route; Doubao/OpenAI still opt into
+    /// Responses only in their dedicated search adapter.
+    public static func prefersResponses(providerId: String, model: String, baseURLHost: String) -> Bool {
+        switch channel(providerId: providerId, host: baseURLHost) {
+        case .qwen: return true
+        case .deepseek: return deepSeekSupportsResponses(model)
+        default: return false
+        }
     }
 
-    private enum Channel { case qwen, mimo, doubao, gemini, openai, openrouter, ollama, otherKnown, unknown }
+    /// DeepSeek 的 Responses API 目前只支持 `deepseek-v4-flash`（官方称 2026 年 8 月初再加
+    /// `deepseek-v4-pro`）。其余模型 —— v4-pro、deepseek-chat 等 —— 必须留在
+    /// `/chat/completions`，否则自定义卡片指到 DeepSeek 的用户会被整条打断。
+    private static func deepSeekSupportsResponses(_ model: String) -> Bool {
+        model.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("deepseek-v4-flash")
+    }
+
+    private enum Channel { case qwen, mimo, doubao, gemini, openai, openrouter, ollama, deepseek, otherKnown, unknown }
 
     private static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
@@ -203,7 +233,8 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         case "gemini": return .gemini
         case "openai": return .openai
         case "ollama": return .ollama
-        case "deepseek", "minimax": return .otherKnown
+        case "deepseek": return .deepseek
+        case "minimax": return .otherKnown
         case "custom": break
         default: break
         }
@@ -216,7 +247,8 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         if h == "api.openai.com" { return .openai }
         if h.contains("openrouter") { return .openrouter }
         if h == "localhost" || h == "127.0.0.1" { return .ollama }
-        if h.contains("deepseek") || h.contains("minimax") { return .otherKnown }
+        if h.contains("deepseek") { return .deepseek }
+        if h.contains("minimax") { return .otherKnown }
         return .unknown
     }
 }

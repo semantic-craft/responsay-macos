@@ -1,7 +1,8 @@
 import Foundation
 
 /// Builds the provider's preferred OpenAI-compatible text request for the App-direct path
-/// (epic 238): Qwen uses `/responses`; the remaining providers keep `/chat/completions`.
+/// (epic 238): Qwen and DeepSeek `deepseek-v4-flash` use `/responses`; the remaining providers
+/// (and DeepSeek's other models) keep `/chat/completions`.
 /// Pure + synchronous: the whole `[String: Any]` body is assembled and serialized here, before
 /// any `await`, so nothing non-Sendable crosses an async boundary.
 ///
@@ -28,6 +29,7 @@ enum LLMChatRequestBuilder {
             baseURLHost: endpoint.host)
         let usesResponses = LLMProviderCapabilities.prefersResponses(
             providerId: endpoint.providerId,
+            model: endpoint.model,
             baseURLHost: endpoint.host)
         let url = usesResponses
             ? LLMWire.responsesURL(base: endpoint.baseURL)
@@ -41,6 +43,7 @@ enum LLMChatRequestBuilder {
         var body: [String: Any] = ["model": endpoint.model, "stream": false]
         // 百炼 Responses 的 store 默认是 true，会保留响应 7 天供 response_id 检索。
         // App 自己传完整上下文且不使用服务端响应续接，因此显式关闭远端响应存储。
+        // （DeepSeek 无状态、store 恒为 false，多发这一个字段会被静默忽略。）
         if usesResponses { body["store"] = false }
         let messages = [
             ["role": "system", "content": system],
@@ -57,7 +60,7 @@ enum LLMChatRequestBuilder {
         // Web search is opt-in per request. Qwen Responses uses the official bare web_search tool;
         // Chat-only providers retain their documented shapes.
         let search = LLMSearchControl.extraBody(
-            providerId: endpoint.providerId, baseURLHost: endpoint.host,
+            providerId: endpoint.providerId, model: endpoint.model, baseURLHost: endpoint.host,
             searchEnabled: searchEnabled)
         for (key, value) in search { body[key] = value }
         // json_schema only helps (and is only safe) on the local runner.

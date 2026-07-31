@@ -50,7 +50,7 @@ public struct DirectLegalSkillExecutorAPI: LegalSkillExecutorAPI {
     /// 解锁不了「类案检索」——后者要模型联网搜完再输出结构化候选,纯检索 API 给不了。
     private var modelCanSearch: Bool {
         SearchVerificationService.supportsSearch(
-            providerId: endpoint.providerId, baseURLHost: endpoint.host)
+            providerId: endpoint.providerId, model: endpoint.model, baseURLHost: endpoint.host)
     }
 
     public func searchCaseCandidates(_ query: String, route: ModelRoute) async throws -> [CaseCandidate] {

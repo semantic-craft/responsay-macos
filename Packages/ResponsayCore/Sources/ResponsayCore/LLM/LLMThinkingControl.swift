@@ -30,6 +30,15 @@ enum LLMThinkingControl {
         case .dashScope:
             return ["reasoning": ["effort": enabled ? "medium" : "none"]]
         case .deepSeek:
+            // DeepSeek 的开关随 API 形态换名字，且**思考默认是开的**，所以这里必须发对字段：
+            // Responses 用 `reasoning.effort`，`none` 才是关闭；Chat Completions 用
+            // `thinking.type`。发错的一方会被静默忽略（官方：不支持的参数不报错），于是模型照常
+            // 思考 —— 对输入法来说就是每次改写白等一段思维链。
+            // 强度档位（low/high/max）在这里没有意义：关掉之外我们不需要更细的控制。
+            if LLMProviderCapabilities.prefersResponses(
+                providerId: providerId, model: model, baseURLHost: baseURLHost) {
+                return ["reasoning": ["effort": enabled ? "high" : "none"]]
+            }
             return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
         case .miniMax:
             // MiniMax OpenAI-compat /v1: M3 injects its interleaved thinking as <think>…</think>
