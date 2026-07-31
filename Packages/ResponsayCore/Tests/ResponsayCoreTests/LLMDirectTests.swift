@@ -220,6 +220,23 @@ struct LLMChatRequestBuilderTests {
         #expect(body?["enable_thinking"] == nil)
     }
 
+    // 听写(flash)与技能平台(max)分流后，两条 lane 的请求必须同样命中 /responses、
+    // store=false、reasoning.effort=none —— 只有 model 字段不同。
+    @Test func bothWorkflowModels_hitResponses_storeFalse_reasoningNone() throws {
+        for model in ["qwen3.7-flash", "qwen3.7-max"] {
+            let ep = LLMEndpoint(
+                providerId: "qwen", baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                model: model, apiKey: "sk-1", thinkingEnabled: false)
+            let req = try LLMChatRequestBuilder.makeRequest(endpoint: ep, system: "SYS", user: "USR")
+            #expect(req.url?.path == "/compatible-mode/v1/responses")
+            let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
+            #expect(body?["model"] as? String == model)
+            #expect(body?["store"] as? Bool == false)
+            #expect((body?["reasoning"] as? [String: String])?["effort"] == "none")
+            #expect(body?["messages"] == nil)
+        }
+    }
+
     @Test func ordinaryQwenResponsesRequestOmitsToolsAndLegacyChatFields() throws {
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: endpoint(), system: "SYS", user: "USR")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
@@ -426,7 +443,7 @@ struct LLMChatRequestBuilderTests {
         let tools = try #require(body?["tools"] as? [[String: Any]])
         #expect(tools.count == 1)
         #expect(tools.first?["type"] as? String == "web_search")
-        #expect(body?["tool_choice"] as? String == "required")
+        #expect(body?["tool_choice"] as? String == "auto")   // required breaks the Responses server tool loop (live eval 2026-07-31)
         #expect((body?["reasoning"] as? [String: String])?["effort"] == "medium")
         #expect(body?["enable_search"] == nil)
         #expect(body?["enable_thinking"] == nil)

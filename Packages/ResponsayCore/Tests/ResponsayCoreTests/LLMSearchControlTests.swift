@@ -69,7 +69,14 @@ struct LLMSearchControlTests {
         let tools = try #require(params["tools"] as? [[String: Any]])
         #expect(tools.count == 1)
         #expect(tools.first?["type"] as? String == "web_search")
-        #expect(params["tool_choice"] as? String == "required")
+        // `auto`, never `required`: Bailian's server-side tool loop applies tool_choice to
+        // every internal turn, so `required` forbids the final text turn — the model repeats
+        // searches until the server rejects with "Repetitive tool calls detected" HTTP 400
+        // (类案检索 0/3, live eval 2026-07-31).
+        #expect(params["tool_choice"] as? String == "auto")
+        // Server-side loop cap: flash still repeats identical searches under `auto`; the cap
+        // forces the loop into the final text turn (mirrors Ark's production max_tool_calls).
+        #expect(params["max_tool_calls"] as? Int == 3)
         #expect(params["enable_search"] == nil)
     }
 

@@ -129,7 +129,7 @@ struct DirectStreamingChatClientStreamingTests {
         let tools = try #require(body["tools"] as? [[String: Any]])
         #expect(tools.count == 1)
         #expect(tools.first?["type"] as? String == "web_search")
-        #expect(body["tool_choice"] as? String == "required")
+        #expect(body["tool_choice"] as? String == "auto")   // required breaks the Responses server tool loop (live eval 2026-07-31)
         #expect((body["reasoning"] as? [String: String])?["effort"] == "none")
         #expect(body["enable_search"] == nil)
         #expect(body["enable_thinking"] == nil)

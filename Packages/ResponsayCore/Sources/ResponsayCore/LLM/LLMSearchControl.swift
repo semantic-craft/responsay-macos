@@ -20,10 +20,16 @@ public enum LLMSearchControl {
         guard searchEnabled else { return [:] }
         switch channel(providerId: providerId, host: baseURLHost) {
         case .dashScope:
-            // 用户明确开启联网搜索；百炼 Responses 在只有一个工具时允许 required，
-            // 避免默认 auto 自行跳过搜索而让“联网”开关名不副实。
+            // `auto`，不能用 `required`：百炼 Responses 的服务端工具循环里 required 约束每一轮
+            // 生成，模型搜完也无法转入文本输出，只能重复搜索，必然被服务端以
+            // 「Repetitive tool calls detected」HTTP 400 拒绝（类案检索 0/3，live eval 2026-07-31）。
+            // `max_tool_calls: 3` 与 Ark 搜索请求的生产参数同款：给服务端循环和搜索成本封顶。
+            // 已知残留：qwen3.7-flash 在多轮检索任务上仍会以相同参数重复调用而触发服务端拦截
+            // （cap=3/cap=1 实测均无法根治，qwen3.7-max 3/3 正常收敛）——找类案建议配合
+            // 技能平台模型（如 qwen3.7-max）使用。
             return [
-                "tool_choice": "required",
+                "tool_choice": "auto",
+                "max_tool_calls": 3,
                 "tools": [["type": "web_search"]],
             ]
         case .zhipu:

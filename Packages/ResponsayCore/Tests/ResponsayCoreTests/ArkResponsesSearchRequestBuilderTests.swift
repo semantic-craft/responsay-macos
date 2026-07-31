@@ -7,6 +7,16 @@ import Testing
 struct ArkResponsesSearchRequestBuilderTests {
     typealias B = ArkResponsesSearchRequestBuilder
 
+    @Test func responsesBodyDisablesServerSideStorage() {
+        // App 全量自带上下文、不用 response_id 续接；两家 Responses 请求都显式 store=false。
+        for isOpenAI in [true, false] {
+            let body = B.responsesBody(
+                model: "m", input: [], stream: false,
+                thinkingEnabled: false, searchEnabled: false, isOpenAI: isOpenAI)
+            #expect(body["store"] as? Bool == false)
+        }
+    }
+
     @Test func supportsWebSearchRecognizesOpenAIAndArk() {
         #expect(B.supportsWebSearch(providerId: "openai", baseURLHost: "api.openai.com"))
         #expect(B.supportsWebSearch(providerId: "custom", baseURLHost: "api.openai.com"))
