@@ -85,20 +85,6 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
                 authHeaderStyle: .apiKeyHeader("api-key"),
                 thinkingControl: .thinkingObject,
                 allowsGenerationParameters: true)
-        case .zhipu:
-            return .init(
-                supportsChatCompletions: true,
-                supportsResponses: false,
-                supportsStreamUsage: false,
-                supportsThinkingControl: true,
-                supportsJSONMode: false,
-                supportsPartialMode: false,
-                supportsContextCache: false,
-                supportsBatch: false,
-                builtinTools: [.webSearch],
-                authHeaderStyle: .bearer,
-                thinkingControl: .thinkingObject,
-                allowsGenerationParameters: true)
         case .doubao:
             return .init(
                 supportsChatCompletions: true,
@@ -207,13 +193,12 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         channel(providerId: providerId, host: baseURLHost) == .qwen
     }
 
-    private enum Channel { case qwen, mimo, zhipu, doubao, gemini, openai, openrouter, ollama, otherKnown, unknown }
+    private enum Channel { case qwen, mimo, doubao, gemini, openai, openrouter, ollama, otherKnown, unknown }
 
     private static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
         case "qwen", "qwen-team": return .qwen
         case "mimo", "mimo-payg": return .mimo
-        case "zhipu": return .zhipu
         case "doubao": return .doubao
         case "gemini": return .gemini
         case "openai": return .openai
@@ -226,7 +211,6 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         let h = host.lowercased()
         if h.contains("dashscope") || h.contains("aliyuncs") { return .qwen }
         if h.contains("xiaomimimo") { return .mimo }
-        if h.contains("bigmodel") { return .zhipu }
         if h.contains("volces") || h.contains("volcengine") { return .doubao }
         if h.contains("generativelanguage") { return .gemini }
         if h == "api.openai.com" { return .openai }

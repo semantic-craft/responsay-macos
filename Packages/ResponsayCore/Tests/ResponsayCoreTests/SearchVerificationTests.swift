@@ -98,19 +98,19 @@ struct SearchVerificationTests {
             title: "民法典第577条",
             url: "https://flk.npc.gov.cn/detail2.html?id=abc",
             snippet: "第五百七十七条　当事人一方不履行合同义务...",
-            provider: "zhipu")
+            provider: "mimo")
         let source = SearchVerificationService.toVerifiedSource(searchResult)
         #expect(source.title == "民法典第577条")
         #expect(source.url == "https://flk.npc.gov.cn/detail2.html?id=abc")
         #expect(source.snippet == "第五百七十七条　当事人一方不履行合同义务...")
-        #expect(source.provider == "zhipu")
+        #expect(source.provider == "mimo")
         #expect(!source.accessedAt.isEmpty)
     }
 
     // MARK: - supportsSearch check
 
-    @Test func supportsSearch_trueForZhipu() {
-        #expect(SearchVerificationService.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
+    @Test func supportsSearch_falseForRetiredZhipu() {
+        #expect(!SearchVerificationService.supportsSearch(providerId: "zhipu", baseURLHost: "open.bigmodel.cn"))
     }
 
     @Test func supportsSearch_trueForQwenResponsesSourceResults() {
@@ -158,7 +158,7 @@ struct SearchVerificationTests {
         var anchor = VerificationAnchor(
             id: "test:3", label: "王利明 侵权责任", kind: .scholarlyArticle, status: .pending, query: "论文")
         let source = VerifiedSource(
-            title: "论文", url: "https://cnki.net/article", accessedAt: "2026-06-11", provider: "zhipu")
+            title: "论文", url: "https://cnki.net/article", accessedAt: "2026-06-11", provider: "mimo")
         SearchVerificationService.applyResult(source, to: &anchor)
         #expect(anchor.status == .scholarlyReference)
     }

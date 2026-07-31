@@ -3735,16 +3735,6 @@
         }
       }
     },
-    "打开后，这一问会交给下面选的「联网模型」直接联网作答（联网只有 阿里云百炼 / 智谱 / 小米Mimo 三家支持，与你的主模型无关）。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When on, this question is answered online by the “Web Model” selected below (web search is supported only by Aliyun Bailian / Zhipu / Xiaomi MiMo, independent of your main model)."
-          }
-        }
-      }
-    },
     "打开屏幕录制设置": {
       "localizations": {
         "en": {

@@ -60,8 +60,6 @@ enum LLMThinkingControl {
             return ["reasoning_effort": enabled ? "medium" : "none"]
         case .mimo:
             return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
-        case .zhipu:
-            return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
         case .doubao:
             return ["thinking": ["type": enabled ? "enabled" : "disabled"]]
         case .ollama:
@@ -86,7 +84,7 @@ enum LLMThinkingControl {
         return ["reasoning_effort": enabled ? "medium" : "low"]
     }
 
-    enum Channel { case openAIReasoning, dashScope, deepSeek, miniMax, openRouter, geminiCompat, mimo, zhipu, doubao, ollama, none }
+    enum Channel { case openAIReasoning, dashScope, deepSeek, miniMax, openRouter, geminiCompat, mimo, doubao, ollama, none }
 
     static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
@@ -96,7 +94,6 @@ enum LLMThinkingControl {
         case "minimax": return .miniMax
         case "gemini": return .geminiCompat
         case "mimo", "mimo-payg": return .mimo
-        case "zhipu": return .zhipu
         case "doubao": return .doubao
         case "ollama": return .ollama
         default: break
@@ -109,7 +106,6 @@ enum LLMThinkingControl {
         if h.contains("minimax") { return .miniMax }
         if h.contains("generativelanguage") { return .geminiCompat }
         if h.contains("xiaomimimo") { return .mimo }
-        if h.contains("bigmodel") { return .zhipu }
         if h.contains("volces") || h.contains("volcengine") { return .doubao }
         if h == "localhost" || h == "127.0.0.1" { return .ollama }
         if h == "api.openai.com" { return .openAIReasoning }

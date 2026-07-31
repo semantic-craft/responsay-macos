@@ -28,11 +28,11 @@ final class LLMModelPresetFilterTests: XCTestCase {
 
     func testLLMFetchFallsBackToCuratedDefaultWhenProviderListOmitsIt() {
         let models = LLMModelPresetFilter.models(
-            from: ["glm-5.1", "glm-4.7-flashx"],
-            preset: ProviderCatalog.zhipu,
+            from: ["deepseek-chat", "deepseek-reasoner"],
+            preset: ProviderCatalog.deepseek,
             capability: .llm)
 
-        XCTAssertEqual(models, ["glm-5-turbo"])
+        XCTAssertEqual(models, ["deepseek-v4-flash"])
     }
 
     func testMiMoLLMDefaultAndPresetListStayOnV25NotLegacyFlash() {

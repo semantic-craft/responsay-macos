@@ -32,18 +32,6 @@ public enum LLMSearchControl {
                 "max_tool_calls": 3,
                 "tools": [["type": "web_search"]],
             ]
-        case .zhipu:
-            return [
-                "tool_choice": "auto",
-                "tools": [[
-                    "type": "web_search",
-                    "web_search": [
-                        "enable": true,
-                        "search_engine": "search_pro",
-                        "search_result": true,
-                    ],
-                ]],
-            ]
         case .mimo:
             return [
                 "thinking": ["type": "disabled"],
@@ -70,7 +58,7 @@ public enum LLMSearchControl {
     /// endpoint that supports search can also feed source verification.
     public static func supportsSourceResults(providerId: String, baseURLHost: String) -> Bool {
         switch channel(providerId: providerId, host: baseURLHost) {
-        case .zhipu, .mimo:
+        case .mimo:
             return true
         case .dashScope:
             return true
@@ -81,18 +69,16 @@ public enum LLMSearchControl {
 
     // MARK: - Channel resolution
 
-    enum Channel { case dashScope, zhipu, mimo, none }
+    enum Channel { case dashScope, mimo, none }
 
     static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
         case "qwen", "qwen-team":  return .dashScope
-        case "zhipu":              return .zhipu
         case "mimo", "mimo-payg":  return .mimo
         default: break
         }
         let h = host.lowercased()
         if h.contains("dashscope") || h.contains("aliyuncs") { return .dashScope }
-        if h.contains("bigmodel")                           { return .zhipu }
         if h.contains("xiaomimimo")                         { return .mimo }
         return .none
     }
