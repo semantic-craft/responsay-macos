@@ -21,9 +21,14 @@ final class MenuModelSelectionTests: XCTestCase {
     }
 
     private func resolver(keys: [String: String] = [:]) -> ModelLaneReadinessResolver {
+        // Local-install state is pinned to "not installed" so results never depend on
+        // which models happen to exist on the machine running the tests.
         ModelLaneReadinessResolver(
             dispatcher: ProviderConfigDispatcher(defaults: defaults, keyReader: { keys[$0] }),
-            ocrKeyReader: { _ in nil })
+            ocrKeyReader: { _ in nil },
+            asrLocalInstalled: { _ in false },
+            ttsLocalInstalled: { false },
+            ocrLocalInstalled: { false })
     }
 
     func testUnconfiguredCloudASRJumpsToASRConfig() {
