@@ -4,9 +4,9 @@ import Foundation
 //
 // 独立检索后端 — 与 LLM provider 解耦的第三条联网路线。
 //
-// 前两条是「模型自带联网」:`LLMSearchControl`(Qwen/智谱/MiMo 走 /chat/completions 的
-// 联网参数)与 `ArkResponsesSearchRequestBuilder`(豆包方舟/OpenAI 走 /responses 的
-// web_search 工具)。它们都是模型自己搜、自己答,搜索质量与来源格式由模型决定。
+// 前两条是「模型自带联网」:`LLMSearchControl`(Qwen 走 /responses，智谱/MiMo 走
+// /chat/completions)与 `ArkResponsesSearchRequestBuilder`(豆包方舟/OpenAI 走 /responses)。
+// 它们都是模型自己搜、自己答,搜索质量与来源格式由模型决定。
 //
 // 这一条是 App 先检索、再把结果喂给用户当前配的主模型作答(见 `WebSearchContextBuilder`)。
 // 好处:主模型不必支持联网;来源是检索服务返回的结构化字段(标题/站点/发布时间),

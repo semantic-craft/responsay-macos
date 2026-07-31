@@ -60,8 +60,8 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         case .qwen:
             return .init(
                 supportsChatCompletions: true,
-                supportsResponses: false,
-                supportsStreamUsage: true,
+                supportsResponses: true,
+                supportsStreamUsage: false,
                 supportsThinkingControl: true,
                 supportsJSONMode: false,
                 supportsPartialMode: true,
@@ -69,7 +69,7 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
                 supportsBatch: true,
                 builtinTools: [.webSearch, .webExtractor, .codeInterpreter, .knowledgeRetrieval, .mcp],
                 authHeaderStyle: .bearer,
-                thinkingControl: .enableThinking,
+                thinkingControl: .reasoningEffort,
                 allowsGenerationParameters: true)
         case .mimo:
             return .init(
@@ -200,11 +200,18 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         }
     }
 
+    /// Qwen's current text models use the provider's OpenAI-compatible Responses API for all
+    /// production generation paths. Other providers retain their existing ordinary-generation
+    /// route; Doubao/OpenAI still opt into Responses only in their dedicated search adapter.
+    public static func prefersResponses(providerId: String, baseURLHost: String) -> Bool {
+        channel(providerId: providerId, host: baseURLHost) == .qwen
+    }
+
     private enum Channel { case qwen, mimo, zhipu, doubao, gemini, openai, openrouter, ollama, otherKnown, unknown }
 
     private static func channel(providerId: String, host: String) -> Channel {
         switch providerId.lowercased() {
-        case "qwen", "qwen-token-plan", "qwen-team": return .qwen
+        case "qwen", "qwen-team": return .qwen
         case "mimo", "mimo-payg": return .mimo
         case "zhipu": return .zhipu
         case "doubao": return .doubao
@@ -274,8 +281,10 @@ public struct LLMGenerationProfile: Sendable, Equatable {
                 timeout: 60,
                 thinkingDefault: false)
         }
-        if pid == "qwen" || pid == "qwen-token-plan" || pid == "qwen-team" || host.contains("dashscope") || host.contains("aliyuncs") {
-            return .init(temperature: 0.2, topP: 0.8, maxCompletionTokens: nil, timeout: 60, thinkingDefault: false)
+        if pid == "qwen" || pid == "qwen-team" || host.contains("dashscope") || host.contains("aliyuncs") {
+            // 百炼 Responses 建议 temperature / top_p 只设置一个；保留低温度以维持
+            // 改写与翻译的确定性，不再同时发送 top_p。
+            return .init(temperature: 0.2, topP: nil, maxCompletionTokens: nil, timeout: 60, thinkingDefault: false)
         }
         if pid == "ollama" || host == "localhost" || host == "127.0.0.1" {
             return .init(temperature: 0.2, topP: 0.8, maxCompletionTokens: nil, timeout: 300, thinkingDefault: false)

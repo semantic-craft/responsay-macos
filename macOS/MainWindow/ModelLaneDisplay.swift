@@ -127,13 +127,19 @@ struct ModelLaneDisplay {
         let config = readiness.resolvedConfig(.llm, providerId: base, plan: plan)
         let preset = ProviderCatalog.presets(for: .llm).first { $0.id == config.providerId }
         let state = readiness.llmState(optionId: id)
+        // 技能平台模型显式分流时快照要能区分两个选择；跟随时保持单模型显示不变。
+        let skillModel = SkillPlatformModelSettings.explicitModel(
+            providerId: config.providerId, defaults: defaults)
+        let modelId = (skillModel == nil || skillModel == config.model)
+            ? config.model
+            : "\(config.model) · 技能 \(skillModel!)"
         return ModelLaneInfo(
             lane: .llm, title: "文本改写", systemImage: "sparkles",
             currentOptionId: id,
             currentTitle: preset?.displayName(for: .llm) ?? "自定义 OpenAI 兼容",
             providerId: config.providerId,
             plan: meaningfulPlan(config),
-            modelId: config.model,
+            modelId: modelId,
             isLocal: false,
             readiness: state.readiness,
             readinessReason: state.reason,

@@ -8,7 +8,8 @@ import Foundation
 // - Doubao/Ark Responses: `output[].content[].annotations`
 // - Kimi/legacy MiMo: `search_results` array in the message object
 // - Zhipu: `web_search` array in the message object
-// - Qwen: inline `[ref]` citations in content text + sometimes metadata
+// - Qwen Responses: `web_search_call.action.sources` plus output text/annotations
+// - Legacy Qwen Chat: inline `[ref]` citations in content text
 // - Fallback: extract URL from plain content text
 //
 // Returns nil when the LLM searched but found nothing (搜不到 ≠ 不存在).
@@ -93,6 +94,9 @@ public enum LLMSearchResultParser {
         var fallbackText = ""
 
         for item in output {
+            if let result = parseResponsesWebSearchSources(item, providerId: providerId) {
+                return result
+            }
             if let result = parseSearchResults(item, providerId: providerId) {
                 return result
             }
@@ -115,6 +119,27 @@ public enum LLMSearchResultParser {
         }
 
         return fallbackText.isEmpty ? nil : parseContentFallback(fallbackText, providerId: providerId)
+    }
+
+    /// Qwen Responses exposes searched URLs on the tool-call item rather than only as annotations
+    /// on the final message. The API documents `action.query` plus `action.sources[{url}]`.
+    private static func parseResponsesWebSearchSources(
+        _ item: [String: Any],
+        providerId: String
+    ) -> SearchResult? {
+        guard item["type"] as? String == "web_search_call",
+              let action = item["action"] as? [String: Any],
+              let sources = action["sources"] as? [[String: Any]],
+              let source = sources.first(where: { ($0["url"] as? String)?.isEmpty == false }),
+              let url = source["url"] as? String else { return nil }
+        let query = action["query"] as? String
+            ?? (action["queries"] as? [String])?.joined(separator: "；")
+            ?? ""
+        return SearchResult(
+            title: extractTitleHint(from: query, url: url),
+            url: url,
+            snippet: query,
+            provider: providerId)
     }
 
     // MARK: - Structured search_results (Kimi, legacy MiMo)

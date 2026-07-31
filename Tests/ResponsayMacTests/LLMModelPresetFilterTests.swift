@@ -4,25 +4,26 @@ import ResponsayCore
 
 final class LLMModelPresetFilterTests: XCTestCase {
     /// A fetch is narrowed to qwen's curated LLM set, dropping the other ids its `/models`
-    /// endpoint returns (e.g. qwen3.7-max). Curated order is preserved.
+    /// endpoint returns. qwen3.7-max is curated now (技能平台模型可选)，所以保留。
+    /// Curated order is preserved.
     func testQwenLLMFetchNarrowsToCuratedModels() {
         let models = LLMModelPresetFilter.models(
-            from: ["qwen3.6-flash", "qwen3.7-max", "qwen3.6-plus", "qwen3.7-plus"],
+            from: ["qwen3.6-flash", "qwen3.7-flash", "qwen3.7-max", "qwen-mt-turbo", "qwen3.6-plus", "qwen3.7-plus"],
             preset: ProviderCatalog.qwen,
             capability: .llm)
 
-        XCTAssertEqual(models, ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"])
+        XCTAssertEqual(models, ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"])
     }
 
     /// The Qwen PAYG default is part of the curated set, so it survives a fetch alongside the
     /// other curated ids that the provider list happens to include.
     func testQwenDefaultFlashStaysCuratedWhenFetched() {
         let models = LLMModelPresetFilter.models(
-            from: ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash"],
+            from: ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash", "qwen3.7-flash"],
             preset: ProviderCatalog.qwen,
             capability: .llm)
 
-        XCTAssertEqual(models, ["qwen3.6-flash", "qwen3.7-plus"])
+        XCTAssertEqual(models, ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.7-plus"])
     }
 
     func testLLMFetchFallsBackToCuratedDefaultWhenProviderListOmitsIt() {

@@ -26,8 +26,11 @@ final class ProviderConfigMachine {
     var regionRaw = ""
     var planRaw = ""
     var model = ""
+    /// LLM only — 技能平台模型；空串 = 跟随听写模型（`SkillPlatformModelSettings` 同一约定）。
+    var skillModel = ""
     var voice = ""
     var baseURL = ""
+    var workspaceID = ""
     var apiKey = ""
     var appId = ""
     var accessToken = ""
@@ -66,6 +69,33 @@ final class ProviderConfigMachine {
         capability == .asr && (providerId == "qwen-asr-flash" || providerId == "volcengine-flash")
     }
 
+    var isQwenLLM: Bool { capability == .llm && providerId == "qwen" }
+
+    var qwenWorkspaceBaseURL: String? {
+        guard isQwenLLM else { return nil }
+        return QwenWorkspaceEndpoint.baseURL(workspaceID: workspaceID, region: region)
+    }
+
+    var usesQwenWorkspaceEndpoint: Bool { qwenWorkspaceBaseURL != nil }
+
+    var workspaceIDValidationMessage: String? {
+        guard isQwenLLM else { return nil }
+        let trimmed = workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, QwenWorkspaceEndpoint.normalizedWorkspaceID(trimmed) == nil else { return nil }
+        return "格式应为 ws- 后接字母或数字；请只填 Workspace ID，不要填完整 Host。"
+    }
+
+    var qwenWorkspaceHelp: String {
+        switch region {
+        case .unitedStates:
+            return "美国（弗吉尼亚）按文档使用 dashscope-us 通用域名，不拼接 Workspace ID。"
+        case .germany, .japan:
+            return "此接入点须填写 Workspace ID，应用会生成对应地域的专属 Responses 地址。"
+        default:
+            return "留空使用仍兼容的通用域名；填写后按接入点生成业务空间专属 Responses 地址。"
+        }
+    }
+
     var currentRegions: [ProviderRegion] { current.regions(for: capability) }
     var currentPlans: [BillingPlan] { current.plans(for: capability) }
     var region: ProviderRegion { ProviderRegion(rawValue: regionRaw) ?? currentRegions.first ?? .global }
@@ -78,7 +108,7 @@ final class ProviderConfigMachine {
     /// 「接入点」dropdown so 按量付费 / Token Plan sit next to 国内/新加坡/欧洲 instead of being
     /// separate providers (the Base URL below follows the pick).
     var endpointChoices: [EndpointVariant] {
-        current.endpoints(for: capability).filter { !$0.baseURL.isEmpty }
+        current.endpoints(for: capability).filter { !$0.baseURL.isEmpty || isQwenLLM }
     }
 
     // MARK: Keys
@@ -105,24 +135,31 @@ final class ProviderConfigMachine {
             fallbackRaw: defaultPlan)
         let availablePlans = prov.plans(for: capability)
         let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
-        let retiredQwenTokenPlan = pid == "qwen"
-            && requestedPlan == .package
-            && !availablePlans.contains(.package)
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
         planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
+        workspaceID = capability == .llm && pid == "qwen"
+            ? (scopedString("workspaceId", providerId: pid, activeProviderId: storedProvider) ?? "")
+            : ""
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: pid, activeProviderId: storedProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
         let r = ProviderRegion(rawValue: regionRaw) ?? .global
         let pl = BillingPlan(rawValue: planRaw) ?? .payg
         let catalogBaseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? ""
-        baseURL = retiredQwenTokenPlan
+        baseURL = requestedPlanIsUnavailable
             ? catalogBaseURL
             : MiMoASRRouting.normalizedBaseURL(
                 providerId: pid, capability: capability,
                 stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
                 fallback: catalogBaseURL)
-        if retiredQwenTokenPlan {
+        if let workspaceBaseURL = qwenWorkspaceBaseURL {
+            baseURL = workspaceBaseURL
+        }
+        if requestedPlanIsUnavailable {
             setScoped(planRaw, suffix: "plan")
             setScoped(baseURL, suffix: "baseURL")
         }
@@ -163,22 +200,29 @@ final class ProviderConfigMachine {
             fallbackRaw: defaultPlan)
         let availablePlans = prov.plans(for: capability)
         let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
-        let retiredQwenTokenPlan = prov.id == "qwen"
-            && requestedPlan == .package
-            && !availablePlans.contains(.package)
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
         planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
+        workspaceID = capability == .llm && prov.id == "qwen"
+            ? (scopedString("workspaceId", providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            : ""
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
         baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
                                 plan: BillingPlan(rawValue: planRaw) ?? .payg)?.baseURL ?? ""
-        if !retiredQwenTokenPlan {
+        if !requestedPlanIsUnavailable {
             baseURL = MiMoASRRouting.normalizedBaseURL(
                 providerId: prov.id, capability: capability,
                 stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
         }
-        if retiredQwenTokenPlan {
+        if let workspaceBaseURL = qwenWorkspaceBaseURL {
+            baseURL = workspaceBaseURL
+        }
+        if requestedPlanIsUnavailable {
             setScoped(planRaw, suffix: "plan")
             setScoped(baseURL, suffix: "baseURL")
         }
@@ -199,7 +243,13 @@ final class ProviderConfigMachine {
     }
 
     func endpointBase() -> String {
-        current.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? baseURL
+        qwenWorkspaceBaseURL
+            ?? current.endpoint(for: capability, region: region, plan: plan)?.baseURL
+            ?? baseURL
+    }
+
+    func refreshBaseURLForSelection() {
+        baseURL = endpointBase()
     }
 
     /// Load the API key stored for the current plan. 按量付费 and Token Plan keep separate keys
@@ -229,8 +279,15 @@ final class ProviderConfigMachine {
         setScoped(regionRaw, suffix: "region")
         setScoped(planRaw, suffix: "plan")
         setScoped(model, suffix: "model")
+        if capability == .llm {
+            setScoped(skillModel.trimmingCharacters(in: .whitespacesAndNewlines),
+                      suffix: SkillPlatformModelSettings.suffix)
+        }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
+        if isQwenLLM {
+            setScoped(workspaceID.trimmingCharacters(in: .whitespacesAndNewlines), suffix: "workspaceId")
+        }
         ModelConfigurationEvents.post()
     }
 
@@ -271,11 +328,8 @@ final class ProviderConfigMachine {
     }
 
     private func readApiKey(providerId: String, plan: BillingPlan) -> String {
-        for account in CapabilityCredentialAccount.apiKeyReadAccounts(
-            providerId: providerId, capability: capability, plan: plan
-        ) {
-            if let key = BYOKKeychain.read(account), !key.isEmpty { return key }
-        }
-        return ""
+        let account = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: providerId, capability: capability, plan: plan)
+        return BYOKKeychain.read(account) ?? ""
     }
 }

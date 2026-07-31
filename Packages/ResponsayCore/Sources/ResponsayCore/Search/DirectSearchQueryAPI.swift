@@ -1,8 +1,8 @@
 import Foundation
 
 /// 用主模型把长提问提炼成检索词(见 `SearchQueryDistiller`)。走和其他 App-direct 调用
-/// 同一条 `/chat/completions` 路径,但强制关思考、给 20s 短超时——它是检索前的一步小事,
-/// 不该拖慢整条联网作答。
+/// 相同的服务商首选文本协议(Qwen 为 Responses),但强制关思考、给 20s 短超时——
+/// 它是检索前的一步小事,不该拖慢整条联网作答。
 public struct DirectSearchQueryAPI: Sendable {
     let endpoint: LLMEndpoint
     let client: LLMChatClient

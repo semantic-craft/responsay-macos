@@ -25,7 +25,7 @@ final class CapabilitySelectionSyncTests: XCTestCase {
 
         XCTAssertEqual(defaults.string(forKey: "byok.llm.provider"), "qwen")
         XCTAssertEqual(defaults.string(forKey: "byok.llm.plan"), BillingPlan.payg.rawValue)
-        XCTAssertEqual(defaults.string(forKey: "byok.llm.model"), "qwen3.6-flash")
+        XCTAssertEqual(defaults.string(forKey: "byok.llm.model"), "qwen3.7-flash")
         XCTAssertEqual(defaults.string(forKey: "byok.llm.baseURL"), "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
