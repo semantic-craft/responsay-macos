@@ -107,11 +107,9 @@ struct LLMThinkingControlTests {
         #expect((body("custom", "x", false, host: "openrouter.ai")["reasoning"] as? [String: Any])?["effort"] as? String == "none")
     }
 
-    @Test func deepseek_mimo_zhipu_thinkingType() {
+    @Test func deepseek_mimo_doubao_thinkingType() {
         #expect((body("deepseek", "deepseek-chat", true)["thinking"] as? [String: String])?["type"] == "enabled")
         #expect((body("mimo", "mimo-v2.5-pro", false)["thinking"] as? [String: String])?["type"] == "disabled")
-        #expect((body("zhipu", "glm-5-turbo", false)["thinking"] as? [String: String])?["type"] == "disabled")
-        #expect((body("zhipu", "glm-5-turbo", true)["thinking"] as? [String: String])?["type"] == "enabled")
         #expect((body("doubao", "doubao-seed-2-0-lite-260428", false, host: "ark.cn-beijing.volces.com")["thinking"] as? [String: String])?["type"] == "disabled")
     }
 
@@ -153,7 +151,9 @@ struct LLMThinkingControlTests {
     @Test func custom_routesByHost() {
         #expect((body("custom", "qwen-plus", false, host: "dashscope.aliyuncs.com")["reasoning"] as? [String: String])?["effort"] == "none")
         #expect(body("custom", "x", true, host: "generativelanguage.googleapis.com")["reasoning_effort"] as? String == "medium")
-        #expect((body("custom", "glm-5-turbo", false, host: "open.bigmodel.cn")["thinking"] as? [String: String])?["type"] == "disabled")
+        #expect((body("custom", "doubao-seed", false, host: "ark.cn-beijing.volces.com")["thinking"] as? [String: String])?["type"] == "disabled")
+        // 智谱退役后其域名不再有专属通道 → 与未知 host 一样什么都不发（发明字段会 400）。
+        #expect(body("custom", "glm-5-turbo", false, host: "open.bigmodel.cn").isEmpty)
         #expect(body("custom", "x", true, host: "unknown.example.com").isEmpty)   // unknown → emit nothing
     }
 

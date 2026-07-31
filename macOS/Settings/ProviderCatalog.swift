@@ -206,8 +206,6 @@ struct ProviderPreset: Identifiable, Sendable {
             return "阿里云百炼"
         case "mimo":
             return "小米Mimo"
-        case "zhipu":
-            return "智谱GLM"
         case "apple":
             return "Apple 系统原生"
         default:
@@ -265,7 +263,7 @@ enum ProviderCatalog {
 
     /// All cloud + local presets. Capability pickers apply their own display
     /// order so cloud models stay above local/offline choices.
-    static let all: [ProviderPreset] = [qwen, qwenASRRealtime, doubao, volcengineFlash, volcengineTTS, mimo, zhipu, minimax, deepseek,
+    static let all: [ProviderPreset] = [qwen, qwenASRRealtime, doubao, volcengineFlash, volcengineTTS, mimo, minimax, deepseek,
                                          openAI, gemini,
                                          custom, appleLocal]
 
@@ -292,7 +290,7 @@ enum ProviderCatalog {
 
     private static let displayOrder: [ModelCapability: [String]] = [
         .asr: ["qwen-asr-flash", "volcengine-flash", "mimo", "openai", "gemini", "custom", "apple"],
-        .llm: ["qwen", "doubao", "mimo", "zhipu", "deepseek", "gemini", "openai", "custom"],
+        .llm: ["qwen", "doubao", "mimo", "deepseek", "gemini", "openai", "custom"],
         .tts: ["qwen", "volcengine-tts", "mimo", "minimax", "openai", "gemini", "custom"],
     ]
 }

@@ -28,11 +28,10 @@ struct LLMProviderCapabilitiesTests {
         #expect(caps.builtinTools.contains(.webSearch))
     }
 
-    @Test func zhipuAndGeminiCapabilitiesExposeTheirThinkingControls() {
-        let zhipu = LLMProviderCapabilities.resolve(providerId: "zhipu", baseURLHost: "open.bigmodel.cn")
-        #expect(zhipu.supportsThinkingControl)
-        #expect(zhipu.thinkingControl == .thinkingObject)
-        #expect(!zhipu.supportsResponses)
+    @Test func geminiCapabilitiesExposeItsThinkingControl() {
+        // 智谱已退役：其 host 不再解析为专属通道，落到未知 provider 的保守能力集。
+        let retired = LLMProviderCapabilities.resolve(providerId: "zhipu", baseURLHost: "open.bigmodel.cn")
+        #expect(!retired.supportsResponses)
 
         let gemini = LLMProviderCapabilities.resolve(
             providerId: "gemini",

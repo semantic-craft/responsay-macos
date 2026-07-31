@@ -41,7 +41,7 @@ public final class VoiceAssistantViewModel {
     /// holding a client. `nil` → regenerate is a no-op.
     public var makeClient: (@MainActor () -> (any StreamingChatClient)?)?
 
-    /// Canonical provider id of the web-search model used for the current turn ("qwen" / "zhipu" /
+    /// Canonical provider id of the web-search model used for the current turn ("qwen" /
     /// "mimo"), or the 检索服务 id when 联网搜索 runs on an independent backend ("doubao-search" /
     /// "perplexity"); nil = no web search this turn. The capsule ("联网搜索中" + 署名 chip) and the
     /// answer-card chip resolve it to a display name via `VoiceAssistantSearchModelSettings.capsuleSource`.
