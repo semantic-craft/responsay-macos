@@ -29,7 +29,9 @@ private func env(_ key: String) -> String? {
 
 // MARK: - Transport: capture + (doubao) chat→/responses rewrite
 
-final class ArkRewriteURLProtocol: URLProtocol, @unchecked Sendable {
+// `URLProtocol` 的 Sendable 一致性在 SDK 里已标 unavailable，子类再写 `@unchecked Sendable`
+// 无效（编译器会告警）；跨线程共享的只有下面几个 `nonisolated(unsafe)` 静态量，各自加锁。
+final class ArkRewriteURLProtocol: URLProtocol {
     nonisolated(unsafe) static var rewriteChatToArkResponses = false
     private static let lock = NSLock()
     nonisolated(unsafe) private static var metas: [[String: String]] = []
@@ -57,39 +59,47 @@ final class ArkRewriteURLProtocol: URLProtocol, @unchecked Sendable {
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
-    private var loadTask: Task<Void, Never>?
+    private var loadTask: URLSessionDataTask?
 
+    // completion-handler 转发，不用 `Task {}`：URLProtocol 不是 Sendable，把捕获 self 的闭包
+    // 交给 Task 会触发 Swift 严格并发的 sending-closure 检查（编译失败）。URLProtocol 本身
+    // 就是回调风格，这样写既过检查也更贴合其生命周期（stopLoading → task.cancel）。
     override func startLoading() {
-        let original = request
-        loadTask = Task {
-            do {
-                let outbound = Self.rewrittenRequest(original)
-                let (data, response) = try await Self.forwardingSession.data(for: outbound)
-                if let http = response as? HTTPURLResponse {
-                    var meta: [String: String] = [
-                        "httpStatus": String(http.statusCode),
-                        "path": outbound.url?.path ?? "",
-                    ]
-                    if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        meta["object"] = obj["object"] as? String ?? ""
-                        meta["status"] = obj["status"] as? String ?? ""
-                        meta["model"] = obj["model"] as? String ?? ""
-                    }
-                    // 只读已物化的 httpBody（改写产物）；passthrough 请求的 stream 绝不读。
-                    if let body = outbound.httpBody,
-                       let sent = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
-                        meta["sentStore"] = String(describing: sent["store"] ?? "absent")
-                        meta["sentModel"] = sent["model"] as? String ?? ""
-                    }
-                    Self.record(meta)
-                }
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                client?.urlProtocol(self, didFailWithError: error)
+        let outbound = Self.rewrittenRequest(request)
+        let task = Self.forwardingSession.dataTask(with: outbound) { [weak self] data, response, error in
+            guard let self else { return }
+            if let error {
+                self.client?.urlProtocol(self, didFailWithError: error)
+                return
             }
+            guard let data, let response else {
+                self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+                return
+            }
+            if let http = response as? HTTPURLResponse {
+                var meta: [String: String] = [
+                    "httpStatus": String(http.statusCode),
+                    "path": outbound.url?.path ?? "",
+                ]
+                if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    meta["object"] = obj["object"] as? String ?? ""
+                    meta["status"] = obj["status"] as? String ?? ""
+                    meta["model"] = obj["model"] as? String ?? ""
+                }
+                // 只读已物化的 httpBody（改写产物）；passthrough 请求的 stream 绝不读。
+                if let body = outbound.httpBody,
+                   let sent = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+                    meta["sentStore"] = String(describing: sent["store"] ?? "absent")
+                    meta["sentModel"] = sent["model"] as? String ?? ""
+                }
+                Self.record(meta)
+            }
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: data)
+            self.client?.urlProtocolDidFinishLoading(self)
         }
+        loadTask = task
+        task.resume()
     }
 
     override func stopLoading() { loadTask?.cancel() }

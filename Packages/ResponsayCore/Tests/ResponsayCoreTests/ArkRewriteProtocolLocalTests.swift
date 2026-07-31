@@ -5,7 +5,7 @@ import Testing
 /// 本地（无网络）验证 eval 传输层的 body 语义：URLProtocol 里 httpBody/httpBodyStream 的
 /// 真实形态、drain 是否可靠、chat→ark /responses 改写是否产出完整 body。
 /// 回环协议：拦截后不联网，直接回一个合成 Responses 应答，并把收到的 body 长度塞进应答里。
-final class LoopbackProbeProtocol: URLProtocol, @unchecked Sendable {
+final class LoopbackProbeProtocol: URLProtocol {
     nonisolated(unsafe) static var lastSeenBodyBytes = -1
     nonisolated(unsafe) static var lastHadStream = false
     nonisolated(unsafe) static var lastHadHTTPBody = false
