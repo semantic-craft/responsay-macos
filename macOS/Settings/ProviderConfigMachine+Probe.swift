@@ -86,19 +86,41 @@ extension ProviderConfigMachine {
     }
 
     /// LLM Validate (240): one tiny real chat completion through the App-direct path.
+    /// 技能平台模型与听写模型不同时，两个模型各发一次真实探针 —— 只探默认模型会让另一个
+    /// 选择拿到虚假的「可用」状态（例如该模型不支持当前提供商的 Responses API）。
     func validateLLM() {
-        let endpoint = LLMEndpoint(providerId: providerId, baseURL: baseURL, model: model,
-                                   apiKey: apiKey, thinkingEnabled: false)
-        guard endpoint.isConfigured else { status = "请先填 Base URL / Model / 密钥"; return }
+        let dictation = LLMEndpoint(providerId: providerId, baseURL: baseURL, model: model,
+                                    apiKey: apiKey, thinkingEnabled: false)
+        guard dictation.isConfigured else { status = "请先填 Base URL / Model / 密钥"; return }
+        let skillModelTrimmed = skillModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let skillEndpoint: LLMEndpoint? = skillModelTrimmed.isEmpty || skillModelTrimmed == model
+            ? nil
+            : LLMEndpoint(providerId: providerId, baseURL: baseURL, model: skillModelTrimmed,
+                          apiKey: apiKey, thinkingEnabled: false)
         status = "校验中…"
         Task {
             do {
-                _ = try await LLMConnectivityCheck.validate(endpoint: endpoint)
-                await MainActor.run { status = "✓ 已连接 · 模型可用" }
+                _ = try await LLMConnectivityCheck.validate(endpoint: dictation)
             } catch let error as LLMError {
-                await MainActor.run { status = CapabilityProbeMessages.llmValidationStatus(error) }
+                let message = CapabilityProbeMessages.llmValidationStatus(error)
+                await MainActor.run { status = skillEndpoint == nil ? message : "听写模型：\(message)" }
+                return
             } catch {
                 await MainActor.run { status = "连接失败" }
+                return
+            }
+            guard let skillEndpoint else {
+                await MainActor.run { status = "✓ 已连接 · 模型可用" }
+                return
+            }
+            do {
+                _ = try await LLMConnectivityCheck.validate(endpoint: skillEndpoint)
+                await MainActor.run { status = "✓ 已连接 · 听写与技能平台模型均可用" }
+            } catch let error as LLMError {
+                let message = CapabilityProbeMessages.llmValidationStatus(error)
+                await MainActor.run { status = "听写模型可用；技能平台模型不可用：\(message)" }
+            } catch {
+                await MainActor.run { status = "听写模型可用；技能平台模型连接失败" }
             }
         }
     }
