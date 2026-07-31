@@ -76,7 +76,8 @@ final class QwenResponsesLiveTests: XCTestCase {
         if expectsSearch {
             let tools = try XCTUnwrap(body["tools"] as? [[String: Any]], file: file, line: line)
             XCTAssertEqual(tools.first?["type"] as? String, "web_search", file: file, line: line)
-            XCTAssertEqual(body["tool_choice"] as? String, "required", file: file, line: line)
+            XCTAssertEqual(body["tool_choice"] as? String, "auto", file: file, line: line)
+            XCTAssertEqual(body["max_tool_calls"] as? Int, 3, file: file, line: line)
         } else {
             XCTAssertNil(body["tools"], file: file, line: line)
             XCTAssertNil(body["tool_choice"], file: file, line: line)
