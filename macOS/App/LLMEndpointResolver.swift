@@ -34,6 +34,26 @@ enum LLMEndpointResolver {
         resolve(dispatcher: dispatcher)
     }
 
+    /// 技能平台 lane（`LegalSkillRuntime` 技能执行、技能 JSON 修复、无独立检索服务时的技能搜索）。
+    /// 与听写 lane 共享同一提供商解析结果 —— provider / Base URL（含 Workspace 派生）/ 凭据完全一致，
+    /// 只有 model 可能不同：用户显式选了技能平台模型就覆盖；空 = 跟随听写模型（旧配置兼容路径）。
+    static func resolveSkill(
+        defaults: UserDefaults = .standard,
+        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+    ) -> LLMEndpoint? {
+        guard let base = resolve(dispatcher: dispatcher) else { return nil }
+        guard let override = SkillPlatformModelSettings.explicitModel(
+            providerId: base.providerId, defaults: defaults),
+            override != base.model
+        else { return base }
+        return LLMEndpoint(
+            providerId: base.providerId,
+            baseURL: base.baseURL,
+            model: override,
+            apiKey: base.apiKey,
+            thinkingEnabled: base.thinkingEnabled)
+    }
+
     /// 任意提问 联网搜索专属端点。Resolves the user's chosen (or 自动) search-capable provider
     /// (Qwen/智谱/MiMo — `LLMSearchControl`) into a configured endpoint, **independent of the main
     /// chat model**, so 联网搜索 works even when the active LLM can't search. `自动` prefers the

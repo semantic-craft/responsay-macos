@@ -26,6 +26,8 @@ final class ProviderConfigMachine {
     var regionRaw = ""
     var planRaw = ""
     var model = ""
+    /// LLM only — 技能平台模型；空串 = 跟随听写模型（`SkillPlatformModelSettings` 同一约定）。
+    var skillModel = ""
     var voice = ""
     var baseURL = ""
     var workspaceID = ""
@@ -140,6 +142,9 @@ final class ProviderConfigMachine {
             : ""
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: pid, activeProviderId: storedProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
         let r = ProviderRegion(rawValue: regionRaw) ?? .global
@@ -202,6 +207,9 @@ final class ProviderConfigMachine {
             : ""
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
+        skillModel = capability == .llm
+            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
         baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
@@ -271,6 +279,10 @@ final class ProviderConfigMachine {
         setScoped(regionRaw, suffix: "region")
         setScoped(planRaw, suffix: "plan")
         setScoped(model, suffix: "model")
+        if capability == .llm {
+            setScoped(skillModel.trimmingCharacters(in: .whitespacesAndNewlines),
+                      suffix: SkillPlatformModelSettings.suffix)
+        }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
         if isQwenLLM {

@@ -29,7 +29,9 @@ extension ProviderCatalog {
         capabilityKeyFormatHints: [.llm: "百炼 API Key（sk-…）"],
         builtinSearch: true, isCustom: false, isLocal: false,
         presetModels: [
-            .llm: ["qwen3.7-flash", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
+            // qwen3.7-max 面向技能平台工作流（听写默认仍是 flash）；不列入会被
+            // LLMModelPresetFilter 从拉取结果中过滤掉，导致技能模型选不到 Max。
+            .llm: ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
             .tts: ["qwen-audio-3.0-tts-flash"],
         ],
         presetVoices: [
