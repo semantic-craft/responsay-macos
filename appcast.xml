@@ -3,6 +3,14 @@
     <channel>
         <title>Responsay</title>
         <item>
+            <title>1.7.4</title>
+            <pubDate>Fri, 31 Jul 2026 19:52:20 +0800</pubDate>
+            <sparkle:version>150</sparkle:version>
+            <sparkle:shortVersionString>1.7.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.7.4/Responsay.dmg" length="37569903" type="application/octet-stream" sparkle:edSignature="zPUaW0BmccyUMHm0xIb5xEZAPCJ1DvA78EyMtHp4VNMo5myBbs87Vhr3uGkpsbNHIwKblTftGjBUKpHmewwtCQ=="/>
+        </item>
+        <item>
             <title>1.7.3</title>
             <pubDate>Fri, 31 Jul 2026 13:27:50 +0800</pubDate>
             <sparkle:version>149</sparkle:version>
