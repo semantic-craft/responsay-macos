@@ -39,10 +39,9 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
 
     /// Cloud multimodal batch: it injects the weak biasing hint as text, so a near-empty clip can echo
     /// the list back → `needsEchoFilter`. Volcengine variants are final-only; the rest may trickle
-    /// cosmetic post-upload SSE partials. Profile-aware (faithful vs dictation).
+    /// cosmetic post-upload SSE partials.
     public var captureCapability: SpeechCaptureCapability {
         .init(partialStyle: providerName.hasPrefix("volcengine") ? .none : .postUploadSSE,
-              profileAware: true,
               needsEchoFilter: true)
     }
 

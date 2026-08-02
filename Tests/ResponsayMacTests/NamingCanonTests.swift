@@ -99,7 +99,7 @@ final class NamingCanonTests: XCTestCase {
     }
 
     func testEngineTitlesCarryCanonForms() {
-        XCTAssertEqual(ASREngine.cloudQwenASRFlashRealtime.title, "阿里云百炼 · 千问极速实时")
+        XCTAssertEqual(ASREngine.cloudQwenASRFlashRealtime.title, "阿里云百炼 · 千问实时")
         XCTAssertEqual(ASREngine.cloudVolcengineFlash.title, "火山引擎 · 豆包标准版 2.0")
         XCTAssertEqual(ASREngine.cloudMimo.title, "小米Mimo")
         XCTAssertEqual(ASREngine.fireRedASR2AEDLocal.title, "FireRedASR2 AED")
@@ -247,7 +247,7 @@ final class NamingCanonTests: XCTestCase {
             "小米Mimo")
         XCTAssertEqual(
             ProviderCatalog.qwenASRRealtime.displayName(for: .asr),
-            "阿里云百炼 · 千问极速实时")
+            "阿里云百炼 · 千问实时")
         // 智谱已退役：LLM 选择器里不再出现，preset 也已删除。
         XCTAssertFalse(ProviderCatalog.presets(for: .llm).map(\.id).contains("zhipu"))
         XCTAssertFalse(ProviderCatalog.all.map(\.id).contains("zhipu"))

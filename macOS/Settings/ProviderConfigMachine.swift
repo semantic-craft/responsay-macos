@@ -9,8 +9,7 @@ import ResponsayCore
 /// Behaviour is identical to the pre-extraction view: same `CapabilityProviderConfigStore`
 /// keys, same `CapabilityCredentialAccount` keychain accounts (ADR-0023: BYOK keys are read
 /// on load / provider-switch and written on change, never stored in UserDefaults / plaintext),
-/// same `MiMoASRRouting` normalization and same fixed-endpoint forcing for the two 实时流式 ASR
-/// engines (千问极速实时 / 豆包流式).
+/// same `MiMoASRRouting` normalization and same fixed-endpoint forcing for the 豆包流式 ASR engine.
 ///
 /// `defaults` is injectable purely so tests can drive a fresh suite; production always uses
 /// `.standard`, so runtime behaviour is unchanged.
@@ -62,30 +61,45 @@ final class ProviderConfigMachine {
         !apiKey.isEmpty || (!appId.isEmpty && !accessToken.isEmpty)
     }
 
-    /// The two 实时流式 ASR engines (千问极速实时 / 豆包流式) hardcode their WSS endpoint + model
-    /// in code (QwenRealtimeEndpoint / VolcengineRealtimeEndpoint) and ignore the card's Base URL /
-    /// 模型 ID. Show those fields read-only for them so the card can't display a stale batch config.
+    /// 豆包流式 hardcodes its WSS endpoint + model in code (VolcengineRealtimeEndpoint) and ignores
+    /// the card's Base URL / 模型 ID. Show those fields read-only for it so the card can't display a
+    /// stale batch config. (千问 left this set when its card moved from the retired OmniRealtime
+    /// socket to the 非实时 HTTP endpoint, whose host and model *are* configurable.)
     var isFixedEndpoint: Bool {
-        capability == .asr && (providerId == "qwen-asr-flash" || providerId == "volcengine-flash")
+        capability == .asr && providerId == "volcengine-flash"
     }
 
     var isQwenLLM: Bool { capability == .llm && providerId == "qwen" }
 
+    /// 百炼 非实时语音识别 card — same 业务空间专属域名 story as the LLM card, different path.
+    var isQwenASRFlash: Bool { capability == .asr && providerId == QwenASRFlashRouting.providerId }
+
+    /// Both 百炼 cards offer the optional Workspace ID; every other provider hides the row.
+    var showsWorkspaceIDField: Bool { isQwenLLM || isQwenASRFlash }
+
     var qwenWorkspaceBaseURL: String? {
-        guard isQwenLLM else { return nil }
-        return QwenWorkspaceEndpoint.baseURL(workspaceID: workspaceID, region: region)
+        if isQwenLLM {
+            return QwenWorkspaceEndpoint.baseURL(workspaceID: workspaceID, region: region)
+        }
+        if isQwenASRFlash {
+            return QwenWorkspaceEndpoint.asrBaseURL(workspaceID: workspaceID, region: region)
+        }
+        return nil
     }
 
     var usesQwenWorkspaceEndpoint: Bool { qwenWorkspaceBaseURL != nil }
 
     var workspaceIDValidationMessage: String? {
-        guard isQwenLLM else { return nil }
+        guard showsWorkspaceIDField else { return nil }
         let trimmed = workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, QwenWorkspaceEndpoint.normalizedWorkspaceID(trimmed) == nil else { return nil }
         return "格式应为 ws- 后接字母或数字；请只填 Workspace ID，不要填完整 Host。"
     }
 
     var qwenWorkspaceHelp: String {
+        if isQwenASRFlash {
+            return "留空使用仍兼容的通用域名；填写后按接入点生成业务空间专属识别地址。"
+        }
         switch region {
         case .unitedStates:
             return "美国（弗吉尼亚）按文档使用 dashscope-us 通用域名，不拼接 Workspace ID。"
@@ -137,7 +151,7 @@ final class ProviderConfigMachine {
         let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
         let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
         planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
-        workspaceID = capability == .llm && pid == "qwen"
+        workspaceID = showsWorkspaceIDField
             ? (scopedString("workspaceId", providerId: pid, activeProviderId: storedProvider) ?? "")
             : ""
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
@@ -169,11 +183,22 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(voice, suffix: "voice")
         }
-        // Fixed WSS engines (千问极速实时 / 豆包流式): force the true endpoint + model regardless of any
-        // stale stored batch config, and persist so ModelLaneDisplay shows the realtime values too.
-        if capability == .asr, pid == "qwen-asr-flash" || pid == "volcengine-flash" {
+        // Fixed WSS engine (豆包流式): force the true endpoint + model regardless of any stale
+        // stored batch config, and persist so ModelLaneDisplay shows the realtime values too.
+        if capability == .asr, pid == "volcengine-flash" {
             baseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? baseURL
             model = prov.defaultModel(for: capability, plan: pl) ?? model
+            setScoped(baseURL, suffix: "baseURL")
+            setScoped(model, suffix: "model")
+        }
+        // 千问实时 card: the socket is fully derived from 接入点 + Workspace ID, so the stored Base URL
+        // is display-only — always re-derive it, which also drops whatever the retired OmniRealtime
+        // engine left here. The model is a real user pick, so only a retired id is replaced.
+        if capability == .asr, pid == QwenASRFlashRouting.providerId {
+            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: workspaceID, region: r)
+            model = QwenASRFlashRouting.normalizedModel(
+                stored: model,
+                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
@@ -202,7 +227,7 @@ final class ProviderConfigMachine {
         let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
         let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
         planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
-        workspaceID = capability == .llm && prov.id == "qwen"
+        workspaceID = showsWorkspaceIDField
             ? (scopedString("workspaceId", providerId: prov.id, activeProviderId: activeProvider) ?? "")
             : ""
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
@@ -226,11 +251,22 @@ final class ProviderConfigMachine {
             setScoped(planRaw, suffix: "plan")
             setScoped(baseURL, suffix: "baseURL")
         }
-        if capability == .asr, prov.id == "qwen-asr-flash" || prov.id == "volcengine-flash" {
+        if capability == .asr, prov.id == "volcengine-flash" {
             let pl = BillingPlan(rawValue: planRaw) ?? .payg
             baseURL = prov.endpoint(for: capability,
                                     region: ProviderRegion(rawValue: regionRaw) ?? .global, plan: pl)?.baseURL ?? baseURL
             model = prov.defaultModel(for: capability, plan: pl) ?? model
+            setScoped(baseURL, suffix: "baseURL")
+            setScoped(model, suffix: "model")
+        }
+        // Same derive-and-persist as `load()` for the 千问 card (see there).
+        if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
+            let pl = BillingPlan(rawValue: planRaw) ?? .payg
+            baseURL = QwenASRFlashRouting.displayBaseURL(
+                workspaceID: workspaceID, region: ProviderRegion(rawValue: regionRaw) ?? .china)
+            model = QwenASRFlashRouting.normalizedModel(
+                stored: model,
+                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
@@ -243,7 +279,11 @@ final class ProviderConfigMachine {
     }
 
     func endpointBase() -> String {
-        qwenWorkspaceBaseURL
+        // 千问实时: always the derived socket (接入点 + Workspace ID), never a stored value.
+        if isQwenASRFlash {
+            return QwenASRFlashRouting.displayBaseURL(workspaceID: workspaceID, region: region)
+        }
+        return qwenWorkspaceBaseURL
             ?? current.endpoint(for: capability, region: region, plan: plan)?.baseURL
             ?? baseURL
     }
@@ -285,7 +325,7 @@ final class ProviderConfigMachine {
         }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
-        if isQwenLLM {
+        if showsWorkspaceIDField {
             setScoped(workspaceID.trimmingCharacters(in: .whitespacesAndNewlines), suffix: "workspaceId")
         }
         ModelConfigurationEvents.post()

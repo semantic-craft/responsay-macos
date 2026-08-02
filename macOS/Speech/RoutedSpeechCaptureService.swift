@@ -31,12 +31,15 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     private let cloudVolcengineRealtime = CloudQwenSpeechCaptureService(provider: "volcengine-realtime", requireMicPermission: { try MicrophonePermission.ensure(feature: "Volcengine BigASR streaming") }) { profile in
         ASRTranscriptionClientFactory.volcengineRealtime(profileProvider: profile)
     }
-    /// 千问极速实时 — the first 真·边说边推 engine: streams mic frames live to
-    /// the pinned Qwen3-ASR realtime snapshot, `text+stash` partials → capsule preview, and
-    /// the `completed` 整段 transcript → skills + insertion.
-    private let qwenASRFlashRealtime = QwenRealtimeStreamingCaptureService(
-        apiKeyProvider: { ASRTranscriptionClientFactory.qwenASRFlashAPIKey() },
-        requireMicPermission: { try MicrophonePermission.ensure(feature: "Qwen3-ASR-Flash realtime") })
+    /// 阿里云百炼 千问实时 — 实时语音识别 over the run-task WebSocket (#588): frames stream while the
+    /// hotkey is held, `finish-task` on release returns the 整段 transcript. Replaced the
+    /// OmniRealtime socket, which spoke a different protocol on the sibling `/api-ws/v1/realtime`
+    /// path and whose only model (qwen3-asr-flash-realtime) supports no hotwords at all; this one
+    /// takes the 词典 through 即时热词 `vocabulary`. Final-only on purpose — streaming is for latency,
+    /// not for a live capsule preview.
+    private let qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
+        configProvider: { ASRTranscriptionClientFactory.qwenRunTaskConfig() },
+        requireMicPermission: { try MicrophonePermission.ensure(feature: "Qwen ASR realtime") })
     /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
     private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
         try SenseVoiceModel.loadRecognizer()

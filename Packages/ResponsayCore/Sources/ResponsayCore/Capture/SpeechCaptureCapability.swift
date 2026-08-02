@@ -11,13 +11,12 @@ public struct SpeechCaptureCapability: Sendable, Equatable {
         case none
         /// Cosmetic partials trickled from post-upload SSE; insertion still waits for `stop()`.
         case postUploadSSE
-        /// True frame-by-frame live partials (for example, 千问极速实时).
+        /// True frame-by-frame live partials. No shipping engine declares this since 千问极速实时
+        /// retired (#588); `QwenRealtimeStreamingCaptureService` is the remaining implementation.
         case realtimeFrameByFrame
     }
 
     public var partialStyle: PartialStyle
-    /// The request incorporates the `SpeechCaptureProfile` (faithful vs dictation).
-    public var profileAware: Bool
     /// The engine injects the weak biasing hint **as text**, so a near-empty clip can echo the list
     /// back verbatim (`HotwordEchoFilter` defends this). On-device engines send no such hint and must
     /// NOT run the echo filter, or a legitimate term-list dictation ("Westlaw, SSRN") is mis-dropped.
@@ -25,11 +24,9 @@ public struct SpeechCaptureCapability: Sendable, Equatable {
 
     public init(
         partialStyle: PartialStyle = .none,
-        profileAware: Bool = false,
         needsEchoFilter: Bool = false
     ) {
         self.partialStyle = partialStyle
-        self.profileAware = profileAware
         self.needsEchoFilter = needsEchoFilter
     }
 }

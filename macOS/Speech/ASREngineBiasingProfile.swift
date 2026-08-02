@@ -16,7 +16,8 @@ enum ASRBiasingRoute: Sendable, Hashable {
 /// Facts this pins so they can't be silently regressed or misread:
 /// - `hardMatch` is **universal**: `RoutedSpeechCaptureService.stop()` applies
 ///   `biasingSets().enforce()` to EVERY engine, so every engine carries it.
-/// - The shipping default engine `.cloudQwenASRFlashRealtime` currently carries only `hardMatch`.
+/// - The shipping default engine `.cloudQwenASRFlashRealtime` carries `weakPrompt` since it moved
+///   off the OmniRealtime socket onto the 非实时 HTTP endpoint's 即时热词 field (#588).
 /// - `.cloudMimo` is wired with a weak-prompt provider in `ASRTranscriptionClientFactory`, but the
 ///   MiMo API discards text content parts (`DirectMimoTranscriptionAPI`), so it carries **no**
 ///   effective `weakPrompt` — hard-match only. We pin the effective (honest) behavior, not the wiring.
@@ -39,9 +40,12 @@ enum ASREngineBiasingProfile {
         case .cloudMimo:
             return [.hardMatch]
 
-        // 千问极速实时: request-side hotword biasing not yet wired into session.update → hard-match only.
+        // 千问实时 (run-task WSS): the 词典 weak prompt is sent as 即时热词 `parameters.vocabulary` on
+        // the run-task frame (QwenRunTaskASRProtocol) → weakPrompt + the universal hard-match. Note
+        // the field is documented for `qwen-audio-3.0-asr-flash-streaming` only, so picking the
+        // Fun-ASR-Realtime model in the card drops this engine back to hard-match for that session.
         case .cloudQwenASRFlashRealtime:
-            return [.hardMatch]
+            return [.weakPrompt, .hardMatch]
 
         // BigASR boosting table not wired (missed capability) → hard-match only.
         case .cloudVolcengineFlash:
