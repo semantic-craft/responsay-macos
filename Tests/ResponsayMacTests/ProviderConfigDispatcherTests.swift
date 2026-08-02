@@ -38,10 +38,13 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
-    /// Qwen3-ASR-Flash realtime is the sole Aliyun ASR route.
+    /// 百炼 实时语音识别 (run-task) is the sole Aliyun ASR route.
     func testASRDefaultUsesQwenASRFlashModel() {
         XCTAssertEqual(dispatcher().resolve(.asr).providerId, "qwen-asr-flash")
-        XCTAssertEqual(dispatcher().resolve(.asr).model, QwenRealtimeEndpoint.defaultModel)
+        XCTAssertEqual(dispatcher().resolve(.asr).model, "qwen-audio-3.0-asr-flash-streaming")
+        XCTAssertEqual(
+            dispatcher().resolve(.asr).baseURL,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
     }
 
     func testQwenASRUsesOnlyItsCurrentCredentialSlot() {
@@ -54,15 +57,45 @@ final class ProviderConfigDispatcherTests: XCTestCase {
                 .resolve(.asr, providerId: "qwen-asr-flash").apiKey)
     }
 
-    func testQwenRealtimeIgnoresStaleStoredModelAndEndpoint() {
+    /// Values left by the retired OmniRealtime engine must never reach the run-task socket.
+    func testQwenASRFlashIgnoresRetiredOmniRealtimeModelAndEndpoint() {
         defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
         defaults.set("qwen3-asr-flash-realtime", forKey: "byok.asr.model")
         defaults.set("wss://stale.example.com/realtime", forKey: "byok.asr.baseURL")
 
         let config = dispatcher().resolve(.asr)
 
-        XCTAssertEqual(config.model, QwenRealtimeEndpoint.defaultModel)
-        XCTAssertEqual(config.baseURL, "wss://dashscope.aliyuncs.com/api-ws/v1/realtime")
+        XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
+        XCTAssertEqual(
+            config.baseURL,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+    }
+
+    /// Unlike the retired card, the model is user-selectable — Fun-ASR-Realtime shares the protocol
+    /// and endpoint and must survive resolution.
+    func testQwenASRFlashHonoursUserPickedFunASRRealtimeModel() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("fun-asr-realtime", forKey: "byok.asr.model")
+
+        XCTAssertEqual(dispatcher().resolve(.asr).model, "fun-asr-realtime")
+    }
+
+    func testQwenASRFlashWorkspaceIDOverridesBaseURLWithDedicatedRecognitionEndpoint() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.asr).baseURL,
+            "wss://ws-abc123.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
+    }
+
+    func testInvalidQwenASRFlashWorkspaceIDCannotInjectAHost() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("ws-abc123.evil.example", forKey: "byok.asr.qwen-asr-flash.workspaceId")
+
+        XCTAssertEqual(
+            dispatcher().resolve(.asr).baseURL,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
     }
 
     func testVolcengineFlashASRDefaultsToOfficialEndpointAndModel() {

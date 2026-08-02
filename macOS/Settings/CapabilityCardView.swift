@@ -67,7 +67,7 @@ struct CapabilityCardView: View {
             }
 
             credentialRows
-            if machine.isQwenLLM {
+            if machine.showsWorkspaceIDField {
                 LabeledRow(label: "Workspace ID") {
                     VStack(alignment: .leading, spacing: 4) {
                         WarmField(placeholder: "选填，如 ws-…", text: $machine.workspaceID)
@@ -84,7 +84,7 @@ struct CapabilityCardView: View {
                 }
             }
             if machine.isFixedEndpoint {
-                // 千问极速实时 / 豆包流式 的端点与模型由 WSS 实时流式引擎 hardcode（忽略这里的值），
+                // 豆包流式 的端点与模型由 WSS 实时流式引擎 hardcode（忽略这里的值），
                 // 所以只读展示真实端点+模型，不给可编辑框，免得显示成历史批量配置误导。
                 LabeledRow(label: "端点 / 模型") {
                     VStack(alignment: .leading, spacing: 4) {
@@ -104,7 +104,9 @@ struct CapabilityCardView: View {
                 }
             } else {
                 LabeledRow(label: "Base URL") {
-                    if machine.usesQwenWorkspaceEndpoint {
+                    // 千问实时 derives its socket from 接入点 + Workspace ID (the run-task path is
+                    // fixed), so it is shown read-only rather than offering an edit with no effect.
+                    if machine.usesQwenWorkspaceEndpoint || machine.isQwenASRFlash {
                         Text(machine.baseURL)
                             .font(SettingsTheme.mono)
                             .foregroundStyle(SettingsTheme.ink2)

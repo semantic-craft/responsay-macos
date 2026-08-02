@@ -51,8 +51,8 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
                 llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
-                name: "千问极速实时 ASR + Qwen LLM + local Kokoro TTS",
-                asr: .cloud(.cloudQwenASRFlashRealtime, providerId: "qwen-asr-flash", keyAccount: "byok.qwen-asr-flash", expectedModel: QwenRealtimeEndpoint.defaultModel),
+                name: "千问实时 ASR + Qwen LLM + local Kokoro TTS",
+                asr: .cloud(.cloudQwenASRFlashRealtime, providerId: "qwen-asr-flash", keyAccount: "byok.qwen-asr-flash", expectedModel: "qwen-audio-3.0-asr-flash-streaming"),
                 llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
                 tts: .local(.sherpaKokoroLocal)),
             Scenario(

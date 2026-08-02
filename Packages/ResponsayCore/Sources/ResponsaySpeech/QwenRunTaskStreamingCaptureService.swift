@@ -4,74 +4,76 @@ import Foundation
 import OSLog
 import ResponsayCore
 
-/// The first **live** streaming capture service (真·边说边推): while the hotkey is held it
-/// taps the mic and pushes 16-bit PCM frames to the pinned Qwen3-ASR realtime snapshot over the
-/// OmniRealtime WebSocket, surfacing `text+stash` partials to the capsule; on `stop()`
-/// (Fn released) it `commit`s the turn and returns the `completed` transcript — the整段
-/// source of truth for skills + insertion. Input streams; output stays whole-segment, so
-/// the skill pipeline is untouched (Plan B).
+/// 阿里云百炼 实时语音识别 (run-task protocol) as a live capture service: while the hotkey is held
+/// it taps the mic and streams 16 kHz mono PCM frames to `qwen-audio-3.0-asr-flash-streaming`; on
+/// release it sends `finish-task` and returns the joined 整段 transcript.
 ///
-/// HITL boundary: the mic tap, the socket drive, and the send/receive concurrency can only
-/// be verified on a real Mac (mic + network). The pieces around it are unit-tested:
-/// `QwenRealtimeASRProtocol` (codec), `QwenRealtimeASRClient` (fold), `QwenRealtimePCM`
-/// (sample conversion).
+/// Deliberately **final-only** (`partialStyle: .none`): the server does emit per-sentence
+/// intermediate results, but a live word-by-word capsule preview is not wanted — the insertion path
+/// has always been whole-segment, and the flicker causes more trouble than it solves. Streaming is
+/// here for latency: the audio is already recognised by the time the hotkey comes up, so
+/// release→text is far shorter than uploading a whole clip afterwards.
+///
+/// HITL boundary: the mic tap, the socket drive, and the send/receive concurrency can only be
+/// verified on a real Mac (mic + network). The pieces around it are unit-tested:
+/// `QwenRunTaskASRProtocol` (codec), `QwenRunTaskASRClient` (fold + start gate),
+/// `QwenRealtimePCM` (sample conversion).
 @MainActor
-public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
-    private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-realtime-capture")
-    private let endpoint: QwenRealtimeEndpoint
-    private let apiKeyProvider: @Sendable () -> String
+public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
+    private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-runtask-capture")
+    private let configProvider: @Sendable () -> QwenRunTaskCaptureConfig
     private let session: URLSession
     private let requireMicPermission: () throws -> Void
 
     private var recorder: AVCaptureAudioRecorder?
     private var socket: URLSessionWebSocketTask?
-    private var client: QwenRealtimeASRClient?
+    private var client: QwenRunTaskASRClient?
     private var senderTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var audioContinuation: AsyncStream<Data>.Continuation?
     private var levelContinuation: AsyncStream<Float>.Continuation?
-    private var partialContinuation: AsyncStream<String>.Continuation?
     private var finalStream: AsyncStream<Result<String, Error>>?
     private var finalContinuation: AsyncStream<Result<String, Error>>.Continuation?
-    private var captureProfile: SpeechCaptureProfile = .dictation
 
-    /// How long `stop()` waits for the terminal transcript after `commit` before giving up
+    /// How long `stop()` waits for `task-finished` after `finish-task` before giving up
     /// (returns "" rather than wedging the input method).
     private let finalTimeoutNanos: UInt64 = 8_000_000_000
 
     public private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
+    /// Final-only by design — see the type doc. Consumers' partial loops simply end.
     public private(set) var partialTranscripts: AsyncStream<String> = AsyncStream { $0.finish() }
 
     public init(
-        endpoint: QwenRealtimeEndpoint = QwenRealtimeEndpoint(),
-        apiKeyProvider: @escaping @Sendable () -> String,
+        configProvider: @escaping @Sendable () -> QwenRunTaskCaptureConfig,
         session: URLSession = .shared,
         requireMicPermission: @escaping () throws -> Void
     ) {
-        self.endpoint = endpoint
-        self.apiKeyProvider = apiKeyProvider
+        self.configProvider = configProvider
         self.session = session
         self.requireMicPermission = requireMicPermission
     }
 
     public func start(locale: CaptureLocale) throws {
         try requireMicPermission()
-        let key = apiKeyProvider()
-        guard !key.isEmpty else {
-            throw CoachAPIError.message("未配置千问 API Key。请在设置中配置。")
+        let config = configProvider()
+        guard !config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CoachAPIError.message("未配置阿里云百炼 API Key。请在设置中配置。")
         }
 
-        var request = URLRequest(url: endpoint.url)
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        var request = URLRequest(url: config.endpoint.url)
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        // Optional per the docs, and redundant when the dedicated host already carries the space —
+        // sent only on the generic host so a workspace-scoped key resolves there too.
+        if !config.endpoint.usesDedicatedHost,
+           let workspaceID = QwenRunTaskEndpoint.normalizedWorkspaceID(config.endpoint.workspaceID) {
+            request.setValue(workspaceID, forHTTPHeaderField: "X-DashScope-WorkSpace")
+        }
         let socket = session.webSocketTask(with: request)
         socket.resume()
-        let client = QwenRealtimeASRClient(transport: socket)
+        let client = QwenRunTaskASRClient(transport: socket)
         self.socket = socket
         self.client = client
 
-        let (partialStream, partialCont) = AsyncStream.makeStream(of: String.self)
-        partialTranscripts = partialStream
-        partialContinuation = partialCont
         let (levelStream, levelCont) = AsyncStream.makeStream(of: Float.self)
         levels = levelStream
         levelContinuation = levelCont
@@ -81,24 +83,38 @@ public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
         self.finalStream = finalStream
         finalContinuation = finalCont
 
-        let language = locale == .chinese ? "zh" : "en"
-        // Sender: session.update first, then drain audio frames IN ORDER (AsyncStream keeps
-        // yield order; a single consumer preserves it — Tasks-per-buffer would reorder).
+        let languageHint = QwenASRHotwords.languageHint(locale == .chinese ? "zh" : "en")
+        let model = config.model
+        let hotwords = config.hotwords
+        // Sender: run-task, wait for task-started (audio before it is rejected), then drain frames
+        // IN ORDER (AsyncStream keeps yield order; a single consumer preserves it).
         senderTask = Task.detached {
-            try? await client.sendSessionUpdate(language: language, sampleRate: 16_000, format: "pcm")
+            do {
+                try await client.sendRunTask(
+                    model: model, sampleRate: 16_000, hotwords: hotwords, languageHint: languageHint)
+            } catch {
+                return
+            }
+            // False = the task ended before it ever started (e.g. task-failed at handshake).
+            // Draining the buffer keeps the producer from blocking; the frames just go nowhere.
+            guard await client.awaitStarted() else {
+                for await _ in audioStream {}
+                return
+            }
             for await pcm in audioStream {
                 try? await client.sendAudio(pcm)
             }
         }
-        // Receiver: fold events → partial (capsule) / final (source of truth).
+        // Receiver: fold events → the terminal 整段 transcript. Intermediate sentences update the
+        // client's running transcript but are deliberately not surfaced as capsule partials.
         receiveTask = Task.detached {
             do {
                 while true {
                     let event = try await client.receive()
                     guard let update = await client.handleEvent(event) else { continue }
                     switch update {
-                    case .partial(let preview):
-                        partialCont.yield(preview)
+                    case .partial:
+                        continue
                     case .final(let text):
                         finalCont.yield(.success(text)); finalCont.finish(); return
                     case .failed(let message):
@@ -122,7 +138,7 @@ public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
             levelCont.yield(min(1, (sumOfSquares / Float(count)).squareRoot() * 8))
             audioCont.yield(QwenRealtimePCM.int16LE(from: floats))
         }
-        log.info("qwen realtime capture started (\(locale.rawValue, privacy: .public))")
+        log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(model, privacy: .public), dedicated host \(config.endpoint.usesDedicatedHost, privacy: .public))")
     }
 
     public func stop() async throws -> String {
@@ -132,17 +148,13 @@ public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
         levelContinuation = nil
         audioContinuation?.finish()   // ends the sender loop once buffered audio drains
         audioContinuation = nil
-        await senderTask?.value        // all audio flushed before we end the turn
+        await senderTask?.value        // all audio flushed before we end the task
         senderTask = nil
-        try? await client?.commit()    // Fn released → close the turn → server emits `completed`
+        try? await client?.finish()    // Fn released → server flushes the trailing sentence
         let text = await awaitFinal()
         cleanup()
-        log.info("qwen realtime transcript length \(text.count, privacy: .public)")
+        log.info("qwen run-task transcript length \(text.count, privacy: .public)")
         return text
-    }
-
-    public func setCaptureProfile(_ profile: SpeechCaptureProfile) {
-        captureProfile = profile
     }
 
     /// Await the terminal transcript, or "" on timeout/failure (never hang the input method).
@@ -165,8 +177,6 @@ public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
     }
 
     private func cleanup() {
-        partialContinuation?.finish()
-        partialContinuation = nil
         finalContinuation?.finish()
         finalContinuation = nil
         finalStream = nil
@@ -178,14 +188,14 @@ public final class QwenRealtimeStreamingCaptureService: SpeechCaptureService {
     }
 }
 
-extension QwenRealtimeStreamingCaptureService: SpeechCaptureProfileConfigurable {}
-extension QwenRealtimeStreamingCaptureService: SpeechPartialTranscriptProviding {}
+extension QwenRunTaskStreamingCaptureService: SpeechPartialTranscriptProviding {}
 
-extension QwenRealtimeStreamingCaptureService {
-    /// 真·边说边推: frame-by-frame live partials + profile-aware. Cloud realtime keeps `needsEchoFilter`
-    /// conservatively (unchanged from today; it streams frames rather than injecting a text list).
+extension QwenRunTaskStreamingCaptureService {
+    /// Final-only: streaming buys latency here, not a live preview (see the type doc).
+    /// `needsEchoFilter` stays on, matching every other cloud engine — the 词典 does reach the
+    /// request (as structured 即时热词), so the conservative guard is kept.
     public var captureCapability: SpeechCaptureCapability {
-        .init(partialStyle: .realtimeFrameByFrame, profileAware: true, needsEchoFilter: true)
+        .init(partialStyle: .none, needsEchoFilter: true)
     }
 }
 #endif

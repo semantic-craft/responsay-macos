@@ -144,10 +144,40 @@ enum ASRTranscriptionClientFactory {
             session: session)
     }
 
-    static func qwenASRFlashAPIKey(
+    /// 阿里云百炼 实时语音识别 (#588): one run-task WebSocket session per capture — frames stream
+    /// while the hotkey is held, `finish-task` on release yields the 整段 transcript. The host is the
+    /// business-space dedicated domain when the card carries a Workspace ID, otherwise the generic
+    /// DashScope host; `QwenASRFlashRouting` owns that derivation and the migration off the retired
+    /// OmniRealtime values. 词典 hotwords ride the run-task `vocabulary` 即时热词 field.
+    ///
+    /// Resolved fresh per capture (the capture service calls this in `start()`), so a provider /
+    /// region / Workspace / model / key change takes effect without an app restart.
+    static func qwenRunTaskConfig(
+        defaults: UserDefaults = .standard,
         keyReader: KeyReader = { BYOKKeychain.read($0) }
-    ) -> String {
-        nonEmpty(keyReader("byok.qwen-asr-flash")) ?? ""
+    ) -> QwenRunTaskCaptureConfig {
+        let providerId = QwenASRFlashRouting.providerId
+        let settings = DefaultsReader(defaults: defaults)
+        let preset = ProviderCatalog.presets(for: .asr).first { $0.id == providerId }
+        let providerMatches = ASRModelSelection.providerMatches(
+            defaults.string(forKey: "byok.asr.provider"), providerId)
+        let region = providerMatches
+            ? ProviderRegion(rawValue: defaults.string(forKey: "byok.asr.region") ?? "")
+                ?? preset?.regions(for: .asr).first ?? .china
+            : preset?.regions(for: .asr).first ?? .china
+        let workspaceID = CapabilityProviderConfigStore.string(
+            "workspaceId", providerId: providerId, capability: .asr, defaults: defaults,
+            activeProviderId: defaults.string(forKey: "byok.asr.provider"))
+        return QwenRunTaskCaptureConfig(
+            endpoint: QwenASRFlashRouting.endpoint(workspaceID: workspaceID, region: region),
+            apiKey: apiKey(
+                forProvider: providerId,
+                plan: settings.asrPlan(forProvider: providerId),
+                keyReader: keyReader),
+            model: QwenASRFlashRouting.normalizedModel(
+                stored: settings.model(forProvider: providerId, fallback: QwenASRFlashRouting.defaultModel),
+                fallback: QwenASRFlashRouting.defaultModel),
+            hotwords: ContextHotwordSettings.asrWeakPrompt(defaults: defaults))   // 517: 词典 + 当次屏幕临时词
     }
 
     // 按量付费 (sk-) and Token Plan (tp-) keep separate keys for multi-plan providers (e.g.
