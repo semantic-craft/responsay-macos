@@ -60,6 +60,15 @@ final class ASREngineBiasingProfileTests: XCTestCase {
         XCTAssertEqual(ASREngineBiasingProfile.routes(for: .cloudVolcengineFlash), [.hardMatch])
     }
 
+    /// The cold-start default carries a request-side route since #588 moved it from the
+    /// OmniRealtime socket (which documents 精度增强「不支持」) onto the 非实时 HTTP endpoint, where the
+    /// 词典 rides `parameters.vocabulary` 即时热词. A regression here means the default engine went
+    /// request-side inert again.
+    func testQwenASRFlashCarriesWeakPromptViaInstantVocabulary() {
+        XCTAssertEqual(
+            ASREngineBiasingProfile.routes(for: .cloudQwenASRFlashRealtime), [.weakPrompt, .hardMatch])
+    }
+
     /// Offline (non-Qwen3) + Apple engines never reach a request-side biasing channel, so they are
     /// hard-match only. Qwen3-local is excluded: it carries weakPrompt via its model-config
     /// `hotwords` field (see `testQwen3LocalCarriesWeakPromptViaModelHotwords`).

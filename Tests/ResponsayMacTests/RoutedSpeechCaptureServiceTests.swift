@@ -166,16 +166,76 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
                        "https://token-plan-cn.xiaomimimo.com/v1/chat/completions")
     }
 
-    func testQwenRealtimeUsesOnlyCurrentSettingsSlot() {
+    /// The 千问 card dials the run-task socket. Without a Workspace ID it must keep using the
+    /// generic DashScope host, and it must read only the current `byok.qwen-asr-flash` slot.
+    func testQwenRunTaskWithoutWorkspaceUsesGenericHostAndCurrentKeySlot() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults,
+            keyReader: { $0 == "byok.qwen-asr-flash" ? " settings-qwen-key " : nil })
+
+        XCTAssertEqual(config.endpoint.url.absoluteString,
+                       "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertFalse(config.endpoint.usesDedicatedHost)
+        XCTAssertEqual(config.apiKey, "settings-qwen-key")
+        XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
+    }
+
+    /// Filling in a Workspace ID switches the socket onto that business space's dedicated host.
+    func testQwenRunTaskWorkspaceIDDerivesDedicatedHost() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults,
+            keyReader: { $0 == "byok.qwen-asr-flash" ? "settings-qwen-key" : nil })
+
+        XCTAssertTrue(config.endpoint.usesDedicatedHost)
+        XCTAssertEqual(config.endpoint.url.absoluteString,
+                       "wss://ws-abc123.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
+    }
+
+    /// 新加坡 switches both the generic and the dedicated host.
+    func testQwenRunTaskSingaporeRegionSwitchesHost() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("singapore", forKey: "byok.asr.region")
+
         XCTAssertEqual(
-            ASRTranscriptionClientFactory.qwenASRFlashAPIKey(keyReader: { account in
-                account == "byok.qwen-asr-flash" ? " settings-qwen-key " : nil
-            }),
-            "settings-qwen-key")
+            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" })
+                .endpoint.url.absoluteString,
+            "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference")
+
+        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
         XCTAssertEqual(
-            ASRTranscriptionClientFactory.qwenASRFlashAPIKey(keyReader: { account in
-                account == "byok.qwen-fun-asr" ? "retired-key" : nil
-            }),
-            "")
+            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" })
+                .endpoint.url.absoluteString,
+            "wss://ws-abc123.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
+    }
+
+    /// An install carried over from the retired OmniRealtime engine still has that endpoint and a
+    /// `qwen3-asr-flash-realtime-*` model under these keys — a different protocol on a sibling path,
+    /// and the one Qwen realtime model with no hotword support. Neither may reach the socket.
+    func testQwenRunTaskDropsRetiredOmniRealtimeEndpointAndModel() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("wss://dashscope.aliyuncs.com/api-ws/v1/realtime", forKey: "byok.asr.baseURL")
+        defaults.set("qwen3-asr-flash-realtime-2026-02-10", forKey: "byok.asr.model")
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "settings-qwen-key" })
+
+        XCTAssertEqual(config.endpoint.url.absoluteString,
+                       "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
+    }
+
+    /// A model the user picked from the card's dropdown must survive.
+    func testQwenRunTaskKeepsUserPickedFunASRRealtimeModel() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("fun-asr-realtime", forKey: "byok.asr.model")
+
+        XCTAssertEqual(
+            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" }).model,
+            "fun-asr-realtime")
     }
 }

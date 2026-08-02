@@ -31,8 +31,9 @@ enum CapabilityProbeRequestBuilder {
         // openspeech.bytedance.com (火山引擎 speech: volcengine-flash ASR + volcengine-tts TTS)
         // is a speech API with no OpenAI-style /models listing — a GET there 404s. Validate
         // these locally (validatePresetOnly) instead of probing a nonexistent endpoint.
-        // qwen-asr-flash now fronts the 千问极速实时 WSS engine (wss://…/api-ws/v1/realtime);
-        // a `/models` GET can't run against a wss base, so it's preset-validated too.
+        // qwen-asr-flash points at DashScope's 非实时语音识别 endpoint
+        // (…/api/v1/services/aigc/multimodal-generation/generation) — a DashScope service path with
+        // no OpenAI-style /models listing, so it stays preset-validated too.
         let id = providerId.lowercased()
         if id == "volcengine-flash", capability == .asr { return false }
         if id == "qwen-asr-flash", capability == .asr { return false }

@@ -41,17 +41,24 @@ extension ProviderCatalog {
             PresetVoice(id: "longjielidou_v3.6", displayName: "龙杰力豆 (男童·中英双语)")
         ])
 
+    // id 仍用 "qwen-asr-flash"（历史 id，避免 keychain/选择迁移）；这张卡承载的是百炼**实时语音识别**
+    // 的 run-task WSS 协议（/api-ws/v1/inference）：按住说话边传边识别，松手 finish-task 出整段。
+    // 旧的 OmniRealtime 引擎（/api-ws/v1/realtime + qwen3-asr-flash-realtime）已下线——它是唯一
+    // 不支持任何热词的千问实时模型；存量值迁移见 QwenASRFlashRouting。
+    // 端点默认走通用域名；卡片填了 Workspace ID 后派生业务空间专属域名。
     static let qwenASRRealtime = ProviderPreset(
-        id: "qwen-asr-flash", displayName: "阿里云百炼 · 千问极速实时",
+        id: "qwen-asr-flash", displayName: "阿里云百炼 · 千问实时",
         capabilities: [.asr], credentialShape: .apiKey,
         endpoints: [
-            .init(.china, .payg, "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", note: "OmniRealtime 双向流式 · \(QwenRealtimeEndpoint.defaultModel)"),
+            .init(.china, .payg, QwenASRFlashRouting.chinaBaseURL, note: "实时语音识别 run-task · 华北2（北京）"),
+            .init(.singapore, .payg, QwenASRFlashRouting.singaporeBaseURL, note: "实时语音识别 run-task · 新加坡"),
         ],
-        // 固定快照，避免稳定别名仍指向 2025-10-27 版本。
-        defaultModels: [.asr: QwenRealtimeEndpoint.defaultModel],
+        defaultModels: [.asr: QwenASRFlashRouting.defaultModel],
         keyLabel: "通义千问 API Key", keyFormatHint: "sk-…",
         builtinSearch: false, isCustom: false, isLocal: false,
-        presetModels: [.asr: [QwenRealtimeEndpoint.defaultModel]])
+        // Fun-ASR-Realtime 与 Qwen-Audio-3.0-ASR-Flash-Streaming 共用协议与端点，但只有后者支持
+        // 即时热词（vocabulary）且 language_hints 可给 4 个，所以后者作默认。
+        presetModels: [.asr: [QwenASRFlashRouting.defaultModel, QwenASRFlashRouting.funASRRealtimeModel]])
 
     // id 仍用 "volcengine-flash"（历史 id，避免 keychain/选择迁移）；现在这张卡承载的是
     // 豆包流式（大模型流式语音识别，流式输入模式 bigmodel_nostream #580，新版 X-Api-Key 鉴权）——

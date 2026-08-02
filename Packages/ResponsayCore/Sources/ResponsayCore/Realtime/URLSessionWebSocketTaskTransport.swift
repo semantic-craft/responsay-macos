@@ -25,22 +25,8 @@ public actor URLSessionWebSocketTaskTransport: RealtimeTransport {
         self.session = session
     }
 
-    public func connect(endpoint: QwenRealtimeEndpoint, bearerToken: String) {
-        connect(
-            url: endpoint.url,
-            bearerToken: bearerToken,
-            includeBetaHeader: endpoint.includeBetaHeader)
-    }
-
-    public func connect(
-        url: URL,
-        bearerToken: String,
-        includeBetaHeader: Bool = false
-    ) {
-        let task = session.webSocketTask(with: Self.makeRequest(
-            url: url,
-            bearerToken: bearerToken,
-            includeBetaHeader: includeBetaHeader))
+    public func connect(url: URL, bearerToken: String) {
+        let task = session.webSocketTask(with: Self.makeRequest(url: url, bearerToken: bearerToken))
         self.task = task
         task.resume()
     }
@@ -71,23 +57,9 @@ public actor URLSessionWebSocketTaskTransport: RealtimeTransport {
         task = nil
     }
 
-    static func makeRequest(endpoint: QwenRealtimeEndpoint, bearerToken: String) -> URLRequest {
-        makeRequest(
-            url: endpoint.url,
-            bearerToken: bearerToken,
-            includeBetaHeader: endpoint.includeBetaHeader)
-    }
-
-    static func makeRequest(
-        url: URL,
-        bearerToken: String,
-        includeBetaHeader: Bool = false
-    ) -> URLRequest {
+    static func makeRequest(url: URL, bearerToken: String) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        if includeBetaHeader {
-            request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
-        }
         return request
     }
 }

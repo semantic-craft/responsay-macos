@@ -92,12 +92,20 @@ struct ProviderConfigDispatcher {
         let plan = availablePlans.contains(requestedPlan)
             ? requestedPlan
             : (availablePlans.first ?? .payg)
-        let fixedQwenRealtime = capability == .asr && providerId == "qwen-asr-flash"
+        // 千问非实时 ASR: the model is user-selectable (Qwen-Audio-3.0-ASR-Flash / Fun-ASR-Flash),
+        // but a stored `…-realtime-…` id left by the retired OmniRealtime engine must not be sent.
+        let isQwenASRFlash = capability == .asr && providerId == QwenASRFlashRouting.providerId
         let fixedQwenAudioTTS = capability == .tts && providerId == "qwen"
-        let fixedProviderSurface = fixedQwenRealtime || fixedQwenAudioTTS
-        let model = fixedProviderSurface
-            ? (preset.defaultModel(for: capability, plan: plan) ?? "")
-            : (nonEmpty(storedModel) ?? preset.defaultModel(for: capability, plan: plan) ?? "")
+        let fixedProviderSurface = fixedQwenAudioTTS
+        let catalogModel = preset.defaultModel(for: capability, plan: plan) ?? ""
+        let model: String
+        if fixedProviderSurface {
+            model = catalogModel
+        } else if isQwenASRFlash {
+            model = QwenASRFlashRouting.normalizedModel(stored: storedModel, fallback: catalogModel)
+        } else {
+            model = nonEmpty(storedModel) ?? catalogModel
+        }
         let catalogBaseURL = preset.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? ""
         let normalizedBaseURL = MiMoASRRouting.normalizedBaseURL(
             providerId: providerId,
@@ -107,10 +115,17 @@ struct ProviderConfigDispatcher {
         let selectedBaseURL = fixedProviderSurface || requestedPlanIsUnavailable
             ? catalogBaseURL
             : normalizedBaseURL
-        let qwenWorkspaceBaseURL = capability == .llm && providerId == "qwen"
-            ? QwenWorkspaceEndpoint.baseURL(workspaceID: storedWorkspaceID ?? "", region: region)
-            : nil
-        let baseURL = qwenWorkspaceBaseURL ?? selectedBaseURL
+        let baseURL: String
+        if isQwenASRFlash {
+            // Fully derived from 接入点 + Workspace ID — the run-task path is fixed, so a stored
+            // value (including anything the retired OmniRealtime engine left) contributes nothing.
+            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: storedWorkspaceID, region: region)
+        } else if capability == .llm && providerId == "qwen" {
+            baseURL = QwenWorkspaceEndpoint.baseURL(
+                workspaceID: storedWorkspaceID ?? "", region: region) ?? selectedBaseURL
+        } else {
+            baseURL = selectedBaseURL
+        }
         // Local engines have no key; never surface one even if a stale Keychain item exists.
         let apiKey = preset.isLocal ? nil : apiKeyForProvider(
             providerId: providerId,

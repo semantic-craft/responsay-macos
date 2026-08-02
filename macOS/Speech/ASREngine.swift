@@ -14,10 +14,13 @@ enum ASREngine: String, CaseIterable {
     case fireRedASR2AEDLocal = "offline-fireredasr2-aed"
     /// In-process offline ASR via sherpa-onnx + Fun-ASR Nano (Alibaba Tongyi, LLM-based, broad dialect coverage).
     case funAsrNanoLocal = "offline-funasr-nano"
-    /// 千问3-ASR-Flash 实时 (OmniRealtime WebSocket): the first 真·边说边推 engine — streams
-    /// mic frames while the hotkey is held (Manual turn mode), shows `text+stash` partials in
-    /// the capsule, and on release commits → the `completed` 整段 transcript feeds skills +
-    /// insertion. Input streams; output stays whole-segment. Shares the 千问极速版 key.
+    /// 阿里云百炼 实时语音识别 (Qwen-Audio-3.0-ASR-Flash-Streaming / Fun-ASR-Realtime) over the
+    /// DashScope **run-task** WebSocket: frames stream while the hotkey is held, `finish-task` on
+    /// release returns the 整段 transcript. 词典 hotwords ride the run-task 即时热词 `vocabulary` field.
+    ///
+    /// Final-only: streaming buys latency (the audio is recognised by the time the key comes up),
+    /// not a live capsule preview. Replaced the OmniRealtime engine (#588), which spoke a different
+    /// protocol on the sibling `/api-ws/v1/realtime` path and whose only model supports no hotwords.
     case cloudQwenASRFlashRealtime = "cloud-qwen-asr-flash-realtime"
     /// 火山引擎大模型录音文件极速版: record locally, then on stop upload the WAV once
     /// to the `volc.bigasr.auc_turbo` HTTP endpoint for one final transcript.
@@ -69,7 +72,7 @@ enum ASREngine: String, CaseIterable {
                 return engine
             }
         }
-        // Cold-start default = 千问极速实时 live 边说边推 (2026-07-04).
+        // Cold-start default = 千问实时 (run-task WSS; was the OmniRealtime socket until #588).
         // When no Qwen key is configured, `ASRFallback` transcribes the capture via Apple without
         // mutating this selection (#389), so fresh installs aren't broken.
         return .cloudQwenASRFlashRealtime
@@ -94,7 +97,7 @@ enum ASREngine: String, CaseIterable {
         case .cloudOpenAI: "OpenAI"
         case .cloudMimo: "小米Mimo"
         case .cloudGemini: "Google Gemini"
-        case .cloudQwenASRFlashRealtime: "阿里云百炼 · 千问极速实时"
+        case .cloudQwenASRFlashRealtime: "阿里云百炼 · 千问实时"
         case .cloudVolcengineFlash: "火山引擎 · 豆包标准版 2.0"
         case .cloudVolcengineRealtime: "火山引擎 · 豆包流式"
         case .sensevoiceLocal: "SenseVoice"

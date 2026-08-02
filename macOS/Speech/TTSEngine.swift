@@ -306,14 +306,14 @@ enum TTSEngine: String, CaseIterable {
         return nonEmpty(defaults.string(forKey: "byok.tts.model"))
     }
 
-    private func resolvedQwenTTSRegion(defaults: UserDefaults) -> QwenRealtimeRegion {
+    private func resolvedQwenTTSRegion(defaults: UserDefaults) -> QwenRunTaskRegion {
         if ttsSettingsProvider(defaults: defaults) == "qwen",
            let raw = nonEmpty(defaults.string(forKey: "byok.tts.region")) {
             return raw == ProviderRegion.singapore.rawValue || raw == ProviderRegion.intl.rawValue
                 ? .singapore
                 : .china
         }
-        return QwenRealtimeRegion(rawValue: defaults.string(forKey: RealtimeQwenSettings.regionKey) ?? "") ?? .china
+        return QwenRunTaskRegion(rawValue: defaults.string(forKey: RealtimeQwenSettings.regionKey) ?? "") ?? .china
     }
 
     private func resolvedTTSBaseURL(defaults: UserDefaults) -> URL? {

@@ -10,7 +10,7 @@ struct SettingsView: View {
     @AppStorage("defaultLocale") private var localeRaw = CaptureLocale.english.rawValue
     @AppStorage(ASREngine.defaultsKey) private var asrEngineRaw = ASREngine.apple.rawValue
     @AppStorage(OCREngine.defaultsKey) private var ocrEngineRaw = OCREngine.appleVision.rawValue
-    @AppStorage(RealtimeQwenSettings.regionKey) private var realtimeRegionRaw = QwenRealtimeRegion.china.rawValue
+    @AppStorage(RealtimeQwenSettings.regionKey) private var realtimeRegionRaw = QwenRunTaskRegion.china.rawValue
     @AppStorage("startSound") private var startSound = true
     @AppStorage(InteractionSoundStyle.key) private var interactionSoundStyle = InteractionSoundStyle.pianoUpright.rawValue
     @AppStorage("launchAtLogin") private var launchAtLogin = false

@@ -27,7 +27,7 @@ final class ASREngineMigrationTests: XCTestCase {
         // #386 (no legacy users): the streaming Zipformer and the backend-era offline
         // Qwen entry were deleted outright (no migration). Their raw values resolve to
         // nil, and a stale stored value falls back to the cold-start default —
-        // 千问极速实时 (2026-07-04), no longer Apple.
+        // 千问实时 (2026-07-04), no longer Apple.
         XCTAssertNil(ASREngine(rawValue: "offline-zipformer-streaming"))
         XCTAssertNil(ASREngine(rawValue: "offline-qwen-asr"))
         XCTAssertNil(ASREngine(rawValue: "cloud-qwen-realtime"))
