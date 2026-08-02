@@ -6,14 +6,14 @@ public struct QwenStreamingTTSEngine: StreamingSpeechSynthesizer, SpeechSynthesi
     let key: String
     var model = "qwen-audio-3.0-tts-flash"
     var voice = "loongeva_v3.6"
-    var region: QwenRealtimeRegion = .china
+    var region: QwenRunTaskRegion = .china
     var instruction: String?
 
     public init(
         key: String,
         model: String = "qwen-audio-3.0-tts-flash",
         voice: String = "loongeva_v3.6",
-        region: QwenRealtimeRegion = .china,
+        region: QwenRunTaskRegion = .china,
         instruction: String? = nil
     ) {
         self.key = key

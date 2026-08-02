@@ -80,6 +80,27 @@ enum QwenWorkspaceEndpoint {
     }
 
     static func baseURL(workspaceID: String, region: ProviderRegion) -> String? {
+        guard let host = host(workspaceID: workspaceID, region: region) else { return nil }
+        return "https://\(host)/compatible-mode/v1"
+    }
+
+    /// Dedicated-host WebSocket endpoint for 实时语音识别 (run-task, `/api-ws/v1/inference`). The ASR
+    /// doc only publishes 华北2（北京）and 新加坡, so the extra Responses-only regions above are
+    /// not offered here rather than guessed at. `QwenRunTaskEndpoint` owns the host derivation.
+    static func asrBaseURL(workspaceID: String, region: ProviderRegion) -> String? {
+        switch region {
+        case .china, .singapore:
+            break
+        case .germany, .japan, .unitedStates, .europe, .intl, .global:
+            return nil
+        }
+        guard QwenRunTaskEndpoint.normalizedWorkspaceID(workspaceID) != nil else { return nil }
+        return QwenRunTaskEndpoint(
+            region: QwenASRFlashRouting.runTaskRegion(region),
+            workspaceID: workspaceID).url.absoluteString
+    }
+
+    private static func host(workspaceID: String, region: ProviderRegion) -> String? {
         guard let workspaceID = normalizedWorkspaceID(workspaceID) else { return nil }
         let regionHost: String
         switch region {
@@ -94,7 +115,7 @@ enum QwenWorkspaceEndpoint {
         case .unitedStates, .europe, .intl, .global:
             return nil
         }
-        return "https://\(workspaceID).\(regionHost).maas.aliyuncs.com/compatible-mode/v1"
+        return "\(workspaceID).\(regionHost).maas.aliyuncs.com"
     }
 }
 
@@ -190,7 +211,7 @@ struct ProviderPreset: Identifiable, Sendable {
     private var asrDisplayName: String {
         switch id {
         case "qwen-asr-flash":
-            return "阿里云百炼 · 千问极速实时"
+            return "阿里云百炼 · 千问实时"
         case "volcengine-flash":
             return "火山引擎 · 豆包流式"
         case "volcengine-tts":
