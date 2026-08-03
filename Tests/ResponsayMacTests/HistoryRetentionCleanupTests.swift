@@ -40,7 +40,11 @@ final class HistoryRetentionCleanupTests: XCTestCase {
         try store.save(expiredAtBoundary)
         try store.save(valid)
 
-        let activeContext = RecentASRContextSessionStore()
+        let persistentContextURL = temporaryCaptureURL()
+        defer { try? FileManager.default.removeItem(at: persistentContextURL.deletingLastPathComponent()) }
+        let activeContext = RecentASRContextSessionStore(
+            defaults: defaults,
+            fileURL: persistentContextURL)
         activeContext.record("current in-memory context", scope: "com.example.active")
 
         let removed = try HistoryRetentionCleanup.pruneCaptureRecords(

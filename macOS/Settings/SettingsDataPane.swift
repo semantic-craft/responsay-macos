@@ -3,6 +3,11 @@ import SwiftUI
 struct SettingsDataPane: View {
     @Environment(AppearanceStore.self) private var appearanceStore
 
+    @AppStorage(PersistentASRContextSettings.enabledKey)
+    private var persistentASRContextEnabled = false
+    @State private var showClearPersistentContextConfirmation = false
+    @State private var showPersistentContextStorageFailure = false
+
     @Binding var keepHistory: Bool
     @Binding var historyCleanup: String
 
@@ -28,6 +33,33 @@ struct SettingsDataPane: View {
                     .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
             }
             WarmCard {
+                CardHeader(
+                    systemImage: "text.bubble",
+                    title: "千问识别上下文",
+                    subtitle: "让千问实时识别在重启后继续参考最近原始识别结果。",
+                    accent: SettingsTheme.cSys)
+                WarmDivider()
+                SettingsToggleRow(
+                    title: "跨重启保留最近上下文",
+                    desc: "默认关闭。开启后仅在本机按目标 App 的 Bundle ID 隔离保存；每个 App 最多 5 条，2 小时后自动删除。",
+                    binding: persistentContextBinding)
+                WarmDivider()
+                HStack(alignment: .top) {
+                    Text("只保存千问 ASR 返回的原始最终文本，不保存录音、识别中间结果、改写文本、助手消息或完整听写历史。")
+                        .font(SettingsTheme.footnote)
+                        .foregroundStyle(appearanceStore.palette.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("清除已保存上下文…", role: .destructive) {
+                        showClearPersistentContextConfirmation = true
+                    }
+                }
+                Text("关闭开关或单独清除只会删除这份上下文，不影响识别词典、已学习别名或撤销记录。")
+                    .font(SettingsTheme.footnote)
+                    .foregroundStyle(appearanceStore.palette.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            WarmCard {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("清除全部数据…").foregroundStyle(appearanceStore.palette.ink)
@@ -49,5 +81,35 @@ struct SettingsDataPane: View {
             _ = CaptureHistoryStoreFactory.make()
             HistoryRetentionCleanup.pruneLearningRecords()
         }
+        .confirmationDialog(
+            "清除已保存的千问识别上下文？",
+            isPresented: $showClearPersistentContextConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("清除上下文", role: .destructive) {
+                if !PersistentASRContextSettings.clear() {
+                    showPersistentContextStorageFailure = true
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只删除跨重启保存的 Context；当前会话内存和识别词典不会被删除。")
+        }
+        .alert("无法更新千问识别上下文", isPresented: $showPersistentContextStorageFailure) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("本地存储操作失败。为保护隐私，跨重启上下文将保持关闭或维持原状态；请稍后重试。")
+        }
+    }
+
+    private var persistentContextBinding: Binding<Bool> {
+        Binding(
+            get: { persistentASRContextEnabled },
+            set: { enabled in
+                if !PersistentASRContextSettings.setEnabled(enabled) {
+                    showPersistentContextStorageFailure = true
+                }
+                persistentASRContextEnabled = PersistentASRContextSettings.isEnabled()
+            })
     }
 }

@@ -167,6 +167,25 @@ struct QwenRunTaskSessionTests {
         await session.shutdown()
     }
 
+    @Test func contextRecorderReceivesOnlyTheRawFinalSentenceNotPartialHypotheses() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["raw server final"], emitsPartialBeforeFinal: true),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) })
+        let callbacks = SentenceSink()
+
+        let transcript = try await session.transcribe(
+            config: config(),
+            audio: completedAudio([Data([0x01])]),
+            onFinalSentence: { await callbacks.append($0); return [] })
+
+        #expect(transcript == "raw server final")
+        #expect(await callbacks.values == ["raw server final"])
+        await session.shutdown()
+    }
+
     @Test func cancellationInvalidatesTheSocketAndDoesNotLeakTaskState() async throws {
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: [], hangsAfterStart: true),
@@ -315,6 +334,7 @@ private struct ScriptedTransportPlan: Sendable {
     var failingAfterFinalRunOrdinals: Set<Int> = []
     var hangsAfterStart = false
     var duplicateFinalSentence = false
+    var emitsPartialBeforeFinal = false
     var firstStartNanos: UInt64 = 0
     var reusedStartNanos: UInt64 = 0
     var clock: VirtualNanosecondClock?
@@ -400,9 +420,21 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
                     throw ScriptedTransportError.noTranscript
                 }
                 let transcript = plan.transcripts[ordinal - 1]
-                continuation.yield(.text(sentenceEvent(taskID: taskID, text: transcript)))
+                if plan.emitsPartialBeforeFinal {
+                    continuation.yield(.text(sentenceEvent(
+                        taskID: taskID,
+                        text: "partial hypothesis",
+                        isFinal: false)))
+                }
+                continuation.yield(.text(sentenceEvent(
+                    taskID: taskID,
+                    text: transcript,
+                    isFinal: true)))
                 if plan.duplicateFinalSentence {
-                    continuation.yield(.text(sentenceEvent(taskID: taskID, text: transcript)))
+                    continuation.yield(.text(sentenceEvent(
+                        taskID: taskID,
+                        text: transcript,
+                        isFinal: true)))
                 }
                 if plan.failingAfterFinalRunOrdinals.contains(ordinal) {
                     continuation.yield(.text(serverEvent(
@@ -456,11 +488,11 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
         return String(decoding: data, as: UTF8.self)
     }
 
-    private func sentenceEvent(taskID: String, text: String) -> String {
+    private func sentenceEvent(taskID: String, text: String, isFinal: Bool) -> String {
         let root: [String: Any] = [
             "header": ["task_id": taskID, "event": "result-generated"],
             "payload": ["output": ["sentence": [
-                "sentence_id": 1, "text": text, "sentence_end": true,
+                "sentence_id": 1, "text": text, "sentence_end": isFinal,
             ]]],
         ]
         let data = try! JSONSerialization.data(withJSONObject: root)
