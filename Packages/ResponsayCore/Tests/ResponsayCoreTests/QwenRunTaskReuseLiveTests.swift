@@ -27,8 +27,7 @@ struct QwenRunTaskReuseLiveTests {
             endpoint: .init(region: .china),
             apiKey: apiKey,
             captureLocale: .mixed,
-            heartbeat: true,
-            multiThresholdModeEnabled: true)
+            heartbeat: true)
 
         do {
             for _ in 0..<2 {

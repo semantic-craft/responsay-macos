@@ -89,8 +89,6 @@ public struct QwenRunTaskCaptureConfig: Sendable {
     /// transport, so each capture resolves fresh hints.
     public var captureLocale: CaptureLocale?
     public var heartbeat: Bool
-    public var semanticPunctuationEnabled: Bool
-    public var multiThresholdModeEnabled: Bool
 
     public init(
         endpoint: QwenRunTaskEndpoint,
@@ -100,9 +98,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         context: [String] = [],
         contextScope: String? = nil,
         captureLocale: CaptureLocale? = nil,
-        heartbeat: Bool = false,
-        semanticPunctuationEnabled: Bool = false,
-        multiThresholdModeEnabled: Bool = false
+        heartbeat: Bool = false
     ) {
         self.endpoint = endpoint
         self.apiKey = apiKey
@@ -112,7 +108,5 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         self.contextScope = contextScope
         self.captureLocale = captureLocale
         self.heartbeat = heartbeat
-        self.semanticPunctuationEnabled = semanticPunctuationEnabled
-        self.multiThresholdModeEnabled = multiThresholdModeEnabled
     }
 }
