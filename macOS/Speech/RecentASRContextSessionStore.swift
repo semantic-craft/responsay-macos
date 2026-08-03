@@ -21,12 +21,15 @@ final class RecentASRContextSessionStore {
     init(
         defaults: UserDefaults = .standard,
         fileURL: URL = PersistentASRContextStore.defaultFileURL,
-        now: @escaping @MainActor () -> Date = Date.init
+        now: @escaping @MainActor () -> Date = Date.init,
+        expiryScheduler: @escaping PersistentASRContextStore.ExpiryScheduler =
+            PersistentASRContextStore.scheduleExpiry
     ) {
         self.defaults = defaults
         persistentStore = PersistentASRContextStore(
             fileURL: fileURL,
             now: now,
+            expiryScheduler: expiryScheduler,
             persistenceFailure: {
                 defaults.set(false, forKey: PersistentASRContextSettings.enabledKey)
             })
