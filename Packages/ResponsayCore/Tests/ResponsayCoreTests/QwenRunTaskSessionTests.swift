@@ -121,6 +121,31 @@ struct QwenRunTaskSessionTests {
         await session.shutdown()
     }
 
+    @Test func finalSentenceCallbackRunsOnceAcrossRetryReplay() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["warmup", "replayed sentence"],
+                  failingAfterFinalRunOrdinals: [2]),
+            .init(transcripts: ["replayed sentence"]),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) })
+
+        _ = try await session.transcribe(
+            config: config(),
+            audio: completedAudio([Data([0x01])]))
+        let callbacks = SentenceSink()
+        let transcript = try await session.transcribe(
+            config: config(),
+            audio: completedAudio([Data([0x02])]),
+            onFinalSentence: { await callbacks.append($0); return [] })
+
+        #expect(transcript == "replayed sentence")
+        #expect(await callbacks.values == ["replayed sentence"])
+        #expect(await factory.makeCount == 2)
+        await session.shutdown()
+    }
+
     @Test func cancellationInvalidatesTheSocketAndDoesNotLeakTaskState() async throws {
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: [], hangsAfterStart: true),
@@ -260,6 +285,7 @@ struct QwenRunTaskSessionTests {
 private struct ScriptedTransportPlan: Sendable {
     var transcripts: [String]
     var failingRunOrdinals: Set<Int> = []
+    var failingAfterFinalRunOrdinals: Set<Int> = []
     var hangsAfterStart = false
     var duplicateFinalSentence = false
     var firstStartNanos: UInt64 = 0
@@ -345,7 +371,14 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
                 if plan.duplicateFinalSentence {
                     continuation.yield(.text(sentenceEvent(taskID: taskID, text: transcript)))
                 }
-                continuation.yield(.text(serverEvent(taskID: taskID, event: "task-finished")))
+                if plan.failingAfterFinalRunOrdinals.contains(ordinal) {
+                    continuation.yield(.text(serverEvent(
+                        taskID: taskID,
+                        event: "task-failed",
+                        errorMessage: "connection lost after final")))
+                } else {
+                    continuation.yield(.text(serverEvent(taskID: taskID, event: "task-finished")))
+                }
                 currentTaskID = nil
             default:
                 break
