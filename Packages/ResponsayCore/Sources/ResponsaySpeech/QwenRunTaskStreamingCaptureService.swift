@@ -89,6 +89,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         let model = config.model
         let languageHints = QwenASRHotwords.languageHints(for: locale, model: model)
         let hotwords = config.hotwords
+        let precompiledVocabularyID = config.precompiledVocabularyID
         let context = config.context
         let heartbeat = config.heartbeat
         let semanticPunctuationEnabled = config.semanticPunctuationEnabled
@@ -99,6 +100,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
             do {
                 try await client.sendRunTask(
                     model: model, sampleRate: 16_000, hotwords: hotwords,
+                    precompiledVocabularyID: precompiledVocabularyID,
                     languageHints: languageHints, context: context, heartbeat: heartbeat,
                     semanticPunctuationEnabled: semanticPunctuationEnabled,
                     multiThresholdModeEnabled: multiThresholdModeEnabled)

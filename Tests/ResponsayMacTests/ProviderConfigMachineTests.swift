@@ -136,6 +136,40 @@ struct ProviderConfigMachineTests {
         #expect(m.model == "fun-asr-realtime")
     }
 
+    @Test func qwenVocabularyBindingPersistsCurrentModelRegionWorkspaceAndDictionary() {
+        let d = freshDefaults("qwen-vocabulary-binding")
+        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        ContextHotwordSettings.addManual("Westlaw", defaults: d)
+        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        m.load()
+        m.workspaceID = "ws-abc123"
+        m.precompiledVocabularyID = "vocab-curated-a1b2c3"
+
+        m.writeQwenPrecompiledVocabulary()
+
+        let binding = QwenPrecompiledVocabularySettings.binding(defaults: d)
+        #expect(binding?.identifier == "vocab-curated-a1b2c3")
+        #expect(binding?.model == QwenRunTaskEndpoint.defaultModel)
+        #expect(binding?.region == .china)
+        #expect(binding?.workspaceID == "ws-abc123")
+        #expect(m.qwenVocabularyValidationMessage == nil)
+    }
+
+    @Test func qwenVocabularyBindingBecomesStaleInsteadOfFollowingAWorkspaceChange() {
+        let d = freshDefaults("qwen-vocabulary-stale")
+        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        m.load()
+        m.workspaceID = "ws-first"
+        m.precompiledVocabularyID = "vocab-curated-a1b2c3"
+        m.writeQwenPrecompiledVocabulary()
+
+        m.workspaceID = "ws-second"
+
+        #expect(m.qwenVocabularyValidationMessage != nil)
+        #expect(QwenPrecompiledVocabularySettings.binding(defaults: d)?.workspaceID == "ws-first")
+    }
+
     @Test func loadForcesVolcengineFlashEndpointAndModel() {
         let m = machine(.asr, preferred: "volcengine-flash", suffix: "load-volc-flash")
         m.load()

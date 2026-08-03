@@ -49,6 +49,31 @@ public enum QwenASRHotwords {
         model.lowercased().hasPrefix("qwen-audio-3.0-asr-flash")
     }
 
+    /// This integration deliberately scopes precompiled IDs to the Qwen Flash Streaming model.
+    /// Other run-task models have different regional support matrices, and a list compiled for one
+    /// target model is documented to be ineffective for another.
+    public static func supportsPrecompiledVocabulary(model: String) -> Bool {
+        model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == QwenRunTaskEndpoint.defaultModel
+    }
+
+    /// Provider-generated IDs are opaque, but documented examples are ASCII `vocab-…` tokens.
+    /// Reject whitespace, control characters and arbitrary text before it reaches a payload; keep
+    /// the rule deliberately looser than the example's generated suffix so future valid IDs survive.
+    public static func normalizedVocabularyIdentifier(_ rawValue: String?) -> String? {
+        guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasPrefix("vocab-"), (9 ... 160).contains(value.count),
+              value.unicodeScalars.allSatisfy({ scalar in
+                  (48 ... 57).contains(scalar.value)
+                      || (65 ... 90).contains(scalar.value)
+                      || (97 ... 122).contains(scalar.value)
+                      || scalar.value == 45
+              }) else { return nil }
+        let segments = value.split(separator: "-", omittingEmptySubsequences: false)
+        guard segments.count >= 3, segments.allSatisfy({ !$0.isEmpty }) else { return nil }
+        return value
+    }
+
     /// The capture locale code ("zh" / "en") as a documented `language_hints` value. Anything else
     /// is dropped so the model auto-detects rather than being pinned to an unknown code.
     public static func languageHint(_ language: String) -> String? {

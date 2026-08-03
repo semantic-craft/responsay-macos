@@ -182,6 +182,53 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
     }
 
+    func testQwenRunTaskUsesFreshPrecompiledVocabularyBinding() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
+        QwenPrecompiledVocabularySettings.save(
+            identifier: "vocab-curated-a1b2c3",
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .china),
+            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
+            defaults: defaults)
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+
+        XCTAssertEqual(config.precompiledVocabularyID, "vocab-curated-a1b2c3")
+        XCTAssertTrue(config.hotwords.isEmpty)
+    }
+
+    func testQwenRunTaskFallsBackToFullInstantVocabularyAfterLearningMixedTerm() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
+        QwenPrecompiledVocabularySettings.save(
+            identifier: "vocab-curated-a1b2c3",
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .china),
+            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
+            defaults: defaults)
+        XCTAssertTrue(ContextHotwordSettings.addAuto("法研 Metis", defaults: defaults))
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+
+        XCTAssertNil(config.precompiledVocabularyID)
+        XCTAssertEqual(Set(config.hotwords), ["Westlaw", "法研 Metis"])
+    }
+
+    func testQwenRunTaskMalformedBindingFailsOpenWithoutExposingItInConfig() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("Metis", forKey: ContextHotwordSettings.defaultsKey)
+        defaults.set("not-json", forKey: QwenPrecompiledVocabularySettings.scopedDefaultsKey)
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+
+        XCTAssertNil(config.precompiledVocabularyID)
+        XCTAssertEqual(config.hotwords, ["Metis"])
+    }
+
     func testQwenRunTaskUsesHeartbeatAndProductModeSettings() {
         defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
 
