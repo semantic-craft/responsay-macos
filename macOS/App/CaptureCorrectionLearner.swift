@@ -37,9 +37,8 @@ enum CaptureCorrectionLearner {
         // Dictionary write dedupes itself (false = already present — not a failure here).
         _ = ContextHotwordSettings.addManual(correct, defaults: defaults)
 
-        // Alias write is idempotent: skip when this exact mapping is already live in the ledger.
-        let history = HotwordLearningHistory(records: AutoLearnHotwordHistorySettings.records(defaults: defaults))
-        if history.learnedAliases()[wrong] != correct {
+        // Alias write is idempotent: skip when this exact durable mapping is already live.
+        if AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults)[wrong] != correct {
             AutoLearnHotwordHistorySettings.append(
                 HotwordCandidateProposal(
                     term: correct, source: .manual, confidence: 1.0,

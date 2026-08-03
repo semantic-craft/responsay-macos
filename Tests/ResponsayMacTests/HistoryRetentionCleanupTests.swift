@@ -69,20 +69,29 @@ final class HistoryRetentionCleanupTests: XCTestCase {
         XCTAssertEqual(try store.recent(10).map(\.id), [old.id])
     }
 
-    func testLearningHistoryReadPrunesByTheSameBoundaryWithoutDeletingDictionaryTerms() {
+    func testLearningHistoryReadPrunesAuditRowsButPreservesDurableCorrectionState() throws {
         defaults.set("30", forKey: HistoryRetentionSettings.cleanupKey)
         defaults.set("keep-me", forKey: "unrelated.setting")
         let now = Date(timeIntervalSince1970: 2_000_000_000)
         let cutoff = now.addingTimeInterval(-30 * 24 * 60 * 60)
-        let expired = learningRecord(
+        let expiredAlias = learningRecord(
             id: "55555555-5555-5555-5555-555555555555",
-            term: "Expired ledger event",
-            at: cutoff)
+            term: "DurableTerm",
+            at: cutoff,
+            sourceTerm: "SyntheticMishear")
+        let expiredTombstone = learningRecord(
+            id: "77777777-7777-7777-7777-777777777777",
+            term: "RejectedTerm",
+            at: cutoff.addingTimeInterval(-1),
+            status: .undone)
         let valid = learningRecord(
             id: "66666666-6666-6666-6666-666666666666",
             term: "Valid ledger event",
             at: cutoff.addingTimeInterval(1))
-        XCTAssertTrue(AutoLearnHotwordHistorySettings.save([valid, expired], defaults: defaults))
+        // Simulate an existing install whose functional state has not yet been split from its ledger.
+        defaults.set(
+            try JSONEncoder().encode([valid, expiredAlias, expiredTombstone]),
+            forKey: AutoLearnHotwordHistorySettings.historyKey)
         XCTAssertTrue(ContextHotwordSettings.addAuto(
             "DurableTerm",
             learnedAt: cutoff.addingTimeInterval(-1),
@@ -93,6 +102,16 @@ final class HistoryRetentionCleanupTests: XCTestCase {
         XCTAssertEqual(records, [valid])
         XCTAssertEqual(AutoLearnHotwordHistorySettings.records(defaults: defaults, now: now), [valid])
         XCTAssertEqual(ContextHotwordSettings.autoHotwords(defaults: defaults), ["DurableTerm"])
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults),
+            ["SyntheticMishear": "DurableTerm"])
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.tombstonedTerms(defaults: defaults),
+            ["RejectedTerm"])
+        XCTAssertEqual(
+            ContextHotwordSettings.biasingSets(defaults: defaults, currentScene: nil)
+                .learnedAliases["SyntheticMishear"],
+            "DurableTerm")
         XCTAssertEqual(defaults.string(forKey: "unrelated.setting"), "keep-me")
     }
 
@@ -112,13 +131,20 @@ final class HistoryRetentionCleanupTests: XCTestCase {
             reasons: [])
     }
 
-    private func learningRecord(id: String, term: String, at date: Date) -> HotwordLearningRecord {
+    private func learningRecord(
+        id: String,
+        term: String,
+        at date: Date,
+        status: HotwordLearningRecordStatus = .added,
+        sourceTerm: String? = nil
+    ) -> HotwordLearningRecord {
         HotwordLearningRecord(
             id: UUID(uuidString: id)!,
             term: term,
             source: .localRules,
-            status: .added,
+            status: status,
             reason: "synthetic test record",
-            learnedAt: date)
+            learnedAt: date,
+            sourceTerm: sourceTerm)
     }
 }

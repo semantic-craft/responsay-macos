@@ -89,4 +89,32 @@ final class AutoLearnHotwordHistorySettingsTests: XCTestCase {
         XCTAssertEqual(updated?.status, .added)
         XCTAssertEqual(updated?.learnedAt, Date(timeIntervalSince1970: 20))
     }
+
+    func testFunctionalCorrectionStateOutlivesPrunedAuditRowsAndCanStillBeUndone() {
+        let proposal = HotwordCandidateProposal(
+            term: "CanonicalTerm",
+            source: .manual,
+            confidence: 1,
+            reason: "synthetic correction",
+            sourceTerm: "SyntheticMishear")
+        XCTAssertTrue(AutoLearnHotwordHistorySettings.append(
+            proposal,
+            status: .added,
+            at: Date(timeIntervalSince1970: 10),
+            defaults: defaults))
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults),
+            ["SyntheticMishear": "CanonicalTerm"])
+
+        defaults.removeObject(forKey: AutoLearnHotwordHistorySettings.historyKey)
+
+        XCTAssertFalse(AutoLearnHotwordHistorySettings.markUndone(
+            term: "CanonicalTerm",
+            at: Date(timeIntervalSince1970: 20),
+            defaults: defaults))
+        XCTAssertTrue(AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults).isEmpty)
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.tombstonedTerms(defaults: defaults),
+            ["CanonicalTerm"])
+    }
 }

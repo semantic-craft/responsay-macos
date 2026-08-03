@@ -284,8 +284,7 @@ final class CaptureController {
                 let seed = HotwordAliases.table.flatMap { canonical, surfaces in
                     surfaces.map { IntentGroundingSources.Alias(surface: $0, canonical: canonical) }
                 }
-                let learned = HotwordLearningHistory(records: AutoLearnHotwordHistorySettings.records())
-                    .learnedAliases()
+                let learned = AutoLearnHotwordHistorySettings.learnedAliases()
                     .map { IntentGroundingSources.Alias(surface: $0.key, canonical: $0.value) }
                 return IntentGroundingSources(
                     dictionaryTerms: ContextHotwordSettings.biasingSets().weakPrompt,
