@@ -170,7 +170,6 @@ enum ASRTranscriptionClientFactory {
         let workspaceID = CapabilityProviderConfigStore.string(
             "workspaceId", providerId: providerId, capability: .asr, defaults: defaults,
             activeProviderId: defaults.string(forKey: "byok.asr.provider"))
-        let streamingMode = QwenASRStreamingModeSettings.mode(defaults: defaults)
         return QwenRunTaskCaptureConfig(
             endpoint: QwenASRFlashRouting.endpoint(workspaceID: workspaceID, region: region),
             apiKey: apiKey(
@@ -183,9 +182,7 @@ enum ASRTranscriptionClientFactory {
             hotwords: ContextHotwordSettings.asrWeakPrompt(defaults: defaults),   // 517: 词典 + 当次屏幕临时词
             context: context,
             contextScope: contextScope,
-            heartbeat: true,
-            semanticPunctuationEnabled: streamingMode == .longForm,
-            multiThresholdModeEnabled: streamingMode == .quick)
+            heartbeat: true)
     }
 
     // 按量付费 (sk-) and Token Plan (tp-) keep separate keys for multi-plan providers (e.g.
