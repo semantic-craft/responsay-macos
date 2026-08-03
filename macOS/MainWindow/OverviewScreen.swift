@@ -363,10 +363,7 @@ struct OverviewScreen: View {
     }
 
     private nonisolated static func makeStore() -> CaptureStore {
-        if let sqlite = try? SQLiteReviewStore.defaultStore() {
-            return ReviewCaptureStore(reviewStore: sqlite)
-        }
-        return FileCaptureStore.defaultStore()
+        CaptureHistoryStoreFactory.make()
     }
 
     // MARK: Helpers

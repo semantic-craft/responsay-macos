@@ -10,6 +10,7 @@ final class AutoLearnHotwordHistorySettingsTests: XCTestCase {
         super.setUp()
         defaults = UserDefaults(suiteName: suite)
         defaults.removePersistentDomain(forName: suite)
+        defaults.set("never", forKey: HistoryRetentionSettings.cleanupKey)
     }
 
     override func tearDown() {

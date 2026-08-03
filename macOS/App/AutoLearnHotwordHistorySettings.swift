@@ -20,7 +20,7 @@ enum AutoLearnHotwordHistorySettings {
         defaults.set(policy.rawValue, forKey: confirmationPolicyKey)
     }
 
-    static func records(defaults: UserDefaults = .standard) -> [HotwordLearningRecord] {
+    static func rawRecords(defaults: UserDefaults = .standard) -> [HotwordLearningRecord] {
         guard let data = defaults.data(forKey: historyKey),
               let decoded = try? JSONDecoder().decode([HotwordLearningRecord].self, from: data) else {
             return []
@@ -28,9 +28,34 @@ enum AutoLearnHotwordHistorySettings {
         return decoded
     }
 
+    /// Read the learning ledger after applying the same retention period as dictation history.
+    /// The durable recognition dictionary uses separate keys and is intentionally untouched.
+    static func records(
+        defaults: UserDefaults = .standard,
+        now: Date = Date()
+    ) -> [HotwordLearningRecord] {
+        let decoded = rawRecords(defaults: defaults)
+        guard let cutoff = HistoryRetentionSettings.period(defaults: defaults).cutoff(relativeTo: now) else {
+            return decoded
+        }
+        let retained = decoded.filter { $0.learnedAt > cutoff }
+        if retained.count != decoded.count {
+            persist(retained, defaults: defaults)
+        }
+        return retained
+    }
+
     @discardableResult
     static func save(_ records: [HotwordLearningRecord], defaults: UserDefaults = .standard) -> Bool {
-        guard let data = try? JSONEncoder().encode(Array(records.prefix(30))) else { return false }
+        persist(Array(records.prefix(30)), defaults: defaults)
+    }
+
+    @discardableResult
+    private static func persist(
+        _ records: [HotwordLearningRecord],
+        defaults: UserDefaults
+    ) -> Bool {
+        guard let data = try? JSONEncoder().encode(records) else { return false }
         defaults.set(data, forKey: historyKey)
         if defaults === UserDefaults.standard {
             DictationLexicalProfileSettings.scheduleRefresh()

@@ -410,11 +410,8 @@ final class CaptureController {
     #endif
 
     private static func makeCaptureStore() -> CaptureStore {
-        do {
-            return ReviewCaptureStore(reviewStore: try SQLiteReviewStore.defaultStore())
-        } catch {
-            return FileCaptureStore.defaultStore()
-        }
+        // Startup cleanup runs only after the duplicate-instance gate in MacAppDelegate.
+        CaptureHistoryStoreFactory.make(pruneExpired: false)
     }
 
 }

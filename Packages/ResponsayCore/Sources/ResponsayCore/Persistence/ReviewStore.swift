@@ -17,11 +17,15 @@ public protocol ReviewStore: Sendable {
     func delete(id: UUID) throws
     /// Remove every card (History 清空). Default no-op.
     func deleteAll() throws
+    /// Remove cards at or before the expiration boundary. Returns the number removed.
+    @discardableResult
+    func prune(createdAtOrBefore cutoff: Date) throws -> Int
 }
 
 public extension ReviewStore {
     func delete(id: UUID) throws {}
     func deleteAll() throws {}
+    func prune(createdAtOrBefore cutoff: Date) throws -> Int { 0 }
 }
 
 public extension ReviewStore {
