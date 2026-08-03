@@ -109,6 +109,17 @@ CASES: tuple[CorpusCase, ...] = (
     ),
 )
 
+CANONICAL_PCM_SHA256 = {
+    "normal-zh": "668050a6024f8e79905ced1486ebc5c14f2d02337ec76c6a0f3cab08e9c692b2",
+    "normal-en": "3a000346f5b2760b3a3fb0c01c3ddc9bcc0ee7636444af4e369f9d93ef9116c1",
+    "mixed-zh-en": "e50f99275d8b733360073414deaad53c0c696e9f9b71edb3ece3de1599f2a52b",
+    "quiet-zh": "e0606bfa22ab8f4de733b16d8071abfba4ea75accccf744fd3eaa38e1f6381c7",
+    "speech-with-noise": "c211b3fc5556a763ed937ecdf44f8bbc3752c2cb6fa4eebcdcceb8dbabf6e998",
+    "noise-only": "4e1093ceddbd093784b1d1edcfb62e0b4badeede015d0fcb0da6d99a9c94d618",
+    "pause-segmentation": "feff5c5a4f25ec1b224038e6febafa2d770c0e6e2cbd5210c0c4d96d495ed5f9",
+    "long-silence-keepalive": "dea03bffcc31b2a45def270f70de6afc0e0b978e055de016ee003a73c54e5983",
+}
+
 
 def run_command(argv: list[str]) -> None:
     subprocess.run(argv, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -310,7 +321,13 @@ def generate_corpus(output: pathlib.Path) -> None:
     manifest_cases: list[dict[str, Any]] = []
     for case in CASES:
         case_json = case.as_json()
-        case_json["sha256"] = hashlib.sha256((output / case_json["pcm"]).read_bytes()).hexdigest()
+        actual_sha256 = hashlib.sha256((output / case_json["pcm"]).read_bytes()).hexdigest()
+        expected_sha256 = CANONICAL_PCM_SHA256[case.case_id]
+        if actual_sha256 != expected_sha256:
+            raise RuntimeError(
+                f"generated corpus differs from the evaluated canonical PCM: {case.case_id}"
+            )
+        case_json["sha256"] = actual_sha256
         manifest_cases.append(case_json)
     manifest = {
         "schema_version": 1,
