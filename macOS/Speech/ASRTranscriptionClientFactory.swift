@@ -144,8 +144,9 @@ enum ASRTranscriptionClientFactory {
             session: session)
     }
 
-    /// 阿里云百炼 实时语音识别 (#588): one run-task WebSocket session per capture — frames stream
-    /// while the hotkey is held, `finish-task` on release yields the 整段 transcript. The host is the
+    /// 阿里云百炼 实时语音识别 (#588/#52): each capture gets a fresh run-task on a bounded reusable
+    /// WebSocket — frames stream while the hotkey is held, and `finish-task` on release yields the
+    /// 整段 transcript. The host is the
     /// business-space dedicated domain when the card carries a Workspace ID, otherwise the generic
     /// DashScope host; `QwenASRFlashRouting` owns that derivation and the migration off the retired
     /// OmniRealtime values. Stable synchronized terms use a bound `vocabulary_id`; any local or

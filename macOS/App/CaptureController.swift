@@ -284,8 +284,7 @@ final class CaptureController {
                 let seed = HotwordAliases.table.flatMap { canonical, surfaces in
                     surfaces.map { IntentGroundingSources.Alias(surface: $0, canonical: canonical) }
                 }
-                let learned = HotwordLearningHistory(records: AutoLearnHotwordHistorySettings.records())
-                    .learnedAliases()
+                let learned = AutoLearnHotwordHistorySettings.learnedAliases()
                     .map { IntentGroundingSources.Alias(surface: $0.key, canonical: $0.value) }
                 return IntentGroundingSources(
                     dictionaryTerms: ContextHotwordSettings.biasingSets().weakPrompt,
@@ -410,11 +409,8 @@ final class CaptureController {
     #endif
 
     private static func makeCaptureStore() -> CaptureStore {
-        do {
-            return ReviewCaptureStore(reviewStore: try SQLiteReviewStore.defaultStore())
-        } catch {
-            return FileCaptureStore.defaultStore()
-        }
+        // Startup cleanup runs only after the duplicate-instance gate in MacAppDelegate.
+        CaptureHistoryStoreFactory.make(pruneExpired: false)
     }
 
 }

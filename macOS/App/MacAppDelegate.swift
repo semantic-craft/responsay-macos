@@ -43,6 +43,13 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // the toggle shows ON forever while launch-at-login silently never fires.
         if !underTest { LoginItemManager.reconcileAtLaunch() }
 
+        // Enforce retention only after the duplicate-instance gate. Capture history and the
+        // correction ledger use the same boundary; the in-memory ASR Context is not involved.
+        if !underTest {
+            _ = CaptureHistoryStoreFactory.make()
+            HistoryRetentionCleanup.pruneLearningRecords()
+        }
+
         AutoLearnHotwordNotificationPresenter.shared.start()
 
         // 2026-06-29: one-time — strip the legacy built-in example terms (CLSCI / SSRN / …) that

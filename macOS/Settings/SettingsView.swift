@@ -35,7 +35,7 @@ struct SettingsView: View {
     @AppStorage(TTSEngine.defaultsKey) private var ttsEngineRaw = TTSEngine.selected.rawValue
     @AppStorage("practiceSpeed") private var practiceSpeed = "0.9"
     @AppStorage("keepHistory") private var keepHistory = true
-    @AppStorage("historyCleanup") private var historyCleanup = "30"
+    @AppStorage(HistoryRetentionSettings.cleanupKey) private var historyCleanup = "30"
     @AppStorage("debugLog") private var debugLog = false
     @AppStorage("ttsProvider") private var ttsProvider = "qwen-tts"
     @AppStorage("micDeviceID") private var micDeviceID = ""

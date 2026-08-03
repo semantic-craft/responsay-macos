@@ -80,8 +80,7 @@ struct AutoLearnHotwordProcessor {
                     windowTitle: context.windowTitle)
             },
             recentlyUndoneTerms: {
-                HotwordLearningHistory(records: AutoLearnHotwordHistorySettings.records())
-                    .tombstonedTerms()
+                AutoLearnHotwordHistorySettings.tombstonedTerms()
             })
     }
 
