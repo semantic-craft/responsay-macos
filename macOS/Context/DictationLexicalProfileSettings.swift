@@ -95,7 +95,7 @@ enum DictationLexicalProfileSettings {
     static func build(defaults: UserDefaults = .standard, now: Date = Date()) -> DictationLexicalProfile {
         DictationLexicalProfileBuilder().build(
             store: ContextHotwordSettings.store(defaults: defaults),
-            records: AutoLearnHotwordHistorySettings.records(defaults: defaults),
+            records: AutoLearnHotwordHistorySettings.retainedRecords(defaults: defaults),
             now: now)
     }
 }
