@@ -38,6 +38,27 @@ struct QwenRunTaskSessionTests {
         await session.shutdown()
     }
 
+    @Test func reusedSocketKeepsVocabularySelectionTaskScoped() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["compiled vocabulary", "instant vocabulary"]),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) })
+
+        _ = try await session.transcribe(
+            config: config(precompiledVocabularyID: "vocab-curated-a1b2c3"),
+            audio: completedAudio([Data([0x01])]))
+        _ = try await session.transcribe(
+            config: config(locale: .mixed, hotwords: ["法研 Metis"]),
+            audio: completedAudio([Data([0x02])]))
+
+        let transport = try #require(await factory.transport(at: 0))
+        #expect(await transport.vocabularyIDs == ["vocab-curated-a1b2c3", nil])
+        #expect(await transport.vocabularies == [nil, ["法研 Metis": 4]])
+        await session.shutdown()
+    }
+
     @Test func failedReusedTaskReconnectsAndReplaysTheWholeRecording() async throws {
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: ["warmup"], failingRunOrdinals: [2]),
@@ -257,10 +278,16 @@ struct QwenRunTaskSessionTests {
         await session.shutdown()
     }
 
-    private func config(locale: CaptureLocale = .chinese) -> QwenRunTaskCaptureConfig {
+    private func config(
+        locale: CaptureLocale = .chinese,
+        hotwords: [String] = [],
+        precompiledVocabularyID: String? = nil
+    ) -> QwenRunTaskCaptureConfig {
         QwenRunTaskCaptureConfig(
             endpoint: .init(region: .china),
             apiKey: "synthetic-test-key",
+            hotwords: hotwords,
+            precompiledVocabularyID: precompiledVocabularyID,
             captureLocale: locale)
     }
 
@@ -321,6 +348,8 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
     private var currentTaskID: String?
     private(set) var taskIDs: [String] = []
     private(set) var audioByTask: [String: [Data]] = [:]
+    private(set) var vocabularyIDs: [String?] = []
+    private(set) var vocabularies: [[String: Int]?] = []
     private(set) var isClosed = false
 
     init(plan: ScriptedTransportPlan) {
@@ -348,6 +377,10 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
             case "run-task":
                 currentTaskID = taskID
                 taskIDs.append(taskID)
+                let payload = root["payload"] as? [String: Any]
+                let parameters = payload?["parameters"] as? [String: Any]
+                vocabularyIDs.append(parameters?["vocabulary_id"] as? String)
+                vocabularies.append(parameters?["vocabulary"] as? [String: Int])
                 let ordinal = taskIDs.count
                 if plan.failingRunOrdinals.contains(ordinal) {
                     continuation.yield(.text(serverEvent(

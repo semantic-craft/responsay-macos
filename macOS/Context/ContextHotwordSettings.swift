@@ -185,6 +185,16 @@ enum ContextHotwordSettings {
         biasingSets(defaults: defaults).weakPrompt(augmentedWith: TransientScreenTerms.current)
     }
 
+    /// Stable local vocabulary used when binding a precompiled Qwen list. It intentionally excludes
+    /// per-capture screen terms and scene suppression: either would make the durable snapshot vary
+    /// with the frontmost app. The request path still applies both before choosing ID vs instant.
+    static func qwenPersistentHotwords(defaults: UserDefaults = .standard) -> [String] {
+        store(defaults: defaults)
+            .biasingSets()
+            .merging(profile: DictationLexicalProfileSettings.current(defaults: defaults))
+            .weakPrompt
+    }
+
     /// P0a — scene-aware biasing. `currentScene == nil` (unclassifiable app, or no scene given in a
     /// test) suppresses nothing, so behavior is byte-identical to pre-P0a whenever the scene is
     /// unknown. When both the current app and a learned term carry *different* register tiers, that

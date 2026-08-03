@@ -53,6 +53,44 @@ struct QwenRunTaskASRProtocolTests {
         #expect(parameters?["vocabulary"] as? [String: Int] == ["Westlaw": 4, "厄洛替尼盐酸盐": 4])
     }
 
+    @Test func runTaskUsesPrecompiledVocabularyWhenNoInstantTermsExist() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            precompiledVocabularyID: "vocab-curated-a1b2c3"))
+        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
+
+        #expect(parameters?["vocabulary_id"] as? String == "vocab-curated-a1b2c3")
+        #expect(parameters?["vocabulary"] == nil)
+    }
+
+    /// The official contract says that when both fields are configured only instant hotwords take
+    /// effect. The client therefore sends the complete current request vocabulary and omits the ID,
+    /// preserving both curated terms and a just-learned mixed Chinese-English correction.
+    @Test func instantVocabularySupersedesPrecompiledIDWithoutDroppingCuratedTerms() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            hotwords: ["Westlaw", "法研 Metis", "Westlaw"],
+            precompiledVocabularyID: "vocab-curated-a1b2c3"))
+        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
+
+        #expect(parameters?["vocabulary_id"] == nil)
+        #expect(parameters?["vocabulary"] as? [String: Int] == ["Westlaw": 4, "法研 Metis": 4])
+    }
+
+    @Test func malformedPrecompiledIdentifierFailsOpenToInstantVocabulary() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            hotwords: ["Metis"],
+            precompiledVocabularyID: "not a vocabulary id"))
+        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
+
+        #expect(parameters?["vocabulary_id"] == nil)
+        #expect(parameters?["vocabulary"] as? [String: Int] == ["Metis": 4])
+    }
+
     @Test func runTaskCarriesContextMixedLanguageHeartbeatAndOmitsTuning() {
         let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
             taskID: "task-1",
@@ -197,6 +235,14 @@ struct QwenASRHotwordsTests {
         #expect(!QwenASRHotwords.supportsInstantVocabulary(model: "paraformer-realtime-v2"))
     }
 
+    @Test func precompiledVocabularyIdentifierAcceptsAnOpaqueSingleSuffix() {
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier(" vocab-deadbeef ") == "vocab-deadbeef")
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-prefix-deadbeef")
+                == "vocab-prefix-deadbeef")
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-") == nil)
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-private words") == nil)
+    }
+
     @Test func onlyDocumentedLanguageCodesBecomeHints() {
         #expect(QwenASRHotwords.languageHint("zh") == "zh")
         #expect(QwenASRHotwords.languageHint(" EN ") == "en")
@@ -234,6 +280,11 @@ struct QwenRunTaskEndpointTests {
         #expect(QwenRunTaskEndpoint(region: .singapore, workspaceID: "ws-abc123").url.absoluteString
                 == "wss://ws-abc123.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
         #expect(QwenRunTaskEndpoint(region: .china, workspaceID: "ws-abc123").usesDedicatedHost)
+        #expect(QwenRunTaskEndpoint(region: .china, workspaceID: "ws-abc123").supportsHotwords)
+        #expect(QwenRunTaskEndpoint(region: .singapore).supportsHotwords)
+        #expect(!QwenRunTaskEndpoint(
+            region: .singapore,
+            workspaceID: "ws-abc123").supportsHotwords)
     }
 
     /// The Workspace ID becomes a DNS label, so anything but the documented `ws-…` shape must fall
@@ -245,5 +296,60 @@ struct QwenRunTaskEndpointTests {
             #expect(!endpoint.usesDedicatedHost, "\(bad) must not become a host")
             #expect(endpoint.url.absoluteString == "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
         }
+    }
+
+    @Test func precompiledVocabularyBindingRequiresExactModelRegionWorkspaceAndFingerprint() {
+        let binding = QwenPrecompiledVocabularyBinding(
+            identifier: "vocab-curated-a1b2c3",
+            model: QwenRunTaskEndpoint.defaultModel,
+            region: .china,
+            workspaceID: "ws-abc123",
+            vocabularyFingerprint: "fingerprint-1")
+        let endpoint = QwenRunTaskEndpoint(region: .china, workspaceID: " ws-ABC123 ")
+
+        #expect(binding.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: endpoint,
+            vocabularyFingerprint: "fingerprint-1") == "vocab-curated-a1b2c3")
+        #expect(binding.resolvedIdentifier(
+            model: "fun-asr-realtime",
+            endpoint: endpoint,
+            vocabularyFingerprint: "fingerprint-1") == nil)
+        #expect(binding.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .singapore, workspaceID: "ws-abc123"),
+            vocabularyFingerprint: "fingerprint-1") == nil)
+        #expect(binding.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .china, workspaceID: "ws-other"),
+            vocabularyFingerprint: "fingerprint-1") == nil)
+        #expect(binding.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: endpoint,
+            vocabularyFingerprint: "stale-fingerprint") == nil)
+    }
+
+    @Test func precompiledVocabularyBindingRejectsMalformedIdentifiersAndWorkspaceBindings() {
+        let malformedID = QwenPrecompiledVocabularyBinding(
+            identifier: "vocab contains private words",
+            model: QwenRunTaskEndpoint.defaultModel,
+            region: .china,
+            workspaceID: nil,
+            vocabularyFingerprint: "fingerprint-1")
+        let malformedWorkspace = QwenPrecompiledVocabularyBinding(
+            identifier: "vocab-curated-a1b2c3",
+            model: QwenRunTaskEndpoint.defaultModel,
+            region: .china,
+            workspaceID: "ws-abc.evil.example",
+            vocabularyFingerprint: "fingerprint-1")
+
+        #expect(malformedID.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .china),
+            vocabularyFingerprint: "fingerprint-1") == nil)
+        #expect(malformedWorkspace.resolvedIdentifier(
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .china),
+            vocabularyFingerprint: "fingerprint-1") == nil)
     }
 }
