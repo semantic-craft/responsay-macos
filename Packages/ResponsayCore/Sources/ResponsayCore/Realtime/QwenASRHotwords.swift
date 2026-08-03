@@ -55,4 +55,19 @@ public enum QwenASRHotwords {
         let code = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return ["zh", "en"].contains(code) ? code : nil
     }
+
+    /// Product locale → official `language_hints`. Qwen-Audio 3.0 accepts multiple hints;
+    /// Fun-ASR-Realtime accepts only the first, so mixed mode degrades to Chinese there.
+    public static func languageHints(for locale: CaptureLocale, model: String) -> [String] {
+        let requested: [String]
+        switch locale {
+        case .automatic: requested = []
+        case .english: requested = ["en"]
+        case .chinese: requested = ["zh"]
+        case .mixed: requested = ["zh", "en"]
+        }
+        return model.lowercased().hasPrefix("qwen-audio-3.0")
+            ? requested
+            : Array(requested.prefix(1))
+    }
 }

@@ -116,6 +116,31 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
         XCTAssertEqual(addedTerms, ["Claude Code"])
     }
 
+    func testNextCaptureFlushesExplicitCorrectionSynchronously() {
+        var snapshot = (text: "I use matis.", app: "TextEdit", sceneID: "textedit", windowTitle: "Untitled")
+        var addedTerms: [String] = []
+        let processor = AutoLearnHotwordProcessor(
+            isEnabled: { false },
+            isExplicitCorrectionLearningEnabled: { true },
+            mode: { .localRules },
+            confirmationPolicy: { .confirmEveryTime },
+            existingManualTerms: { [] },
+            existingAutoTerms: { [] },
+            addAuto: { proposal in addedTerms.append(proposal.term); return true },
+            record: { _, _ in true })
+        let controller = HotwordAutoLearnController(
+            snapshotReader: { snapshot },
+            processor: processor,
+            isEnabled: { true },
+            notify: { _ in })
+
+        controller.noteInsertion()
+        snapshot.text = "I use Metis."
+
+        XCTAssertTrue(controller.checkForCorrection(requiresStableSnapshot: false))
+        XCTAssertEqual(addedTerms, ["Metis"], "Qwen config for this next capture must see the term")
+    }
+
     func testDisabledAutoLearnDoesNotWatchOrAdd() {
         defaults.set(false, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我在用 cloud code 写代码", app: "Notes", sceneID: "note-1", windowTitle: "Test")

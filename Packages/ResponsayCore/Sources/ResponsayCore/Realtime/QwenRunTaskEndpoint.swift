@@ -82,16 +82,32 @@ public struct QwenRunTaskCaptureConfig: Sendable {
     public var apiKey: String
     public var model: String
     public var hotwords: [String]
+    public var context: [String]
+    /// Local-only isolation key; never serialized onto the wire.
+    public var contextScope: String?
+    public var heartbeat: Bool
+    public var semanticPunctuationEnabled: Bool
+    public var multiThresholdModeEnabled: Bool
 
     public init(
         endpoint: QwenRunTaskEndpoint,
         apiKey: String,
         model: String = QwenRunTaskEndpoint.defaultModel,
-        hotwords: [String] = []
+        hotwords: [String] = [],
+        context: [String] = [],
+        contextScope: String? = nil,
+        heartbeat: Bool = false,
+        semanticPunctuationEnabled: Bool = false,
+        multiThresholdModeEnabled: Bool = false
     ) {
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.model = model
         self.hotwords = hotwords
+        self.context = context
+        self.contextScope = contextScope
+        self.heartbeat = heartbeat
+        self.semanticPunctuationEnabled = semanticPunctuationEnabled
+        self.multiThresholdModeEnabled = multiThresholdModeEnabled
     }
 }

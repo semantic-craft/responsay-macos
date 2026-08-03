@@ -31,6 +31,14 @@ final class AutoLearnHotwordModeSettingsTests: XCTestCase {
         XCTAssertTrue(AutoLearnHotwordSettings.resolve(defaults: defaults))
     }
 
+    func testExplicitCorrectionLearningDefaultsOnAndCanBeDisabled() {
+        XCTAssertTrue(ExplicitCorrectionLearningSettings.resolve(defaults: defaults))
+
+        defaults.set(false, forKey: ExplicitCorrectionLearningSettings.key)
+
+        XCTAssertFalse(ExplicitCorrectionLearningSettings.resolve(defaults: defaults))
+    }
+
     func testUnknownStoredModeFallsBackToLocalRules() {
         defaults.set("serverSideMagic", forKey: AutoLearnHotwordModeSettings.key)
 

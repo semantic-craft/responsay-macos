@@ -35,18 +35,37 @@ public enum QwenRunTaskASRProtocol {
         sampleRate: Int = 16_000,
         format: String = "pcm",
         hotwords: [String] = [],
-        languageHint: String? = nil
+        languageHint: String? = nil,
+        languageHints: [String] = [],
+        context: [String] = [],
+        heartbeat: Bool = false,
+        semanticPunctuationEnabled: Bool = false,
+        multiThresholdModeEnabled: Bool = false
     ) -> Data {
         var parameters: [String: Any] = ["format": format, "sample_rate": sampleRate]
-        if let languageHint {
-            // Qwen-Audio-3.0-ASR-Flash-Streaming honours up to 4 hints, Fun-ASR-Realtime only the
-            // first; one hint matches the locale the user explicitly picked and is valid for both.
-            parameters["language_hints"] = [languageHint]
+        let requestedHints = languageHints.isEmpty ? languageHint.map { [$0] } ?? [] : languageHints
+        let hintLimit = model.lowercased().hasPrefix("qwen-audio-3.0") ? 4 : 1
+        let normalizedHints = Array(requestedHints.compactMap(QwenASRHotwords.languageHint).prefix(hintLimit))
+        if !normalizedHints.isEmpty {
+            parameters["language_hints"] = normalizedHints
         }
         let vocabulary = QwenASRHotwords.vocabulary(from: hotwords, model: model)
         if !vocabulary.isEmpty {
             parameters["vocabulary"] = vocabulary
         }
+        if heartbeat {
+            parameters["heartbeat"] = true
+        }
+        if semanticPunctuationEnabled {
+            parameters["semantic_punctuation_enabled"] = true
+        }
+        // Semantic segmentation disables VAD segmentation. Normalize at the wire boundary too,
+        // so a future caller cannot serialize the two product modes as simultaneously enabled.
+        if multiThresholdModeEnabled, !semanticPunctuationEnabled {
+            parameters["multi_threshold_mode_enabled"] = true
+        }
+        let contextMessages = userContextMessages(context)
+        let input: [String: Any] = contextMessages.isEmpty ? [:] : ["context": contextMessages]
         return json([
             "header": ["action": "run-task", "task_id": taskID, "streaming": "duplex"],
             "payload": [
@@ -55,10 +74,7 @@ public enum QwenRunTaskASRProtocol {
                 "function": "recognition",
                 "model": model,
                 "parameters": parameters,
-                // `input` is required; `{}` means "no 上下文增强". The 词典 already rides
-                // `vocabulary`, and context works by the same 词表匹配 mechanism, so sending both
-                // would be redundant — and free text risks the model echoing the list back.
-                "input": [:] as [String: Any],
+                "input": input,
             ],
         ])
     }
@@ -68,6 +84,16 @@ public enum QwenRunTaskASRProtocol {
         json([
             "header": ["action": "finish-task", "task_id": taskID, "streaming": "duplex"],
             "payload": ["input": [:] as [String: Any]],
+        ])
+    }
+
+    /// Refreshes the active task's recognition context without reopening the WebSocket.
+    public static func continueTask(taskID: String, context: [String]) -> Data {
+        let messages = userContextMessages(context)
+        let input: [String: Any] = messages.isEmpty ? [:] : ["context": messages]
+        return json([
+            "header": ["action": "continue-task", "task_id": taskID, "streaming": "duplex"],
+            "payload": ["input": input],
         ])
     }
 
@@ -110,5 +136,22 @@ public enum QwenRunTaskASRProtocol {
 
     private static func json(_ object: [String: Any]) -> Data {
         (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+    }
+
+    /// Official context shape for prior user speech. Responsay deliberately sends no assistant
+    /// messages: downstream polished/LLM text must not become ASR history. Keep the five newest
+    /// messages and the documented 400-character per-turn maximum.
+    private static func userContextMessages(_ context: [String]) -> [[String: Any]] {
+        context.compactMap { raw -> String? in
+            let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : String(text.prefix(400))
+        }
+        .suffix(5)
+        .map { text in
+            [
+                "role": "user",
+                "content": [["type": "input_text", "text": text]],
+            ]
+        }
     }
 }

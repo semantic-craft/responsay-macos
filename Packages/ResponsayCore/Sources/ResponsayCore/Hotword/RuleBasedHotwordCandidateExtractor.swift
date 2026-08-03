@@ -4,6 +4,12 @@ public struct RuleBasedHotwordCandidateExtractor: HotwordCandidateExtracting {
     public init() {}
 
     public func extract(_ context: HotwordCorrectionContext) async throws -> [HotwordCandidateProposal] {
+        extractSynchronously(context)
+    }
+
+    /// The rule engine performs no I/O. Exposing its synchronous form lets the macOS hotkey path
+    /// persist a direct user correction before the next ASR request is constructed.
+    public func extractSynchronously(_ context: HotwordCorrectionContext) -> [HotwordCandidateProposal] {
         let delta = EditDelta.compute(inserted: context.insertedText, userFinal: context.userFinalText)
         guard !delta.isLargeModify || delta.substitutions.count == 1 else { return [] }
 
