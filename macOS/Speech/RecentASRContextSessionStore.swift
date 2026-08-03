@@ -24,7 +24,12 @@ final class RecentASRContextSessionStore {
         now: @escaping @MainActor () -> Date = Date.init
     ) {
         self.defaults = defaults
-        persistentStore = PersistentASRContextStore(fileURL: fileURL, now: now)
+        persistentStore = PersistentASRContextStore(
+            fileURL: fileURL,
+            now: now,
+            persistenceFailure: {
+                defaults.set(false, forKey: PersistentASRContextSettings.enabledKey)
+            })
         self.now = now
     }
 
@@ -82,9 +87,18 @@ final class RecentASRContextSessionStore {
             if persistentEnabled { persistentStore.cleanup() }
             return []
         }
-        let persistentID = persistentEnabled
-            ? persistentStore.record(rawFinalText, scope: scope)
-            : nil
+        let persistentID: UUID?
+        if persistentEnabled {
+            persistentID = persistentStore.record(rawFinalText, scope: scope)
+            if persistentID == nil {
+                // A runtime storage failure must not leave the UI promising restart recovery.
+                // Keep this final result in current-session memory, but fail persistent Context off.
+                defaults.set(false, forKey: PersistentASRContextSettings.enabledKey)
+                _ = persistentStore.clear()
+            }
+        } else {
+            persistentID = nil
+        }
         var items = itemsByBundleIdentifier[scope, default: []]
         items.append(SessionItem(
             persistentID: persistentID,

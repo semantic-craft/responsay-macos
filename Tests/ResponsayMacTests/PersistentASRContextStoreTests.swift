@@ -94,7 +94,10 @@ final class PersistentASRContextStoreTests: XCTestCase {
         PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
         seedExpiredAndValidItems()
 
-        PersistentASRContextSettings.prepareAtLaunch(defaults: defaults, fileURL: fileURL, now: now)
+        PersistentASRContextSettings.prepareAtLaunch(
+            defaults: defaults,
+            fileURL: fileURL,
+            now: { self.now })
 
         XCTAssertEqual(try rawDiskTexts(), ["valid"])
     }
@@ -109,6 +112,104 @@ final class PersistentASRContextStoreTests: XCTestCase {
         XCTAssertEqual(Set(try rawDiskTexts()), ["valid", "new"])
     }
 
+    func testScheduledCleanupEnforcesTTLWithoutAnotherReadOrWrite() throws {
+        PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
+        let anchor = now!
+        var scheduledDelays: [UUID: TimeInterval] = [:]
+        var scheduledActions: [UUID: @MainActor () -> Void] = [:]
+        var cancelledTimers = Set<UUID>()
+        var latestTimerID: UUID?
+        let store = PersistentASRContextStore(
+            fileURL: fileURL,
+            now: { self.now },
+            expiryScheduler: { delay, action in
+                let timerID = UUID()
+                scheduledDelays[timerID] = delay
+                scheduledActions[timerID] = action
+                latestTimerID = timerID
+                return { cancelledTimers.insert(timerID) }
+            })
+        store.record("first", scope: "com.apple.Notes")
+        let firstTimerID = try XCTUnwrap(latestTimerID)
+        now = anchor.addingTimeInterval(60)
+        store.record("second", scope: "com.apple.Notes")
+        let secondTimerID = try XCTUnwrap(latestTimerID)
+
+        XCTAssertEqual(
+            try XCTUnwrap(scheduledDelays[secondTimerID]),
+            PersistentASRContextStore.timeToLive - 60,
+            accuracy: 0.001)
+        XCTAssertTrue(cancelledTimers.contains(firstTimerID))
+        XCTAssertEqual(
+            Set(scheduledActions.keys).subtracting(cancelledTimers),
+            [secondTimerID])
+
+        now = anchor.addingTimeInterval(PersistentASRContextStore.timeToLive)
+        scheduledActions[secondTimerID]?()
+        let finalTimerID = try XCTUnwrap(latestTimerID)
+
+        XCTAssertEqual(try rawDiskTexts(), ["second"])
+        XCTAssertEqual(try XCTUnwrap(scheduledDelays[finalTimerID]), 60, accuracy: 0.001)
+        XCTAssertTrue(cancelledTimers.contains(secondTimerID))
+        XCTAssertEqual(
+            Set(scheduledActions.keys).subtracting(cancelledTimers),
+            [finalTimerID])
+
+        now = anchor.addingTimeInterval(PersistentASRContextStore.timeToLive + 60)
+        scheduledActions[finalTimerID]?()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        XCTAssertTrue(cancelledTimers.contains(finalTimerID))
+        XCTAssertTrue(Set(scheduledActions.keys).subtracting(cancelledTimers).isEmpty)
+    }
+
+    func testStartupSchedulerUsesLiveClockAndFailsOffIfExpiryCleanupCannotRemoveFile() throws {
+        XCTAssertTrue(PersistentASRContextSettings.setEnabled(
+            true, defaults: defaults, fileURL: fileURL))
+        let anchor = now!
+        let seedStore = PersistentASRContextStore(
+            fileURL: fileURL,
+            now: { self.now },
+            expiryScheduler: { _, _ in {} })
+        seedStore.record("startup private raw final", scope: "com.apple.Notes")
+        var scheduledAction: (@MainActor () -> Void)?
+        PersistentASRContextSettings.prepareAtLaunch(
+            defaults: defaults,
+            fileURL: fileURL,
+            now: { self.now },
+            expiryScheduler: { _, action in
+                scheduledAction = action
+                return {}
+            })
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fileURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: fileURL.path)
+        }
+
+        now = anchor.addingTimeInterval(PersistentASRContextStore.timeToLive)
+        scheduledAction?()
+
+        XCTAssertFalse(PersistentASRContextSettings.isEnabled(defaults: defaults))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    func testReadCleanupFailureDisablesPersistence() throws {
+        XCTAssertTrue(PersistentASRContextSettings.setEnabled(
+            true, defaults: defaults, fileURL: fileURL))
+        let session = makeSessionStore()
+        session.record("private raw final", scope: "com.apple.Notes")
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fileURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: fileURL.path)
+        }
+        now = now.addingTimeInterval(PersistentASRContextStore.timeToLive)
+
+        XCTAssertTrue(session.context(for: "com.apple.Notes").isEmpty)
+
+        XCTAssertFalse(PersistentASRContextSettings.isEnabled(defaults: defaults))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
     func testStartupWithDefaultOffDeletesAPreviouslyPersistedContextFile() {
         XCTAssertTrue(PersistentASRContextSettings.setEnabled(
             true, defaults: defaults, fileURL: fileURL))
@@ -116,7 +217,7 @@ final class PersistentASRContextStoreTests: XCTestCase {
         defaults.removeObject(forKey: PersistentASRContextSettings.enabledKey)
 
         PersistentASRContextSettings.prepareAtLaunch(
-            defaults: defaults, fileURL: fileURL, now: now)
+            defaults: defaults, fileURL: fileURL, now: { self.now })
 
         XCTAssertFalse(PersistentASRContextSettings.isEnabled(defaults: defaults))
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
@@ -226,6 +327,21 @@ final class PersistentASRContextStoreTests: XCTestCase {
         XCTAssertFalse(PersistentASRContextSettings.setEnabled(
             true, defaults: defaults, fileURL: invalidURL))
         XCTAssertFalse(PersistentASRContextSettings.isEnabled(defaults: defaults))
+    }
+
+    func testRuntimeWriteFailureDisablesPersistenceButKeepsCurrentSessionContext() throws {
+        XCTAssertTrue(PersistentASRContextSettings.setEnabled(
+            true, defaults: defaults, fileURL: fileURL))
+        let session = makeSessionStore()
+        let blockingPath = fileURL.deletingLastPathComponent()
+        try FileManager.default.removeItem(at: blockingPath)
+        try Data("not a directory".utf8).write(to: blockingPath)
+
+        session.record("ephemeral raw final", scope: "com.apple.Notes")
+
+        XCTAssertFalse(PersistentASRContextSettings.isEnabled(defaults: defaults))
+        XCTAssertEqual(session.context(for: "com.apple.Notes"), ["ephemeral raw final"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
     func testDisableStaysOffWhenResidualFileCannotBeDeleted() throws {
