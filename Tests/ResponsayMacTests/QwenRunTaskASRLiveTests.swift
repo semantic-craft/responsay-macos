@@ -10,8 +10,9 @@ import XCTest
 /// logged. It intentionally exercises the first-batch official capabilities in two bounded tasks:
 /// an unassisted baseline, followed by the exact same audio after a real `matis` → `Metis` edit
 /// has passed through the explicit-correction learner. The enhanced request covers
-/// instant vocabulary, mixed-language hints, context, heartbeat, multi-threshold segmentation,
-/// and an in-task context refresh.
+/// instant vocabulary, mixed-language hints, context, heartbeat, and an in-task context refresh.
+/// VAD/noise tuning stays on provider defaults; the separate
+/// `scripts/qwen-asr-vad-eval.py` live matrix owns any future evidence for changing them.
 @MainActor
 final class QwenRunTaskASRLiveTests: XCTestCase {
     func testEnhancedStreamingRecognitionAgainstConfiguredAccount() async throws {
@@ -103,9 +104,7 @@ final class QwenRunTaskASRLiveTests: XCTestCase {
             hotwords: hotwords,
             languageHints: ["zh", "en"],
             context: context,
-            heartbeat: true,
-            semanticPunctuationEnabled: false,
-            multiThresholdModeEnabled: true)
+            heartbeat: true)
         guard await client.awaitStarted() else {
             receiver.cancel()
             throw LiveAcceptanceError.taskDidNotStart
