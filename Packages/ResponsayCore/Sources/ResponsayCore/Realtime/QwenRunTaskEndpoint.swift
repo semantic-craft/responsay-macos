@@ -85,6 +85,9 @@ public struct QwenRunTaskCaptureConfig: Sendable {
     public var context: [String]
     /// Local-only isolation key; never serialized onto the wire.
     public var contextScope: String?
+    /// Per-task language selection. It deliberately travels with `run-task`, not the reusable
+    /// transport, so each capture resolves fresh hints.
+    public var captureLocale: CaptureLocale?
     public var heartbeat: Bool
     public var semanticPunctuationEnabled: Bool
     public var multiThresholdModeEnabled: Bool
@@ -96,6 +99,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         hotwords: [String] = [],
         context: [String] = [],
         contextScope: String? = nil,
+        captureLocale: CaptureLocale? = nil,
         heartbeat: Bool = false,
         semanticPunctuationEnabled: Bool = false,
         multiThresholdModeEnabled: Bool = false
@@ -106,6 +110,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         self.hotwords = hotwords
         self.context = context
         self.contextScope = contextScope
+        self.captureLocale = captureLocale
         self.heartbeat = heartbeat
         self.semanticPunctuationEnabled = semanticPunctuationEnabled
         self.multiThresholdModeEnabled = multiThresholdModeEnabled
