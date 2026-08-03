@@ -93,6 +93,39 @@ private func sqliteColumnIsNotNull(
     #expect(cards.map(\.id) == [due.id])
 }
 
+@Test func sqliteReviewStore_pruneExpiresTheBoundaryAndPreservesNewerCards() throws {
+    let directory = try tempDirectory()
+    let store = try SQLiteReviewStore(databaseURL: directory.appendingPathComponent("review.sqlite"))
+    let cutoff = Date(timeIntervalSince1970: 100)
+    let before = ReviewCard(
+        id: UUID(uuidString: "D1111111-1111-1111-1111-111111111111")!,
+        createdAt: cutoff.addingTimeInterval(-1),
+        sourceText: "before",
+        language: "en-US",
+        idiomatic: "Before.",
+        reasons: [])
+    let boundary = ReviewCard(
+        id: UUID(uuidString: "D2222222-2222-2222-2222-222222222222")!,
+        createdAt: cutoff,
+        sourceText: "boundary",
+        language: "en-US",
+        idiomatic: "Boundary.",
+        reasons: [])
+    let valid = ReviewCard(
+        id: UUID(uuidString: "D3333333-3333-3333-3333-333333333333")!,
+        createdAt: cutoff.addingTimeInterval(1),
+        sourceText: "valid",
+        language: "en-US",
+        idiomatic: "Valid.",
+        reasons: [])
+    try store.save(before)
+    try store.save(boundary)
+    try store.save(valid)
+
+    #expect(try store.prune(createdAtOrBefore: cutoff) == 2)
+    #expect(try store.recent(10).map(\.id) == [valid.id])
+}
+
 @Test func sqliteReviewStore_freshDatabasePersistsNilSourceAcrossRestart() throws {
     let directory = try tempDirectory()
     let databaseURL = directory.appendingPathComponent("review.sqlite")

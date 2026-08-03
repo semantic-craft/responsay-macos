@@ -38,4 +38,13 @@ public struct ReviewCaptureStore: CaptureStore {
         try reviewStore.deleteAll()
         NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
     }
+
+    @discardableResult
+    public func prune(createdAtOrBefore cutoff: Date) throws -> Int {
+        let removedCount = try reviewStore.prune(createdAtOrBefore: cutoff)
+        if removedCount > 0 {
+            NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
+        }
+        return removedCount
+    }
 }

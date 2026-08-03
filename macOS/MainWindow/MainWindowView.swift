@@ -27,7 +27,7 @@ struct MainWindowView: View {
         var subtitle: String {
             switch self {
             case .overview: "今天与最近 7 天的听写概览"
-            case .history: "本机保存 · 默认 30 天后自动清理"
+            case .history: HistoryRetentionSettings.period().historySummary
             }
         }
     }
