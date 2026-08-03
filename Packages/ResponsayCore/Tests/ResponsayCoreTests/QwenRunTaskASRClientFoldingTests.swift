@@ -92,4 +92,11 @@ struct QwenRunTaskASRClientFoldingTests {
         _ = await client.handleEvent(.finished)
         #expect(await gate == false)
     }
+
+    @Test func cancellingAwaitStartedReleasesTheWaiter() async {
+        let client = makeClient()
+        let gate = Task { await client.awaitStarted() }
+        gate.cancel()
+        #expect(await gate.value == false)
+    }
 }

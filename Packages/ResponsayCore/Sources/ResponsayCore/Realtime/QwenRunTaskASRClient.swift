@@ -1,5 +1,54 @@
 import Foundation
 
+public enum QwenRunTaskTransportMessage: Sendable, Equatable {
+    case text(String)
+    case data(Data)
+}
+
+/// Narrow WebSocket surface used by the run-task client. Keeping the task codec independent from
+/// `URLSessionWebSocketTask` lets the connection lifecycle and reconnect path run deterministically
+/// in tests without a live DashScope socket.
+public protocol QwenRunTaskTransport: Sendable {
+    var isViable: Bool { get async }
+    func send(_ message: QwenRunTaskTransportMessage) async throws
+    func receive() async throws -> QwenRunTaskTransportMessage
+    func close() async
+}
+
+public final class QwenURLSessionWebSocketTransport: QwenRunTaskTransport, @unchecked Sendable {
+    private let task: URLSessionWebSocketTask
+
+    public init(task: URLSessionWebSocketTask, resume: Bool = false) {
+        self.task = task
+        if resume { task.resume() }
+    }
+
+    public var isViable: Bool {
+        get async { task.state == .running }
+    }
+
+    public func send(_ message: QwenRunTaskTransportMessage) async throws {
+        switch message {
+        case let .text(text):
+            try await task.send(.string(text))
+        case let .data(data):
+            try await task.send(.data(data))
+        }
+    }
+
+    public func receive() async throws -> QwenRunTaskTransportMessage {
+        switch try await task.receive() {
+        case let .string(text): return .text(text)
+        case let .data(data): return .data(data)
+        @unknown default: throw RealtimeTransportError.unsupportedFrame
+        }
+    }
+
+    public func close() async {
+        task.cancel(with: .normalClosure, reason: nil)
+    }
+}
+
 /// Drives 百炼 实时语音识别 over the run-task WebSocket protocol in push-to-talk shape:
 /// `run-task` → wait for `task-started` → binary PCM frames while the hotkey is held →
 /// `finish-task` on release → `task-finished` carries the joined 整段 transcript.
@@ -15,7 +64,7 @@ import Foundation
 /// `send*`/`receive` touch the live socket (mic + network) — the HITL boundary; the fold and
 /// the wire codec are unit-tested offline.
 public actor QwenRunTaskASRClient {
-    private let transport: URLSessionWebSocketTask
+    private let transport: any QwenRunTaskTransport
     private let taskID: String
 
     private var finalsByID: [Int: String] = [:]
@@ -24,7 +73,7 @@ public actor QwenRunTaskASRClient {
     private var finishSent = false
 
     private var startState: StartState = .waiting
-    private var startWaiters: [CheckedContinuation<Bool, Never>] = []
+    private var startWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     private enum StartState: Equatable {
         case waiting
@@ -32,8 +81,13 @@ public actor QwenRunTaskASRClient {
         case terminated
     }
 
-    public init(transport: URLSessionWebSocketTask, taskID: String = UUID().uuidString) {
+    public init(transport: any QwenRunTaskTransport, taskID: String = UUID().uuidString) {
         self.transport = transport
+        self.taskID = taskID
+    }
+
+    public init(transport: URLSessionWebSocketTask, taskID: String = UUID().uuidString) {
+        self.transport = QwenURLSessionWebSocketTransport(task: transport)
         self.taskID = taskID
     }
 
@@ -67,8 +121,17 @@ public actor QwenRunTaskASRClient {
         case .started: return true
         case .terminated: return false
         case .waiting:
-            return await withCheckedContinuation { continuation in
-                startWaiters.append(continuation)
+            let waiterID = UUID()
+            return await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    if Task.isCancelled {
+                        continuation.resume(returning: false)
+                    } else {
+                        startWaiters[waiterID] = continuation
+                    }
+                }
+            } onCancel: {
+                Task { await self.cancelStartWaiter(waiterID) }
             }
         }
     }
@@ -86,19 +149,17 @@ public actor QwenRunTaskASRClient {
     }
 
     private func sendText(_ data: Data) async throws {
-        try await transport.send(.string(String(data: data, encoding: .utf8) ?? ""))
+        try await transport.send(.text(String(data: data, encoding: .utf8) ?? ""))
     }
 
     // MARK: - Server → client
 
     public func receive() async throws -> QwenRunTaskASRProtocol.ServerEvent {
         switch try await transport.receive() {
-        case let .string(text):
+        case let .text(text):
             return QwenRunTaskASRProtocol.decode(Data(text.utf8))
         case let .data(data):
             return QwenRunTaskASRProtocol.decode(data)
-        @unknown default:
-            return .ignored
         }
     }
 
@@ -142,8 +203,12 @@ public actor QwenRunTaskASRClient {
     private func resolveStart(_ state: StartState) {
         guard startState == .waiting else { return }
         startState = state
-        let waiters = startWaiters
-        startWaiters = []
+        let waiters = Array(startWaiters.values)
+        startWaiters.removeAll()
         for waiter in waiters { waiter.resume(returning: state == .started) }
+    }
+
+    private func cancelStartWaiter(_ id: UUID) {
+        startWaiters.removeValue(forKey: id)?.resume(returning: false)
     }
 }
