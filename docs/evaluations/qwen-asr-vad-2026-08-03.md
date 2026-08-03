@@ -82,8 +82,9 @@ python3 -m venv "$QWEN_EVAL_DIR/venv"
 The JSON result contains aggregate inputs and per-trial metrics, but not recognized text, API keys,
 request headers, task IDs, user vocabulary, or private audio.
 
-The live run used the following generated public corpus. The runner now refuses to make a provider
-call if any PCM file differs from the SHA-256 stored in its manifest.
+The live run used the following generated public corpus. The generator refuses output that differs
+from these committed canonical hashes, and the runner refuses to make a provider call if a PCM
+subsequently differs from the SHA-256 stored in its manifest.
 
 | Case | Evaluated PCM SHA-256 |
 | --- | --- |
