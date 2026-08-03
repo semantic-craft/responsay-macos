@@ -229,6 +229,26 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertEqual(config.hotwords, ["Metis"])
     }
 
+    func testQwenRunTaskSingaporeWorkspaceOmitsAllUnsupportedVocabulary() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+        defaults.set("singapore", forKey: "byok.asr.region")
+        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
+        XCTAssertTrue(ContextHotwordSettings.addManual("法研 Metis", defaults: defaults))
+        XCTAssertNil(QwenPrecompiledVocabularySettings.save(
+            identifier: "vocab-deadbeef",
+            model: QwenRunTaskEndpoint.defaultModel,
+            endpoint: QwenRunTaskEndpoint(region: .singapore, workspaceID: "ws-abc123"),
+            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
+            defaults: defaults))
+
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+
+        XCTAssertFalse(config.endpoint.supportsHotwords)
+        XCTAssertNil(config.precompiledVocabularyID)
+        XCTAssertTrue(config.hotwords.isEmpty)
+    }
+
     func testQwenRunTaskUsesHeartbeatAndProductModeSettings() {
         defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
 

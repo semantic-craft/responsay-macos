@@ -187,7 +187,10 @@ enum ASRTranscriptionClientFactory {
         // Scene filtering, newly learned terms, manual edits and transient screen terms all change
         // the request vocabulary. Because Qwen makes instant vocabulary override the ID, send the
         // complete request-level set in that case so durable local terms remain effective too.
-        let shouldUsePrecompiled = resolvedIdentifier != nil && requestVocabulary == persistentVocabulary
+        let supportsHotwords = endpoint.supportsHotwords
+        let shouldUsePrecompiled = supportsHotwords
+            && resolvedIdentifier != nil
+            && requestVocabulary == persistentVocabulary
         return QwenRunTaskCaptureConfig(
             endpoint: endpoint,
             apiKey: apiKey(
@@ -195,7 +198,7 @@ enum ASRTranscriptionClientFactory {
                 plan: settings.asrPlan(forProvider: providerId),
                 keyReader: keyReader),
             model: model,
-            hotwords: shouldUsePrecompiled ? [] : requestHotwords,
+            hotwords: supportsHotwords && !shouldUsePrecompiled ? requestHotwords : [],
             precompiledVocabularyID: shouldUsePrecompiled ? resolvedIdentifier : nil,
             context: context,
             contextScope: contextScope,

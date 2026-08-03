@@ -62,15 +62,13 @@ public enum QwenASRHotwords {
     /// the rule deliberately looser than the example's generated suffix so future valid IDs survive.
     public static func normalizedVocabularyIdentifier(_ rawValue: String?) -> String? {
         guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              value.hasPrefix("vocab-"), (9 ... 160).contains(value.count),
+              value.hasPrefix("vocab-"), (7 ... 160).contains(value.count),
               value.unicodeScalars.allSatisfy({ scalar in
                   (48 ... 57).contains(scalar.value)
                       || (65 ... 90).contains(scalar.value)
                       || (97 ... 122).contains(scalar.value)
                       || scalar.value == 45
               }) else { return nil }
-        let segments = value.split(separator: "-", omittingEmptySubsequences: false)
-        guard segments.count >= 3, segments.allSatisfy({ !$0.isEmpty }) else { return nil }
         return value
     }
 
