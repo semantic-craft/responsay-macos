@@ -91,49 +91,28 @@ struct QwenRunTaskASRProtocolTests {
         #expect(parameters?["vocabulary"] as? [String: Int] == ["Metis": 4])
     }
 
-    @Test func runTaskCarriesContextMixedLanguageHeartbeatAndSemanticSegmentation() {
+    @Test func runTaskCarriesContextMixedLanguageHeartbeatAndOmitsTuning() {
         let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
             taskID: "task-1",
             model: "qwen-audio-3.0-asr-flash-streaming",
             languageHints: ["zh", "en"],
             context: ["上一句提到了 Metis。", "The repository is Responsay."],
-            heartbeat: true,
-            semanticPunctuationEnabled: true))
+            heartbeat: true))
         let payload = root["payload"] as? [String: Any]
         let parameters = payload?["parameters"] as? [String: Any]
         let context = (payload?["input"] as? [String: Any])?["context"] as? [[String: Any]]
 
         #expect(parameters?["language_hints"] as? [String] == ["zh", "en"])
         #expect(parameters?["heartbeat"] as? Bool == true)
-        #expect(parameters?["semantic_punctuation_enabled"] as? Bool == true)
+        #expect(parameters?["semantic_punctuation_enabled"] == nil)
+        #expect(parameters?["multi_threshold_mode_enabled"] == nil)
+        #expect(parameters?["max_sentence_silence"] == nil)
+        #expect(parameters?["speech_noise_threshold"] == nil)
         #expect(context?.count == 2)
         #expect(context?.first?["role"] as? String == "user")
         let firstContent = context?.first?["content"] as? [[String: Any]]
         #expect(firstContent?.first?["type"] as? String == "input_text")
         #expect(firstContent?.first?["text"] as? String == "上一句提到了 Metis。")
-    }
-
-    @Test func runTaskCarriesMultiThresholdVADSegmentation() {
-        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
-            taskID: "task-1",
-            model: "qwen-audio-3.0-asr-flash-streaming",
-            multiThresholdModeEnabled: true))
-        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
-
-        #expect(parameters?["multi_threshold_mode_enabled"] as? Bool == true)
-        #expect(parameters?["semantic_punctuation_enabled"] == nil)
-    }
-
-    @Test func semanticSegmentationSuppressesConflictingMultiThresholdMode() {
-        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
-            taskID: "task-1",
-            model: "qwen-audio-3.0-asr-flash-streaming",
-            semanticPunctuationEnabled: true,
-            multiThresholdModeEnabled: true))
-        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
-
-        #expect(parameters?["semantic_punctuation_enabled"] as? Bool == true)
-        #expect(parameters?["multi_threshold_mode_enabled"] == nil)
     }
 
     /// 即时热词 is documented for `qwen-audio-3.0-asr-flash-streaming` only; Fun-ASR-Realtime shares

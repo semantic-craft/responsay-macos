@@ -92,8 +92,6 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         let precompiledVocabularyID = config.precompiledVocabularyID
         let context = config.context
         let heartbeat = config.heartbeat
-        let semanticPunctuationEnabled = config.semanticPunctuationEnabled
-        let multiThresholdModeEnabled = config.multiThresholdModeEnabled
         // Sender: run-task, wait for task-started (audio before it is rejected), then drain frames
         // IN ORDER (AsyncStream keeps yield order; a single consumer preserves it).
         senderTask = Task.detached {
@@ -101,9 +99,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 try await client.sendRunTask(
                     model: model, sampleRate: 16_000, hotwords: hotwords,
                     precompiledVocabularyID: precompiledVocabularyID,
-                    languageHints: languageHints, context: context, heartbeat: heartbeat,
-                    semanticPunctuationEnabled: semanticPunctuationEnabled,
-                    multiThresholdModeEnabled: multiThresholdModeEnabled)
+                    languageHints: languageHints, context: context, heartbeat: heartbeat)
             } catch {
                 return
             }

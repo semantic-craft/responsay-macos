@@ -39,9 +39,7 @@ public enum QwenRunTaskASRProtocol {
         languageHint: String? = nil,
         languageHints: [String] = [],
         context: [String] = [],
-        heartbeat: Bool = false,
-        semanticPunctuationEnabled: Bool = false,
-        multiThresholdModeEnabled: Bool = false
+        heartbeat: Bool = false
     ) -> Data {
         var parameters: [String: Any] = ["format": format, "sample_rate": sampleRate]
         let requestedHints = languageHints.isEmpty ? languageHint.map { [$0] } ?? [] : languageHints
@@ -61,14 +59,6 @@ public enum QwenRunTaskASRProtocol {
         }
         if heartbeat {
             parameters["heartbeat"] = true
-        }
-        if semanticPunctuationEnabled {
-            parameters["semantic_punctuation_enabled"] = true
-        }
-        // Semantic segmentation disables VAD segmentation. Normalize at the wire boundary too,
-        // so a future caller cannot serialize the two product modes as simultaneously enabled.
-        if multiThresholdModeEnabled, !semanticPunctuationEnabled {
-            parameters["multi_threshold_mode_enabled"] = true
         }
         let contextMessages = userContextMessages(context)
         let input: [String: Any] = contextMessages.isEmpty ? [:] : ["context": contextMessages]
