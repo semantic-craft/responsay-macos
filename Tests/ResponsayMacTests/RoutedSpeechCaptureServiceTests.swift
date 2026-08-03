@@ -182,6 +182,22 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
     }
 
+    func testQwenRunTaskUsesHeartbeatAndProductModeSettings() {
+        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
+
+        let quick = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+        XCTAssertTrue(quick.heartbeat)
+        XCTAssertFalse(quick.semanticPunctuationEnabled)
+        XCTAssertTrue(quick.multiThresholdModeEnabled)
+
+        QwenASRStreamingModeSettings.select(.longForm, defaults: defaults)
+        let longForm = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults, keyReader: { _ in "k" })
+        XCTAssertTrue(longForm.semanticPunctuationEnabled)
+        XCTAssertFalse(longForm.multiThresholdModeEnabled)
+    }
+
     /// Filling in a Workspace ID switches the socket onto that business space's dedicated host.
     func testQwenRunTaskWorkspaceIDDerivesDedicatedHost() {
         defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")

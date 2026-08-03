@@ -380,8 +380,10 @@ private final class SpeechCaptureProfileStore: @unchecked Sendable {
 private extension CaptureLocale {
     var asrLanguageCode: String {
         switch self {
+        case .automatic: Locale.current.identifier.lowercased().hasPrefix("en") ? "en" : "zh"
         case .english: "en"
         case .chinese: "zh"
+        case .mixed: "zh"
         }
     }
 }

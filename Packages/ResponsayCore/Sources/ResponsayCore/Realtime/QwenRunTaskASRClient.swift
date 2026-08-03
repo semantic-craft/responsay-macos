@@ -21,6 +21,7 @@ public actor QwenRunTaskASRClient {
     private var finalsByID: [Int: String] = [:]
     private var finalOrder: [Int] = []
     private var pendingPartial = ""
+    private var finishSent = false
 
     private var startState: StartState = .waiting
     private var startWaiters: [CheckedContinuation<Bool, Never>] = []
@@ -42,11 +43,26 @@ public actor QwenRunTaskASRClient {
         model: String,
         sampleRate: Int = 16_000,
         hotwords: [String] = [],
-        languageHint: String? = nil
+        languageHints: [String] = [],
+        context: [String] = [],
+        heartbeat: Bool = false,
+        semanticPunctuationEnabled: Bool = false,
+        multiThresholdModeEnabled: Bool = false
     ) async throws {
         try await sendText(QwenRunTaskASRProtocol.runTask(
             taskID: taskID, model: model, sampleRate: sampleRate,
-            hotwords: hotwords, languageHint: languageHint))
+            hotwords: hotwords, languageHints: languageHints, context: context,
+            heartbeat: heartbeat,
+            semanticPunctuationEnabled: semanticPunctuationEnabled,
+            multiThresholdModeEnabled: multiThresholdModeEnabled))
+    }
+
+    /// Updates context while the task is active. A trailing final can arrive after `finish-task`;
+    /// in that case the text is still recorded locally by the caller, but no invalid wire event is
+    /// sent after finishing has begun.
+    public func sendContinueTask(context: [String]) async throws {
+        guard !finishSent, !context.isEmpty else { return }
+        try await sendText(QwenRunTaskASRProtocol.continueTask(taskID: taskID, context: context))
     }
 
     /// Suspends until `task-started` arrives (returns true) or the task ends first (false).
@@ -69,6 +85,7 @@ public actor QwenRunTaskASRClient {
 
     /// All audio sent (hotkey released) → the server flushes the trailing sentence and ends.
     public func finish() async throws {
+        finishSent = true
         try await sendText(QwenRunTaskASRProtocol.finishTask(taskID: taskID))
     }
 

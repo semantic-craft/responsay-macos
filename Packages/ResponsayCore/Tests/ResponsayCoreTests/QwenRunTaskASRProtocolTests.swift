@@ -53,6 +53,51 @@ struct QwenRunTaskASRProtocolTests {
         #expect(parameters?["vocabulary"] as? [String: Int] == ["Westlaw": 4, "厄洛替尼盐酸盐": 4])
     }
 
+    @Test func runTaskCarriesContextMixedLanguageHeartbeatAndSemanticSegmentation() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            languageHints: ["zh", "en"],
+            context: ["上一句提到了 Metis。", "The repository is Responsay."],
+            heartbeat: true,
+            semanticPunctuationEnabled: true))
+        let payload = root["payload"] as? [String: Any]
+        let parameters = payload?["parameters"] as? [String: Any]
+        let context = (payload?["input"] as? [String: Any])?["context"] as? [[String: Any]]
+
+        #expect(parameters?["language_hints"] as? [String] == ["zh", "en"])
+        #expect(parameters?["heartbeat"] as? Bool == true)
+        #expect(parameters?["semantic_punctuation_enabled"] as? Bool == true)
+        #expect(context?.count == 2)
+        #expect(context?.first?["role"] as? String == "user")
+        let firstContent = context?.first?["content"] as? [[String: Any]]
+        #expect(firstContent?.first?["type"] as? String == "input_text")
+        #expect(firstContent?.first?["text"] as? String == "上一句提到了 Metis。")
+    }
+
+    @Test func runTaskCarriesMultiThresholdVADSegmentation() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            multiThresholdModeEnabled: true))
+        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
+
+        #expect(parameters?["multi_threshold_mode_enabled"] as? Bool == true)
+        #expect(parameters?["semantic_punctuation_enabled"] == nil)
+    }
+
+    @Test func semanticSegmentationSuppressesConflictingMultiThresholdMode() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.runTask(
+            taskID: "task-1",
+            model: "qwen-audio-3.0-asr-flash-streaming",
+            semanticPunctuationEnabled: true,
+            multiThresholdModeEnabled: true))
+        let parameters = (root["payload"] as? [String: Any])?["parameters"] as? [String: Any]
+
+        #expect(parameters?["semantic_punctuation_enabled"] as? Bool == true)
+        #expect(parameters?["multi_threshold_mode_enabled"] == nil)
+    }
+
     /// 即时热词 is documented for `qwen-audio-3.0-asr-flash-streaming` only; Fun-ASR-Realtime shares
     /// this protocol and endpoint but is not on that list. The live service accepts the field there
     /// rather than rejecting it (measured 2026-08-02), so this pins a docs-compliance choice, not a
@@ -73,6 +118,22 @@ struct QwenRunTaskASRProtocolTests {
         #expect(header?["streaming"] as? String == "duplex")
         let input = (root["payload"] as? [String: Any])?["input"] as? [String: Any]
         #expect(input?.isEmpty == true)
+    }
+
+    @Test func continueTaskUpdatesContextUsingTheDocumentedEnvelope() {
+        let root = decodeJSON(QwenRunTaskASRProtocol.continueTask(
+            taskID: "task-1", context: ["We just discussed Metis."]))
+        let header = root["header"] as? [String: Any]
+        #expect(header?["action"] as? String == "continue-task")
+        #expect(header?["task_id"] as? String == "task-1")
+        #expect(header?["streaming"] as? String == "duplex")
+
+        let input = (root["payload"] as? [String: Any])?["input"] as? [String: Any]
+        let context = input?["context"] as? [[String: Any]]
+        let content = context?.first?["content"] as? [[String: Any]]
+        #expect(context?.first?["role"] as? String == "user")
+        #expect(content?.first?["type"] as? String == "input_text")
+        #expect(content?.first?["text"] as? String == "We just discussed Metis.")
     }
 
     // MARK: - Server events
@@ -162,6 +223,18 @@ struct QwenASRHotwordsTests {
         #expect(QwenASRHotwords.languageHint(" EN ") == "en")
         #expect(QwenASRHotwords.languageHint("zh-CN") == nil)
         #expect(QwenASRHotwords.languageHint("") == nil)
+    }
+
+    @Test func mixedLocaleUsesTwoHintsForQwenAndOneForFunASR() {
+        #expect(QwenASRHotwords.languageHints(
+            for: .mixed,
+            model: "qwen-audio-3.0-asr-flash-streaming") == ["zh", "en"])
+        #expect(QwenASRHotwords.languageHints(
+            for: .mixed,
+            model: "fun-asr-realtime") == ["zh"])
+        #expect(QwenASRHotwords.languageHints(
+            for: .automatic,
+            model: "qwen-audio-3.0-asr-flash-streaming").isEmpty)
     }
 }
 

@@ -13,6 +13,7 @@ struct DictionarySettingsPane: View {
     @AppStorage(ContextHotwordSettings.defaultsKey) var hotwords = ""
     @AppStorage(ContextHotwordSettings.autoDefaultsKey) var autoHotwords = ""
     @AppStorage(AutoLearnHotwordSettings.key) var autoLearnEnabled = false
+    @AppStorage(ExplicitCorrectionLearningSettings.key) var explicitCorrectionLearningEnabled = true
     @AppStorage(AutoLearnHotwordHistorySettings.confirmationPolicyKey) var confirmationPolicyRaw = HotwordConfirmationPolicy.autoAddHighConfidence.rawValue
     @AppStorage(AutoLearnHotwordHistorySettings.historyKey) var learningHistoryData = Data()
     @AppStorage(HotwordLLMCorrectionSettings.key) var llmCorrectionEnabled = false
@@ -102,6 +103,16 @@ struct DictionarySettingsPane: View {
                     Text("把术语、人名、案号喂给识别器与教练；手动词优先于自动添加。支持热词的云端引擎会按各自机制注入。")
                 .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
                 .fixedSize(horizontal: false, vertical: true)
+
+            SettingsToggleRow(
+                title: "自动记住手动纠错",
+                desc: "默认开启。你把刚写入的听写词改正一次后，Responsay 会在本机记住原词到正确词的对应关系，后续听写自动应用；无需再次确认，可在下方词典中删除。",
+                binding: Binding(
+                    get: { explicitCorrectionLearningEnabled },
+                    set: { enabled in
+                        dictionaryStore.setExplicitCorrectionLearningEnabled(enabled)
+                        explicitCorrectionLearningEnabled = dictionaryStore.explicitCorrectionLearningEnabled
+                    }))
 
             SettingsToggleRow(
                 title: "自动学习热词",
