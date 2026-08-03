@@ -34,6 +34,8 @@ final class ProviderConfigMachine {
     var appId = ""
     var accessToken = ""
     var boostingTableId = ""
+    var precompiledVocabularyID = ""
+    var precompiledVocabularyBinding: QwenPrecompiledVocabularyBinding?
     var status = ""
     var fetchedModels: [String] = []
 
@@ -206,6 +208,7 @@ final class ProviderConfigMachine {
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
+        loadQwenPrecompiledVocabulary()
     }
 
     func defaultProviderId() -> String {
@@ -274,6 +277,7 @@ final class ProviderConfigMachine {
         appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
         accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
+        loadQwenPrecompiledVocabulary()
         status = ""
         fetchedModels = []
     }

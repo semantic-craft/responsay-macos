@@ -1,6 +1,6 @@
 import Foundation
 
-public enum QwenRunTaskRegion: String, Sendable, CaseIterable {
+public enum QwenRunTaskRegion: String, Sendable, CaseIterable, Codable {
     case china
     case singapore
 
@@ -75,6 +75,62 @@ public struct QwenRunTaskEndpoint: Sendable, Equatable {
     }
 }
 
+/// A precompiled vocabulary ID plus the exact environment and local dictionary snapshot it was
+/// synchronized for. IDs are not portable across target models, regions or workspaces. The
+/// fingerprint contains no vocabulary text and makes any later local edit fail closed at the ID
+/// lane, while dictation itself fails open through request-level instant vocabulary.
+public struct QwenPrecompiledVocabularyBinding: Sendable, Equatable, Codable {
+    public let identifier: String
+    public let model: String
+    public let region: QwenRunTaskRegion
+    public let workspaceID: String?
+    public let vocabularyFingerprint: String
+
+    public init(
+        identifier: String,
+        model: String,
+        region: QwenRunTaskRegion,
+        workspaceID: String?,
+        vocabularyFingerprint: String
+    ) {
+        self.identifier = identifier
+        self.model = model
+        self.region = region
+        self.workspaceID = workspaceID
+        self.vocabularyFingerprint = vocabularyFingerprint
+    }
+
+    /// Returns only the opaque ID; callers never need to inspect or log the bound vocabulary.
+    public func resolvedIdentifier(
+        model currentModel: String,
+        endpoint: QwenRunTaskEndpoint,
+        vocabularyFingerprint currentFingerprint: String
+    ) -> String? {
+        guard let identifier = QwenASRHotwords.normalizedVocabularyIdentifier(identifier),
+              QwenASRHotwords.supportsPrecompiledVocabulary(model: currentModel),
+              normalizedModel(model) == normalizedModel(currentModel),
+              region == endpoint.region,
+              let boundWorkspace = Self.workspaceIdentity(workspaceID),
+              let currentWorkspace = Self.workspaceIdentity(endpoint.workspaceID),
+              boundWorkspace == currentWorkspace,
+              !vocabularyFingerprint.isEmpty,
+              vocabularyFingerprint == currentFingerprint else { return nil }
+        return identifier
+    }
+
+    private func normalizedModel(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Empty means the account's default workspace. A non-empty malformed value is invalid, not
+    /// equivalent to default — otherwise an unsafe/stale workspace could silently reuse an ID.
+    private static func workspaceIdentity(_ rawValue: String?) -> String? {
+        let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return "" }
+        return QwenRunTaskEndpoint.normalizedWorkspaceID(trimmed)
+    }
+}
+
 /// Everything the engine needs to open one run-task session, resolved fresh per capture so a
 /// settings change (Workspace ID, region, model, key, 词典) takes effect without an app restart.
 public struct QwenRunTaskCaptureConfig: Sendable {
@@ -82,6 +138,8 @@ public struct QwenRunTaskCaptureConfig: Sendable {
     public var apiKey: String
     public var model: String
     public var hotwords: [String]
+    /// Already validated for the endpoint/model/workspace/dictionary snapshot. Never logged.
+    public var precompiledVocabularyID: String?
     public var context: [String]
     /// Local-only isolation key; never serialized onto the wire.
     public var contextScope: String?
@@ -94,6 +152,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         apiKey: String,
         model: String = QwenRunTaskEndpoint.defaultModel,
         hotwords: [String] = [],
+        precompiledVocabularyID: String? = nil,
         context: [String] = [],
         contextScope: String? = nil,
         heartbeat: Bool = false,
@@ -104,6 +163,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         self.apiKey = apiKey
         self.model = model
         self.hotwords = hotwords
+        self.precompiledVocabularyID = precompiledVocabularyID
         self.context = context
         self.contextScope = contextScope
         self.heartbeat = heartbeat

@@ -148,7 +148,8 @@ enum ASRTranscriptionClientFactory {
     /// while the hotkey is held, `finish-task` on release yields the 整段 transcript. The host is the
     /// business-space dedicated domain when the card carries a Workspace ID, otherwise the generic
     /// DashScope host; `QwenASRFlashRouting` owns that derivation and the migration off the retired
-    /// OmniRealtime values. 词典 hotwords ride the run-task `vocabulary` 即时热词 field.
+    /// OmniRealtime values. Stable synchronized terms use a bound `vocabulary_id`; any local or
+    /// per-capture delta uses the complete request-level `vocabulary` instead.
     ///
     /// Resolved fresh per capture (the capture service calls this in `start()`), so a provider /
     /// region / Workspace / model / key change takes effect without an app restart.
@@ -171,16 +172,31 @@ enum ASRTranscriptionClientFactory {
             "workspaceId", providerId: providerId, capability: .asr, defaults: defaults,
             activeProviderId: defaults.string(forKey: "byok.asr.provider"))
         let streamingMode = QwenASRStreamingModeSettings.mode(defaults: defaults)
+        let endpoint = QwenASRFlashRouting.endpoint(workspaceID: workspaceID, region: region)
+        let model = QwenASRFlashRouting.normalizedModel(
+            stored: settings.model(forProvider: providerId, fallback: QwenASRFlashRouting.defaultModel),
+            fallback: QwenASRFlashRouting.defaultModel)
+        let persistentHotwords = ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults)
+        let requestHotwords = ContextHotwordSettings.asrWeakPrompt(defaults: defaults)
+        let fingerprint = QwenPrecompiledVocabularySettings.fingerprint(
+            terms: persistentHotwords, model: model)
+        let resolvedIdentifier = QwenPrecompiledVocabularySettings.binding(defaults: defaults)?
+            .resolvedIdentifier(model: model, endpoint: endpoint, vocabularyFingerprint: fingerprint)
+        let persistentVocabulary = QwenASRHotwords.vocabulary(from: persistentHotwords, model: model)
+        let requestVocabulary = QwenASRHotwords.vocabulary(from: requestHotwords, model: model)
+        // Scene filtering, newly learned terms, manual edits and transient screen terms all change
+        // the request vocabulary. Because Qwen makes instant vocabulary override the ID, send the
+        // complete request-level set in that case so durable local terms remain effective too.
+        let shouldUsePrecompiled = resolvedIdentifier != nil && requestVocabulary == persistentVocabulary
         return QwenRunTaskCaptureConfig(
-            endpoint: QwenASRFlashRouting.endpoint(workspaceID: workspaceID, region: region),
+            endpoint: endpoint,
             apiKey: apiKey(
                 forProvider: providerId,
                 plan: settings.asrPlan(forProvider: providerId),
                 keyReader: keyReader),
-            model: QwenASRFlashRouting.normalizedModel(
-                stored: settings.model(forProvider: providerId, fallback: QwenASRFlashRouting.defaultModel),
-                fallback: QwenASRFlashRouting.defaultModel),
-            hotwords: ContextHotwordSettings.asrWeakPrompt(defaults: defaults),   // 517: 词典 + 当次屏幕临时词
+            model: model,
+            hotwords: shouldUsePrecompiled ? [] : requestHotwords,
+            precompiledVocabularyID: shouldUsePrecompiled ? resolvedIdentifier : nil,
             context: context,
             contextScope: contextScope,
             heartbeat: true,
