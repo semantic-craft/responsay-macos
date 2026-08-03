@@ -46,7 +46,7 @@ enum StyleProfileRefresher {
 
     /// Recent kept 意图成稿 outputs — the calibration target for "sounds like me".
     private static func recentDictationSamples(defaults: UserDefaults) -> [String] {
-        guard let store = try? makeStore() else { return [] }
+        let store = makeStore(defaults: defaults)
         let items = (try? store.recent(40)) ?? []
         return items
             .filter { $0.actionKind == .polish }
@@ -55,10 +55,7 @@ enum StyleProfileRefresher {
     }
 
     /// Same default store CaptureController uses (SQLite, file fallback).
-    private static func makeStore() throws -> CaptureStore {
-        if let sqlite = try? SQLiteReviewStore.defaultStore() {
-            return ReviewCaptureStore(reviewStore: sqlite)
-        }
-        return FileCaptureStore.defaultStore()
+    private static func makeStore(defaults: UserDefaults) -> CaptureStore {
+        CaptureHistoryStoreFactory.make(defaults: defaults)
     }
 }

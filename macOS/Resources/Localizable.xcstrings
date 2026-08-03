@@ -2349,6 +2349,16 @@
         }
       }
     },
+    "听写历史和学习日志按此期限清理；自动学到的词条会继续保留在识别词典中。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dictation history and the learning log use this cleanup period; auto-learned terms remain in the recognition dictionary."
+          }
+        }
+      }
+    },
     "听写历史只存在本机，可随时清理。": {
       "localizations": {
         "en": {
@@ -4575,12 +4585,42 @@
         }
       }
     },
-    "本机保存 · 默认 30 天后自动清理": {
+    "本机保存 · 30 天后自动清理": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stored locally · auto-deleted after 30 days by default"
+            "value": "Stored locally · auto-deleted after 30 days"
+          }
+        }
+      }
+    },
+    "本机保存 · 7 天后自动清理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored locally · auto-deleted after 7 days"
+          }
+        }
+      }
+    },
+    "本机保存 · 90 天后自动清理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored locally · auto-deleted after 90 days"
+          }
+        }
+      }
+    },
+    "本机保存 · 不自动清理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored locally · automatic cleanup off"
           }
         }
       }

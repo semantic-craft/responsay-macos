@@ -24,6 +24,8 @@ struct SettingsDataPane: View {
                     }
                     .labelsHidden().frame(maxWidth: 160)
                 }
+                Text("听写历史和学习日志按此期限清理；自动学到的词条会继续保留在识别词典中。")
+                    .font(SettingsTheme.footnote).foregroundStyle(appearanceStore.palette.ink3)
             }
             WarmCard {
                 HStack(alignment: .top) {
@@ -43,5 +45,9 @@ struct SettingsDataPane: View {
             }
         }
         .navigationTitle("数据")
+        .onChange(of: historyCleanup) { _, _ in
+            _ = CaptureHistoryStoreFactory.make()
+            HistoryRetentionCleanup.pruneLearningRecords()
+        }
     }
 }

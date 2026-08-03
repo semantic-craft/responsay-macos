@@ -209,8 +209,7 @@ enum ContextHotwordSettings {
         }
         let hardMatchUser = pass(sets.hardMatchUser)
         let currentTerms = Set(hardMatchUser)
-        let liveAliases = HotwordLearningHistory(records: AutoLearnHotwordHistorySettings.records(defaults: defaults))
-            .learnedAliases()
+        let liveAliases = AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults)
             .filter { currentTerms.contains($0.value) }
         var aliases = sets.learnedAliases.filter { currentTerms.contains($0.value) }
         aliases.merge(liveAliases) { _, live in live }

@@ -10,6 +10,7 @@ final class AutoLearnHotwordHistorySettingsTests: XCTestCase {
         super.setUp()
         defaults = UserDefaults(suiteName: suite)
         defaults.removePersistentDomain(forName: suite)
+        defaults.set("never", forKey: HistoryRetentionSettings.cleanupKey)
     }
 
     override func tearDown() {
@@ -87,5 +88,33 @@ final class AutoLearnHotwordHistorySettingsTests: XCTestCase {
         let updated = AutoLearnHotwordHistorySettings.records(defaults: defaults).first
         XCTAssertEqual(updated?.status, .added)
         XCTAssertEqual(updated?.learnedAt, Date(timeIntervalSince1970: 20))
+    }
+
+    func testFunctionalCorrectionStateOutlivesPrunedAuditRowsAndCanStillBeUndone() {
+        let proposal = HotwordCandidateProposal(
+            term: "CanonicalTerm",
+            source: .manual,
+            confidence: 1,
+            reason: "synthetic correction",
+            sourceTerm: "SyntheticMishear")
+        XCTAssertTrue(AutoLearnHotwordHistorySettings.append(
+            proposal,
+            status: .added,
+            at: Date(timeIntervalSince1970: 10),
+            defaults: defaults))
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults),
+            ["SyntheticMishear": "CanonicalTerm"])
+
+        defaults.removeObject(forKey: AutoLearnHotwordHistorySettings.historyKey)
+
+        XCTAssertFalse(AutoLearnHotwordHistorySettings.markUndone(
+            term: "CanonicalTerm",
+            at: Date(timeIntervalSince1970: 20),
+            defaults: defaults))
+        XCTAssertTrue(AutoLearnHotwordHistorySettings.learnedAliases(defaults: defaults).isEmpty)
+        XCTAssertEqual(
+            AutoLearnHotwordHistorySettings.tombstonedTerms(defaults: defaults),
+            ["CanonicalTerm"])
     }
 }
