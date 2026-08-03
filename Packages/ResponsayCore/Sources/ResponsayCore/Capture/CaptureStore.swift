@@ -14,6 +14,10 @@ public protocol CaptureStore: Sendable {
     func delete(id: UUID) throws
     /// Remove every capture (History 清空). Default no-op.
     func deleteAll() throws
+    /// Remove captures at or before the expiration boundary. Returns the number removed.
+    /// Default no-op keeps lightweight test doubles source-compatible.
+    @discardableResult
+    func prune(createdAtOrBefore cutoff: Date) throws -> Int
 }
 
 public extension CaptureStore {
@@ -33,6 +37,7 @@ public extension CaptureStore {
 
     func delete(id: UUID) throws {}
     func deleteAll() throws {}
+    func prune(createdAtOrBefore cutoff: Date) throws -> Int { 0 }
 }
 
 public extension Notification.Name {
@@ -90,6 +95,18 @@ public struct FileCaptureStore: CaptureStore {
         let data = try JSONEncoder().encode([CaptureItem]())
         try data.write(to: fileURL, options: .atomic)
         NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
+    }
+
+    @discardableResult
+    public func prune(createdAtOrBefore cutoff: Date) throws -> Int {
+        let all = try loadAll()
+        let remaining = all.filter { $0.createdAt > cutoff }
+        let removedCount = all.count - remaining.count
+        guard removedCount > 0 else { return 0 }
+        let data = try JSONEncoder().encode(remaining)
+        try data.write(to: fileURL, options: .atomic)
+        NotificationCenter.default.post(name: .captureStoreDidChange, object: nil)
+        return removedCount
     }
 }
 

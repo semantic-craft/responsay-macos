@@ -15,6 +15,7 @@ struct HistoryScreen: View {
     @State private var loaded = false
     @State private var selection: HistoryItem.ID?
     @State private var store: CaptureStore?
+    @AppStorage(HistoryRetentionSettings.cleanupKey) private var historyCleanup = "30"
 
     private var filtered: [HistoryItem] {
         var rows = items
@@ -60,6 +61,7 @@ struct HistoryScreen: View {
         }
         .background(SettingsTheme.bg)
         .onAppear(perform: loadIfNeeded)
+        .onChange(of: historyCleanup) { _, _ in reload() }
     }
 
     // MARK: Header
@@ -68,7 +70,7 @@ struct HistoryScreen: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("历史").font(.system(size: SkinMetrics.fsTitle, weight: .semibold)).foregroundStyle(SettingsTheme.ink)
-                Text("本机保存 · 默认 30 天后自动清理")
+                Text(HistoryRetentionPeriod(storedValue: historyCleanup).historySummary)
                     .font(.system(size: SkinMetrics.fsFoot)).foregroundStyle(SettingsTheme.ink2)
             }
             Spacer()
@@ -277,15 +279,15 @@ struct HistoryScreen: View {
     private func loadIfNeeded() {
         guard !loaded else { return }
         loaded = true
-        store = Self.makeStore()
-        items = ((try? store?.recent(500)) ?? []).map(Self.historyItem(from:))
+        reload()
     }
 
-    private static func makeStore() -> CaptureStore {
-        if let sqlite = try? SQLiteReviewStore.defaultStore() {
-            return ReviewCaptureStore(reviewStore: sqlite)
+    private func reload() {
+        store = CaptureHistoryStoreFactory.make()
+        items = ((try? store?.recent(500)) ?? []).map(Self.historyItem(from:))
+        if let selection, !items.contains(where: { $0.id == selection }) {
+            self.selection = nil
         }
-        return FileCaptureStore.defaultStore()
     }
 
     /// Adapt a `CaptureItem` (source + idiomatic + reasons) to the History row model.

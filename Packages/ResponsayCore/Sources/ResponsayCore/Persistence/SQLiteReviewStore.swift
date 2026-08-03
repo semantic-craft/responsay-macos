@@ -80,6 +80,18 @@ public final class SQLiteReviewStore: ReviewStore, @unchecked Sendable {
         }
     }
 
+    @discardableResult
+    public func prune(createdAtOrBefore cutoff: Date) throws -> Int {
+        try connection.locked {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try connection.prepare("DELETE FROM review_cards WHERE created_at <= ?;", &statement)
+            sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw connection.lastError() }
+            return Int(sqlite3_changes(connection.handle))
+        }
+    }
+
     public func due(now: Date = Date(), limit: Int) throws -> [ReviewCard] {
         try connection.locked {
             try fetchCards(
