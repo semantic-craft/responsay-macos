@@ -9,6 +9,11 @@ import ResponsayCore
 /// API key), audio, partial hypotheses, downstream rewrites, or assistant messages.
 @MainActor
 final class PersistentASRContextStore {
+    typealias ExpiryScheduler = @MainActor (
+        _ delay: TimeInterval,
+        _ action: @escaping @MainActor () -> Void
+    ) -> @MainActor () -> Void
+
     static let maximumItemsPerBundleID = 5
     static let maximumCharactersPerItem = 400
     static let timeToLive: TimeInterval = 2 * 60 * 60
@@ -35,32 +40,51 @@ final class PersistentASRContextStore {
 
     private let fileURL: URL
     private let now: @MainActor () -> Date
+    private let expiryScheduler: ExpiryScheduler
+    private let persistenceFailure: @MainActor () -> Void
+    private var cancelScheduledCleanup: (@MainActor () -> Void)?
 
     init(
         fileURL: URL = PersistentASRContextStore.defaultFileURL,
-        now: @escaping @MainActor () -> Date = Date.init
+        now: @escaping @MainActor () -> Date = Date.init,
+        expiryScheduler: @escaping ExpiryScheduler = PersistentASRContextStore.scheduleExpiry,
+        persistenceFailure: @escaping @MainActor () -> Void = {}
     ) {
         self.fileURL = fileURL
         self.now = now
+        self.expiryScheduler = expiryScheduler
+        self.persistenceFailure = persistenceFailure
     }
 
     /// Reads one Bundle-ID bucket after physically enforcing TTL and count limits for every bucket.
     func items(for bundleIdentifier: String) -> [Item] {
-        let payload = readAndPrune().payload
+        let result = readAndPrune()
+        guard result.succeeded else {
+            failClosed()
+            return []
+        }
         guard let bundleIdentifier = Self.cleanBundleIdentifier(bundleIdentifier) else { return [] }
-        return payload.items.filter { $0.bundleIdentifier == bundleIdentifier }
+        return result.payload.items.filter { $0.bundleIdentifier == bundleIdentifier }
     }
 
     /// Test/startup seam that also guarantees a physical cleanup pass across all buckets.
     func allItems() -> [Item] {
-        readAndPrune().payload.items
+        let result = readAndPrune()
+        guard result.succeeded else {
+            failClosed()
+            return []
+        }
+        return result.payload.items
     }
 
     /// Stores one raw server-final segment. Cleanup runs even when the supplied item is invalid.
     @discardableResult
     func record(_ rawFinalText: String, scope bundleIdentifier: String) -> UUID? {
         let readResult = readAndPrune()
-        guard readResult.succeeded else { return nil }
+        guard readResult.succeeded else {
+            failClosed()
+            return nil
+        }
         var payload = readResult.payload
         guard let bundleIdentifier = Self.cleanBundleIdentifier(bundleIdentifier),
               let rawFinalText = Self.cleanRawFinalText(rawFinalText) else { return nil }
@@ -71,17 +95,28 @@ final class PersistentASRContextStore {
             capturedAt: now())
         payload.items.append(item)
         payload = pruned(payload, relativeTo: now())
-        return persist(payload) ? item.id : nil
+        guard persist(payload) else {
+            failClosed()
+            return nil
+        }
+        return item.id
     }
 
     @discardableResult
     func cleanup() -> Bool {
-        guard preparePrivateDirectory() else { return false }
-        return readAndPrune().succeeded
+        guard preparePrivateDirectory() else {
+            failClosed()
+            return false
+        }
+        let succeeded = readAndPrune().succeeded
+        if !succeeded { failClosed() }
+        return succeeded
     }
 
     @discardableResult
     func clear() -> Bool {
+        cancelScheduledCleanup?()
+        cancelScheduledCleanup = nil
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return true }
         do {
             try FileManager.default.removeItem(at: fileURL)
@@ -100,6 +135,7 @@ final class PersistentASRContextStore {
         if cleaned != loaded {
             return (cleaned, persist(cleaned))
         }
+        scheduleCleanup(for: cleaned)
         return (cleaned, true)
     }
 
@@ -162,6 +198,7 @@ final class PersistentASRContextStore {
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600],
                 ofItemAtPath: fileURL.path)
+            scheduleCleanup(for: payload)
             return true
         } catch {
             // If publication succeeded but permission hardening did not, fail closed by removing
@@ -201,6 +238,45 @@ final class PersistentASRContextStore {
         }
     }
 
+    private func scheduleCleanup(for payload: Payload) {
+        cancelScheduledCleanup?()
+        cancelScheduledCleanup = nil
+        guard let earliestCapture = payload.items.map(\.capturedAt).min() else { return }
+        let delay = max(
+            0,
+            earliestCapture.addingTimeInterval(Self.timeToLive).timeIntervalSince(now()))
+        cancelScheduledCleanup = expiryScheduler(delay) {
+            // Keep this store alive until its final private item expires, including when startup
+            // cleanup created it before the shared ASR session store was initialized.
+            guard self.readAndPrune().succeeded else {
+                self.failClosed()
+                return
+            }
+        }
+    }
+
+    private func failClosed() {
+        _ = clear()
+        persistenceFailure()
+    }
+
+    static func scheduleExpiry(
+        after delay: TimeInterval,
+        action: @escaping @MainActor () -> Void
+    ) -> @MainActor () -> Void {
+        let nanoseconds = UInt64(max(0, delay) * 1_000_000_000)
+        let task = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            action()
+        }
+        return { task.cancel() }
+    }
+
     private static func cleanBundleIdentifier(_ value: String) -> String? {
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : cleaned
@@ -227,7 +303,11 @@ enum PersistentASRContextSettings {
         defaults: UserDefaults = .standard,
         fileURL: URL = PersistentASRContextStore.defaultFileURL
     ) -> Bool {
-        let store = PersistentASRContextStore(fileURL: fileURL)
+        let store = PersistentASRContextStore(
+            fileURL: fileURL,
+            persistenceFailure: {
+                defaults.set(false, forKey: enabledKey)
+            })
         if enabled {
             guard store.cleanup() else {
                 defaults.set(false, forKey: enabledKey)
@@ -257,9 +337,17 @@ enum PersistentASRContextSettings {
     static func prepareAtLaunch(
         defaults: UserDefaults = .standard,
         fileURL: URL = PersistentASRContextStore.defaultFileURL,
-        now: Date = Date()
+        now: @escaping @MainActor () -> Date = Date.init,
+        expiryScheduler: @escaping PersistentASRContextStore.ExpiryScheduler =
+            PersistentASRContextStore.scheduleExpiry
     ) {
-        let store = PersistentASRContextStore(fileURL: fileURL, now: { now })
+        let store = PersistentASRContextStore(
+            fileURL: fileURL,
+            now: now,
+            expiryScheduler: expiryScheduler,
+            persistenceFailure: {
+                defaults.set(false, forKey: enabledKey)
+            })
         if isEnabled(defaults: defaults) {
             if !store.cleanup() {
                 defaults.set(false, forKey: enabledKey)
