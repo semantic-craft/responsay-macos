@@ -67,6 +67,30 @@ final class AutoLearnHotwordProcessorTests: XCTestCase {
         XCTAssertFalse(called)
     }
 
+    func testExplicitCorrectionLearningWorksWhileBroadAutoLearnIsDisabled() async {
+        var added: [HotwordCandidateProposal] = []
+        var statuses: [HotwordLearningRecordStatus] = []
+        let processor = AutoLearnHotwordProcessor(
+            isEnabled: { false },
+            isExplicitCorrectionLearningEnabled: { true },
+            mode: { .localRules },
+            confirmationPolicy: { .confirmEveryTime },
+            existingManualTerms: { [] },
+            existingAutoTerms: { [] },
+            addAuto: { proposal in added.append(proposal); return true },
+            record: { _, status in statuses.append(status); return true })
+
+        let result = await processor.process(HotwordCorrectionContext(
+            insertedText: "I use matis every day.",
+            userFinalText: "I use Metis every day.",
+            appName: "com.apple.TextEdit",
+            windowTitle: "Untitled"))
+
+        XCTAssertEqual(result.addedTerms, ["Metis"])
+        XCTAssertEqual(added.map(\.sourceTerm), ["matis"])
+        XCTAssertEqual(statuses, [.added])
+    }
+
     func testLocalModelFailureFallsBackToLocalRules() async {
         let processor = AutoLearnHotwordProcessor(
             isEnabled: { true },

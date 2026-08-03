@@ -154,6 +154,8 @@ enum ASRTranscriptionClientFactory {
     /// region / Workspace / model / key change takes effect without an app restart.
     static func qwenRunTaskConfig(
         defaults: UserDefaults = .standard,
+        context: [String] = [],
+        contextScope: String? = nil,
         keyReader: KeyReader = { BYOKKeychain.read($0) }
     ) -> QwenRunTaskCaptureConfig {
         let providerId = QwenASRFlashRouting.providerId
@@ -168,6 +170,7 @@ enum ASRTranscriptionClientFactory {
         let workspaceID = CapabilityProviderConfigStore.string(
             "workspaceId", providerId: providerId, capability: .asr, defaults: defaults,
             activeProviderId: defaults.string(forKey: "byok.asr.provider"))
+        let streamingMode = QwenASRStreamingModeSettings.mode(defaults: defaults)
         return QwenRunTaskCaptureConfig(
             endpoint: QwenASRFlashRouting.endpoint(workspaceID: workspaceID, region: region),
             apiKey: apiKey(
@@ -177,7 +180,12 @@ enum ASRTranscriptionClientFactory {
             model: QwenASRFlashRouting.normalizedModel(
                 stored: settings.model(forProvider: providerId, fallback: QwenASRFlashRouting.defaultModel),
                 fallback: QwenASRFlashRouting.defaultModel),
-            hotwords: ContextHotwordSettings.asrWeakPrompt(defaults: defaults))   // 517: 词典 + 当次屏幕临时词
+            hotwords: ContextHotwordSettings.asrWeakPrompt(defaults: defaults),   // 517: 词典 + 当次屏幕临时词
+            context: context,
+            contextScope: contextScope,
+            heartbeat: true,
+            semanticPunctuationEnabled: streamingMode == .longForm,
+            multiThresholdModeEnabled: streamingMode == .quick)
     }
 
     // 按量付费 (sk-) and Token Plan (tp-) keep separate keys for multi-plan providers (e.g.

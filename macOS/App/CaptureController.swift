@@ -119,7 +119,7 @@ final class CaptureController {
                 }
                 // 434 — before starting a new capture, re-read the field: if the user edited the
                 // last insertion, that's the correction to learn from.
-                self?.autoLearnController.checkForCorrection()
+                self?.autoLearnController.checkForCorrection(requiresStableSnapshot: false)
                 self?.speechController.beginCaptureFromHotkey(action, trigger: trigger)
             },
             finishCurrentHotkeyAction: { [weak self] trigger in
@@ -164,7 +164,8 @@ final class CaptureController {
 
     init() {
         let tracker = targetTracker
-        self.voiceAssistantVM = VoiceAssistantViewModel(speech: RoutedSpeechCaptureService())
+        self.voiceAssistantVM = VoiceAssistantViewModel(speech: RoutedSpeechCaptureService(
+            contextScopeProvider: { tracker.target?.bundleIdentifier }))
         // 重新生成 from the answer card re-streams via a freshly-resolved endpoint — the same
         // 任意提问 chat path as stopAskAnythingSession (resolveChat, honoring the 思考 toggle), so
         // the card never has to hold an LLM client itself.
@@ -210,7 +211,8 @@ final class CaptureController {
         // (native / web / Electron) is HITL-verified in #568.
         let intentReverter = IntentInsertionReverter(targetProvider: { tracker.target })
         vm = QuickCaptureViewModel(
-            speech: RoutedSpeechCaptureService(),
+            speech: RoutedSpeechCaptureService(
+                contextScopeProvider: { tracker.target?.bundleIdentifier }),
             coach: SettingsBackedCoachAPI(),
             store: Self.makeCaptureStore(),
             inserter: dictationInserter,

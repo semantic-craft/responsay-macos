@@ -3,6 +3,10 @@ import ResponsayCore
 
 struct SettingsASRPane: View {
     @Environment(AppearanceStore.self) private var appearanceStore
+    @AppStorage(QwenASRStreamingModeSettings.key)
+    private var qwenStreamingModeRaw = QwenASRStreamingMode.quick.rawValue
+    @AppStorage("byok.asr.model")
+    private var selectedASRModel = QwenASRFlashRouting.defaultModel
 
     @Binding var asrEngineRaw: String
     @Binding var localeRaw: String
@@ -40,11 +44,36 @@ struct SettingsASRPane: View {
                 WarmCard {
                     LabeledRow(label: "默认听写语言") {
                         Picker("", selection: $localeRaw) {
+                            if currentCloudProviderId == QwenASRFlashRouting.providerId {
+                                Text("自动检测").tag(CaptureLocale.automatic.rawValue)
+                            }
                             Text("English").tag(CaptureLocale.english.rawValue)
                             Text("中文").tag(CaptureLocale.chinese.rawValue)
+                            if supportsMixedLanguageHints {
+                                Text("中英混合").tag(CaptureLocale.mixed.rawValue)
+                            }
                         }
                         .labelsHidden()
                         .frame(maxWidth: 160)
+                    }
+                }
+                if currentCloudProviderId == QwenASRFlashRouting.providerId {
+                    WarmCard {
+                        LabeledRow(label: "听写模式") {
+                            Picker("", selection: $qwenStreamingModeRaw) {
+                                ForEach(QwenASRStreamingMode.allCases, id: \.rawValue) { mode in
+                                    Text(mode.title).tag(mode.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                        Text(qwenStreamingModeRaw == QwenASRStreamingMode.longForm.rawValue
+                            ? "长篇听写使用语义断句，适合会议和连续口述；句子返回会稍慢。"
+                            : "快速听写使用低延迟断句，适合日常按住说、松手写入。")
+                            .font(SettingsTheme.footnote)
+                            .foregroundStyle(appearanceStore.palette.ink3)
                     }
                 }
                 // Apple 系统原生 leads the local options: zero-download, always
@@ -106,13 +135,36 @@ struct SettingsASRPane: View {
         }
         .navigationTitle("语音识别连接配置")
         .onAppear {
+            normalizeProviderSpecificLocale()
             Task { await refreshModelManagerStatus() }
             ensureModelManagers()
+        }
+        .onChange(of: currentCloudProviderId) { _, _ in
+            normalizeProviderSpecificLocale()
+        }
+        .onChange(of: selectedASRModel) { _, _ in
+            normalizeProviderSpecificLocale()
         }
     }
 
     private var currentCloudProviderId: String? {
         ASREngine(rawValue: asrEngineRaw)?.associatedProviderId
+    }
+
+    private var supportsMixedLanguageHints: Bool {
+        currentCloudProviderId == QwenASRFlashRouting.providerId
+            && QwenASRHotwords.languageHints(for: .mixed, model: selectedASRModel).count > 1
+    }
+
+    private func normalizeProviderSpecificLocale() {
+        if localeRaw == CaptureLocale.mixed.rawValue, !supportsMixedLanguageHints {
+            localeRaw = CaptureLocale.chinese.rawValue
+        } else if localeRaw == CaptureLocale.automatic.rawValue,
+                  currentCloudProviderId != QwenASRFlashRouting.providerId {
+            localeRaw = Locale.current.identifier.lowercased().hasPrefix("en")
+                ? CaptureLocale.english.rawValue
+                : CaptureLocale.chinese.rawValue
+        }
     }
 
     private var engineComparison: some View {

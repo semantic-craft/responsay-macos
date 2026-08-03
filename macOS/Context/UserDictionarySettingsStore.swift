@@ -31,6 +31,10 @@ struct UserDictionarySettingsStore {
         AutoLearnHotwordSettings.resolve(defaults: defaults)
     }
 
+    var explicitCorrectionLearningEnabled: Bool {
+        ExplicitCorrectionLearningSettings.resolve(defaults: defaults)
+    }
+
     var store: HotwordStore {
         ContextHotwordSettings.store(defaults: defaults)
     }
@@ -91,6 +95,10 @@ struct UserDictionarySettingsStore {
 
     func setAutoLearnEnabled(_ isEnabled: Bool) {
         defaults.set(isEnabled, forKey: AutoLearnHotwordSettings.key)
+    }
+
+    func setExplicitCorrectionLearningEnabled(_ isEnabled: Bool) {
+        defaults.set(isEnabled, forKey: ExplicitCorrectionLearningSettings.key)
     }
 
     func setConfirmationPolicy(_ policy: HotwordConfirmationPolicy) {

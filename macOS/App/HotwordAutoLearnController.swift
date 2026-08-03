@@ -41,7 +41,9 @@ final class HotwordAutoLearnController {
     init(
         snapshotReader: @escaping () -> (text: String, app: String, sceneID: String?, windowTitle: String?)?,
         processor: AutoLearnHotwordProcessor = .live(),
-        isEnabled: @escaping () -> Bool = { AutoLearnHotwordSettings.isEnabled },
+        isEnabled: @escaping () -> Bool = {
+            AutoLearnHotwordSettings.isEnabled || ExplicitCorrectionLearningSettings.isEnabled
+        },
         notify: @escaping (String) -> Void = { term in
             NotificationCenter.default.post(
                 name: .autoLearnHotwordDidAdd, object: nil, userInfo: ["term": term])
@@ -74,7 +76,7 @@ final class HotwordAutoLearnController {
 
     /// Re-read the focused field before the next capture; learn from any edit to the snapshot.
     @discardableResult
-    func checkForCorrection() -> Bool {
+    func checkForCorrection(requiresStableSnapshot: Bool = true) -> Bool {
         guard isEnabled() else { return false }
         guard let snap = snapshotReader() else {
             log.info("Auto-learn correction check cleared; readable false")
@@ -84,7 +86,7 @@ final class HotwordAutoLearnController {
             finishLifecycle(.abandoned)   // 509: field unreadable → learn path is dead
             return false
         }
-        guard snapshotIsStable(snap) else { return false }
+        if requiresStableSnapshot, !snapshotIsStable(snap) { return false }
         // 509: count distinct post-insert edits for the lifecycle (observability only).
         if let insertedText, snap.text != insertedText, snap.text != lastCountedEdit {
             lifecycle?.recordEdit()
@@ -100,7 +102,7 @@ final class HotwordAutoLearnController {
         }
         log.info("Auto-learn observed correction; insertedChars \(edit.inserted.count, privacy: .public); finalChars \(edit.userFinal.count, privacy: .public); app \(snap.app, privacy: .public); scene \(String(describing: snap.sceneID != nil), privacy: .public)")
         finishLifecycle(.learned)   // 509
-        processEdit(
+        _ = processEdit(
             inserted: edit.inserted,
             userFinal: edit.userFinal,
             app: snap.app,
@@ -113,7 +115,6 @@ final class HotwordAutoLearnController {
     @discardableResult
     func recordEdit(inserted: String, userFinal: String) -> [String] {
         processEdit(inserted: inserted, userFinal: userFinal, app: nil, windowTitle: nil)
-        return []
     }
 
     private func startObservationWindow() {
@@ -155,7 +156,7 @@ final class HotwordAutoLearnController {
         lastCountedEdit = nil
     }
 
-    private func processEdit(inserted: String, userFinal: String, app: String?, windowTitle: String?) {
+    private func processEdit(inserted: String, userFinal: String, app: String?, windowTitle: String?) -> [String] {
         observationTask?.cancel()
         lastObservedSnapshot = nil
         stableSnapshotPolls = 0
@@ -165,13 +166,17 @@ final class HotwordAutoLearnController {
             userFinalText: userFinal,
             appName: app,
             windowTitle: windowTitle)
+        let immediate = processor.processExplicitCorrectionSynchronously(context)
+        for term in immediate.notifiedTerms { notify(term) }
         Task { @MainActor [processor, notify] in
-            let result = await processor.process(context)
+            let result = await processor.processBroadLearning(
+                context, excludingTerms: Set(immediate.addedTerms))
             // Toast only for specialized terms; ordinary terms are added silently (PRD §3 Tier 1/2).
             for term in result.notifiedTerms {
                 notify(term)
             }
         }
+        return immediate.addedTerms
     }
 
     private func snapshotIsStable(_ snap: (text: String, app: String, sceneID: String?, windowTitle: String?)) -> Bool {

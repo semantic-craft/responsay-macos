@@ -8,6 +8,7 @@ struct AutoLearnHotwordProcessor {
     typealias Record = (HotwordCandidateProposal, HotwordLearningRecordStatus) -> Bool
 
     private let isEnabled: () -> Bool
+    private let isExplicitCorrectionLearningEnabled: () -> Bool
     private let mode: () -> AutoLearnHotwordMode
     private let confirmationPolicy: () -> HotwordConfirmationPolicy
     private let existingManualTerms: () -> Set<String>
@@ -21,6 +22,7 @@ struct AutoLearnHotwordProcessor {
 
     init(
         isEnabled: @escaping () -> Bool,
+        isExplicitCorrectionLearningEnabled: @escaping () -> Bool = { false },
         mode: @escaping () -> AutoLearnHotwordMode,
         confirmationPolicy: @escaping () -> HotwordConfirmationPolicy,
         existingManualTerms: @escaping () -> Set<String>,
@@ -32,6 +34,7 @@ struct AutoLearnHotwordProcessor {
         recentlyUndoneTerms: @escaping () -> Set<String> = { [] }
     ) {
         self.isEnabled = isEnabled
+        self.isExplicitCorrectionLearningEnabled = isExplicitCorrectionLearningEnabled
         self.mode = mode
         self.confirmationPolicy = confirmationPolicy
         self.existingManualTerms = existingManualTerms
@@ -46,6 +49,7 @@ struct AutoLearnHotwordProcessor {
     static func live() -> AutoLearnHotwordProcessor {
         AutoLearnHotwordProcessor(
             isEnabled: { AutoLearnHotwordSettings.isEnabled },
+            isExplicitCorrectionLearningEnabled: { ExplicitCorrectionLearningSettings.isEnabled },
             mode: { AutoLearnHotwordModeSettings.mode() },
             confirmationPolicy: { AutoLearnHotwordHistorySettings.confirmationPolicy() },
             existingManualTerms: { Set(ContextHotwordSettings.hotwords()) },
@@ -83,6 +87,50 @@ struct AutoLearnHotwordProcessor {
 
     @MainActor
     func process(_ context: HotwordCorrectionContext) async -> AutoLearnHotwordProcessResult {
+        let explicit = processExplicitCorrectionSynchronously(context)
+        guard isEnabled() else { return explicit }
+        let broad = await processBroadLearning(context, excludingTerms: Set(explicit.addedTerms))
+        return AutoLearnHotwordProcessResult(
+            addedTerms: explicit.addedTerms + broad.addedTerms,
+            notifiedTerms: explicit.notifiedTerms + broad.notifiedTerms,
+            extractionStatus: broad.extractionStatus)
+    }
+
+    /// Direct user supervision is resolved synchronously so the next capture's Qwen
+    /// `vocabulary` and Context snapshot can include the correction immediately.
+    @MainActor
+    func processExplicitCorrectionSynchronously(
+        _ context: HotwordCorrectionContext
+    ) -> AutoLearnHotwordProcessResult {
+        guard isExplicitCorrectionLearningEnabled() else {
+            return AutoLearnHotwordProcessResult(addedTerms: [], extractionStatus: .notConfigured)
+        }
+        guard longTermLearningRejection(context) == nil else {
+            return AutoLearnHotwordProcessResult(addedTerms: [], extractionStatus: .notConfigured)
+        }
+
+        let candidates = RuleBasedHotwordCandidateExtractor()
+            .extractSynchronously(context)
+            .filter { proposal in
+                guard let source = proposal.sourceTerm?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    return false
+                }
+                return !source.isEmpty
+                    && source != proposal.term
+                    && proposal.confidence >= HotwordLearningDecisionEngine.defaultMidConfidenceThreshold
+            }
+        return apply(
+            candidates,
+            to: context,
+            extractionStatus: candidates.isEmpty ? .lowConfidence : .ready,
+            autoAddExplicitCorrections: true)
+    }
+
+    @MainActor
+    func processBroadLearning(
+        _ context: HotwordCorrectionContext,
+        excludingTerms: Set<String> = []
+    ) async -> AutoLearnHotwordProcessResult {
         guard isEnabled() else {
             return AutoLearnHotwordProcessResult(addedTerms: [], extractionStatus: .notConfigured)
         }
@@ -94,8 +142,21 @@ struct AutoLearnHotwordProcessor {
         guard !extraction.candidates.isEmpty else {
             return AutoLearnHotwordProcessResult(addedTerms: [], extractionStatus: extraction.status)
         }
+        return apply(
+            extraction.candidates.filter { !excludingTerms.contains($0.term) },
+            to: context,
+            extractionStatus: extraction.status,
+            autoAddExplicitCorrections: false)
+    }
 
-        let candidates = extraction.candidates.map {
+    @MainActor
+    private func apply(
+        _ proposals: [HotwordCandidateProposal],
+        to context: HotwordCorrectionContext,
+        extractionStatus: HotwordCandidateExtractionStatus,
+        autoAddExplicitCorrections: Bool
+    ) -> AutoLearnHotwordProcessResult {
+        let candidates = proposals.map {
             $0.withContext(appName: context.appName, windowTitle: context.windowTitle)
         }
         let decisions = decisionEngine.decide(
@@ -103,7 +164,8 @@ struct AutoLearnHotwordProcessor {
             policy: confirmationPolicy(),
             existingManualTerms: existingManualTerms(),
             existingAutoTerms: existingAutoTerms(),
-            recentlyUndoneTerms: recentlyUndoneTerms())
+            recentlyUndoneTerms: recentlyUndoneTerms(),
+            autoAddExplicitCorrections: autoAddExplicitCorrections)
 
         var addedTerms: [String] = []
         var notifiedTerms: [String] = []
@@ -126,7 +188,7 @@ struct AutoLearnHotwordProcessor {
         }
 
         return AutoLearnHotwordProcessResult(
-            addedTerms: addedTerms, notifiedTerms: notifiedTerms, extractionStatus: extraction.status)
+            addedTerms: addedTerms, notifiedTerms: notifiedTerms, extractionStatus: extractionStatus)
     }
 
     @MainActor
@@ -143,7 +205,7 @@ struct AutoLearnHotwordProcessor {
 
     @MainActor
     private func localRuleExtraction(_ context: HotwordCorrectionContext) async -> HotwordCandidateExtractionResult {
-        let candidates = (try? await RuleBasedHotwordCandidateExtractor().extract(context)) ?? []
+        let candidates = RuleBasedHotwordCandidateExtractor().extractSynchronously(context)
         return HotwordCandidateExtractionResult(
             candidates: candidates,
             status: candidates.isEmpty ? .lowConfidence : .ready)

@@ -21,7 +21,8 @@ import ResponsayCore
 @MainActor
 public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-runtask-capture")
-    private let configProvider: @Sendable () -> QwenRunTaskCaptureConfig
+    private let configProvider: () -> QwenRunTaskCaptureConfig
+    private let contextRecorder: @MainActor @Sendable (String, String?) -> [String]
     private let session: URLSession
     private let requireMicPermission: () throws -> Void
 
@@ -44,12 +45,14 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     public private(set) var partialTranscripts: AsyncStream<String> = AsyncStream { $0.finish() }
 
     public init(
-        configProvider: @escaping @Sendable () -> QwenRunTaskCaptureConfig,
+        configProvider: @escaping () -> QwenRunTaskCaptureConfig,
         session: URLSession = .shared,
+        contextRecorder: @escaping @MainActor @Sendable (String, String?) -> [String] = { _, _ in [] },
         requireMicPermission: @escaping () throws -> Void
     ) {
         self.configProvider = configProvider
         self.session = session
+        self.contextRecorder = contextRecorder
         self.requireMicPermission = requireMicPermission
     }
 
@@ -83,15 +86,22 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         self.finalStream = finalStream
         finalContinuation = finalCont
 
-        let languageHint = QwenASRHotwords.languageHint(locale == .chinese ? "zh" : "en")
         let model = config.model
+        let languageHints = QwenASRHotwords.languageHints(for: locale, model: model)
         let hotwords = config.hotwords
+        let context = config.context
+        let heartbeat = config.heartbeat
+        let semanticPunctuationEnabled = config.semanticPunctuationEnabled
+        let multiThresholdModeEnabled = config.multiThresholdModeEnabled
         // Sender: run-task, wait for task-started (audio before it is rejected), then drain frames
         // IN ORDER (AsyncStream keeps yield order; a single consumer preserves it).
         senderTask = Task.detached {
             do {
                 try await client.sendRunTask(
-                    model: model, sampleRate: 16_000, hotwords: hotwords, languageHint: languageHint)
+                    model: model, sampleRate: 16_000, hotwords: hotwords,
+                    languageHints: languageHints, context: context, heartbeat: heartbeat,
+                    semanticPunctuationEnabled: semanticPunctuationEnabled,
+                    multiThresholdModeEnabled: multiThresholdModeEnabled)
             } catch {
                 return
             }
@@ -107,10 +117,19 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         }
         // Receiver: fold events → the terminal 整段 transcript. Intermediate sentences update the
         // client's running transcript but are deliberately not surfaced as capsule partials.
+        let contextScope = config.contextScope
+        let contextRecorder = self.contextRecorder
         receiveTask = Task.detached {
+            var recordedFinalSentenceIDs = Set<Int>()
             do {
                 while true {
                     let event = try await client.receive()
+                    if case let .sentence(id, text, true) = event,
+                       recordedFinalSentenceIDs.insert(id).inserted,
+                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        let updatedContext = await contextRecorder(text, contextScope)
+                        try? await client.sendContinueTask(context: updatedContext)
+                    }
                     guard let update = await client.handleEvent(event) else { continue }
                     switch update {
                     case .partial:

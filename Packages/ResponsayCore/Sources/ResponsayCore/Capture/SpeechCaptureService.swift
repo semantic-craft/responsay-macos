@@ -1,8 +1,12 @@
 import Foundation
 
 public enum CaptureLocale: String, Sendable, CaseIterable {
+    case automatic = "auto"
     case english = "en-US"
     case chinese = "zh-CN"
+    /// Chinese-led bilingual recognition. Providers without multi-hint support fall back to
+    /// Chinese, while Qwen-Audio 3.0 receives both `zh` and `en`.
+    case mixed = "zh-Hans"
 }
 
 public enum SpeechCaptureProfile: String, Sendable, Equatable {

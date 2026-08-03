@@ -43,7 +43,8 @@ public final class AppleSpeechCaptureService: SpeechCaptureService {
         case .authorized: break
         @unknown default: break
         }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale.rawValue)),
+        let recognizerLocale = locale == .automatic ? Locale.current : Locale(identifier: locale.rawValue)
+        guard let recognizer = SFSpeechRecognizer(locale: recognizerLocale),
               recognizer.isAvailable else {
             throw CoachAPIError.message("Speech recognizer unavailable for \(locale.rawValue).")
         }

@@ -37,9 +37,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     /// path and whose only model (qwen3-asr-flash-realtime) supports no hotwords at all; this one
     /// takes the 词典 through 即时热词 `vocabulary`. Final-only on purpose — streaming is for latency,
     /// not for a live capsule preview.
-    private let qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
-        configProvider: { ASRTranscriptionClientFactory.qwenRunTaskConfig() },
-        requireMicPermission: { try MicrophonePermission.ensure(feature: "Qwen ASR realtime") })
+    private let qwenASRFlashRealtime: QwenRunTaskStreamingCaptureService
     /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
     private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
         try SenseVoiceModel.loadRecognizer()
@@ -71,6 +69,20 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     private var captureProfile: SpeechCaptureProfile = .dictation
 
     private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
+
+    init(contextScopeProvider: @escaping @MainActor () -> String? = { nil }) {
+        let contextStore = RecentASRContextSessionStore.shared
+        qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
+            configProvider: {
+                let scope = contextScopeProvider()
+                return ASRTranscriptionClientFactory.qwenRunTaskConfig(
+                    context: contextStore.context(for: scope), contextScope: scope)
+            },
+            contextRecorder: { text, scope in
+                contextStore.record(text, scope: scope)
+            },
+            requireMicPermission: { try MicrophonePermission.ensure(feature: "Qwen ASR realtime") })
+    }
 
     /// Delegates to the resolved engine so callers see the ACTIVE engine's real capability
     /// (partials style, echo risk) rather than a router-level guess.

@@ -28,7 +28,8 @@ public struct HotwordLearningDecisionEngine: Sendable {
         policy: HotwordConfirmationPolicy,
         existingManualTerms: Set<String>,
         existingAutoTerms: Set<String>,
-        recentlyUndoneTerms: Set<String> = []
+        recentlyUndoneTerms: Set<String> = [],
+        autoAddExplicitCorrections: Bool = false
     ) -> [HotwordLearningDecision] {
         proposals.map { proposal in
             let explicitCorrection = isExplicitCorrection(proposal)
@@ -42,6 +43,16 @@ public struct HotwordLearningDecisionEngine: Sendable {
             // explicitly corrects this exact term again. That new edit is the fresh signal.
             if recentlyUndoneTerms.contains(proposal.term), !explicitCorrection {
                 return .ignore(proposal, reason: "已撤销")
+            }
+
+            // A narrow post-insertion edit is direct user supervision, not a model guess. When the
+            // product-level explicit-correction flywheel is enabled, one mid-or-higher correction
+            // is enough to learn the exact surface→canonical alias without asking for a second
+            // confirmation click. Low-confidence edits still follow the conservative tiers below.
+            if autoAddExplicitCorrections,
+               explicitCorrection,
+               proposal.confidence >= midConfidenceThreshold {
+                return .add(proposal, notify: false)
             }
 
             let specialized = classifier.isSpecialized(proposal.term)
