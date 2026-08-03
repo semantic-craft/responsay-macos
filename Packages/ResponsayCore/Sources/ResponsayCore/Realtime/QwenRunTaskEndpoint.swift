@@ -66,6 +66,11 @@ public struct QwenRunTaskEndpoint: Sendable, Equatable {
 
     public var usesDedicatedHost: Bool { Self.normalizedWorkspaceID(workspaceID) != nil }
 
+    /// Model Studio does not support hotwords in Singapore sub-workspaces. The workspace ID does
+    /// not reveal whether a space is primary or subordinate, so dedicated Singapore workspaces are
+    /// conservatively treated as unsupported to keep an optional vocabulary from breaking capture.
+    public var supportsHotwords: Bool { region != .singapore || !usesDedicatedHost }
+
     public var url: URL {
         var components = URLComponents()
         components.scheme = "wss"
@@ -108,6 +113,7 @@ public struct QwenPrecompiledVocabularyBinding: Sendable, Equatable, Codable {
     ) -> String? {
         guard let identifier = QwenASRHotwords.normalizedVocabularyIdentifier(identifier),
               QwenASRHotwords.supportsPrecompiledVocabulary(model: currentModel),
+              endpoint.supportsHotwords,
               normalizedModel(model) == normalizedModel(currentModel),
               region == endpoint.region,
               let boundWorkspace = Self.workspaceIdentity(workspaceID),

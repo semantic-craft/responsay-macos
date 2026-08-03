@@ -38,7 +38,8 @@ enum QwenPrecompiledVocabularySettings {
         }
         let rawWorkspace = endpoint.workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let normalizedWorkspace = QwenRunTaskEndpoint.normalizedWorkspaceID(rawWorkspace)
-        guard rawWorkspace.isEmpty || normalizedWorkspace != nil else {
+        guard endpoint.supportsHotwords,
+              rawWorkspace.isEmpty || normalizedWorkspace != nil else {
             clear(defaults: defaults)
             return nil
         }

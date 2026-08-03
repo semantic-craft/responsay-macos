@@ -256,6 +256,14 @@ struct QwenASRHotwordsTests {
         #expect(!QwenASRHotwords.supportsInstantVocabulary(model: "paraformer-realtime-v2"))
     }
 
+    @Test func precompiledVocabularyIdentifierAcceptsAnOpaqueSingleSuffix() {
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier(" vocab-deadbeef ") == "vocab-deadbeef")
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-prefix-deadbeef")
+                == "vocab-prefix-deadbeef")
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-") == nil)
+        #expect(QwenASRHotwords.normalizedVocabularyIdentifier("vocab-private words") == nil)
+    }
+
     @Test func onlyDocumentedLanguageCodesBecomeHints() {
         #expect(QwenASRHotwords.languageHint("zh") == "zh")
         #expect(QwenASRHotwords.languageHint(" EN ") == "en")
@@ -293,6 +301,11 @@ struct QwenRunTaskEndpointTests {
         #expect(QwenRunTaskEndpoint(region: .singapore, workspaceID: "ws-abc123").url.absoluteString
                 == "wss://ws-abc123.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
         #expect(QwenRunTaskEndpoint(region: .china, workspaceID: "ws-abc123").usesDedicatedHost)
+        #expect(QwenRunTaskEndpoint(region: .china, workspaceID: "ws-abc123").supportsHotwords)
+        #expect(QwenRunTaskEndpoint(region: .singapore).supportsHotwords)
+        #expect(!QwenRunTaskEndpoint(
+            region: .singapore,
+            workspaceID: "ws-abc123").supportsHotwords)
     }
 
     /// The Workspace ID becomes a DNS label, so anything but the documented `ws-…` shape must fall
