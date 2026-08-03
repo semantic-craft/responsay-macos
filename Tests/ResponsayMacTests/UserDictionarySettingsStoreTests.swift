@@ -11,6 +11,7 @@ final class UserDictionarySettingsStoreTests: XCTestCase {
         suiteName = "UserDictionarySettingsStoreTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        defaults.set("never", forKey: HistoryRetentionSettings.cleanupKey)
     }
 
     override func tearDown() {
