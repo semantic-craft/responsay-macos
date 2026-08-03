@@ -66,6 +66,20 @@ public actor QwenRunTaskSession {
         case transcript(String)
     }
 
+    private struct FinalSentenceKey: Hashable {
+        var id: Int
+        var text: String
+    }
+
+    /// One instance belongs to one logical capture and survives its single reconnect attempt.
+    private actor TaskCallbackState {
+        private var forwardedFinalSentences = Set<FinalSentenceKey>()
+
+        func shouldForward(id: Int, text: String) -> Bool {
+            return forwardedFinalSentences.insert(.init(id: id, text: text)).inserted
+        }
+    }
+
     private var connection: Connection?
     private var idleCloseTask: Task<Void, Never>?
     private var idleGeneration: UUID?
@@ -119,6 +133,7 @@ public actor QwenRunTaskSession {
         onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void = { _ in }
     ) async throws -> String {
         let request = Self.request(for: config)
+        let callbackState = TaskCallbackState()
         var attempt = 0
         while true {
             try Task.checkCancellation()
@@ -128,6 +143,7 @@ public actor QwenRunTaskSession {
                     lease: lease,
                     config: config,
                     audio: audio,
+                    callbackState: callbackState,
                     onFinalSentence: onFinalSentence,
                     onTaskStarted: onTaskStarted)
                 await release(lease)
@@ -154,6 +170,7 @@ public actor QwenRunTaskSession {
         lease: Lease,
         config: QwenRunTaskCaptureConfig,
         audio: QwenReplayableAudioBuffer,
+        callbackState: TaskCallbackState,
         onFinalSentence: @escaping @Sendable (String) async -> [String],
         onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void
     ) async throws -> String {
@@ -166,11 +183,10 @@ public actor QwenRunTaskSession {
         return try await withTaskCancellationHandler {
             try await withThrowingTaskGroup(of: AttemptResult.self) { group in
                 group.addTask {
-                    var recordedFinalSentenceIDs = Set<Int>()
                     while true {
                         let event = try await client.receive()
                         if case let .sentence(id, text, true) = event,
-                           recordedFinalSentenceIDs.insert(id).inserted,
+                           await callbackState.shouldForward(id: id, text: text),
                            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             let updatedContext = await onFinalSentence(text)
                             try? await client.sendContinueTask(context: updatedContext)
