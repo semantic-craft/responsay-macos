@@ -18,3 +18,19 @@ enum AutoLearnHotwordSettings {
         defaults.object(forKey: key) as? Bool ?? false
     }
 }
+
+/// Learns a narrow, explicit post-insertion correction such as `matis` → `Metis` after one
+/// user edit. This is separate from broad candidate mining because the edit itself is direct
+/// supervision; it remains local, auditable, and removable from the recognition dictionary.
+enum ExplicitCorrectionLearningSettings {
+    static let key = "hotword.explicitCorrectionLearning"
+
+    static var isEnabled: Bool {
+        resolve(defaults: .standard)
+    }
+
+    /// Absent key → default ON so subsequent dictation benefits from a correction immediately.
+    static func resolve(defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: key) as? Bool ?? true
+    }
+}

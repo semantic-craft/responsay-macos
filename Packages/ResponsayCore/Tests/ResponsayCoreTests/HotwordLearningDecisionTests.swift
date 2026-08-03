@@ -62,6 +62,18 @@ import Foundation
         #expect(decide(p) == .confirm(p))
     }
 
+    @Test func explicitPlainWordCorrectionAutoAddsWhenUserEditLearningIsEnabled() {
+        let p = correction("matis", to: "Metis", confidence: 0.70)
+        let decision = engine.decide(
+            proposals: [p],
+            policy: .confirmEveryTime,
+            existingManualTerms: [],
+            existingAutoTerms: [],
+            autoAddExplicitCorrections: true)
+
+        #expect(decision == [.add(p, notify: false)])
+    }
+
     @Test func ordinaryLowConfidenceIsDropped() {
         let p = proposal("文档草稿", 0.40)
         #expect(decide(p) == .ignore(p, reason: "置信度过低"))
