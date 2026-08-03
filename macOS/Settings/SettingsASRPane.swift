@@ -3,8 +3,6 @@ import ResponsayCore
 
 struct SettingsASRPane: View {
     @Environment(AppearanceStore.self) private var appearanceStore
-    @AppStorage(QwenASRStreamingModeSettings.key)
-    private var qwenStreamingModeRaw = QwenASRStreamingMode.quick.rawValue
     @AppStorage("byok.asr.model")
     private var selectedASRModel = QwenASRFlashRouting.defaultModel
 
@@ -55,25 +53,6 @@ struct SettingsASRPane: View {
                         }
                         .labelsHidden()
                         .frame(maxWidth: 160)
-                    }
-                }
-                if currentCloudProviderId == QwenASRFlashRouting.providerId {
-                    WarmCard {
-                        LabeledRow(label: "听写模式") {
-                            Picker("", selection: $qwenStreamingModeRaw) {
-                                ForEach(QwenASRStreamingMode.allCases, id: \.rawValue) { mode in
-                                    Text(mode.title).tag(mode.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .fixedSize()
-                        }
-                        Text(qwenStreamingModeRaw == QwenASRStreamingMode.longForm.rawValue
-                            ? "长篇听写使用语义断句，适合会议和连续口述；句子返回会稍慢。"
-                            : "快速听写使用低延迟断句，适合日常按住说、松手写入。")
-                            .font(SettingsTheme.footnote)
-                            .foregroundStyle(appearanceStore.palette.ink3)
                     }
                 }
                 // Apple 系统原生 leads the local options: zero-download, always

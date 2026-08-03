@@ -46,17 +46,13 @@ public actor QwenRunTaskASRClient {
         precompiledVocabularyID: String? = nil,
         languageHints: [String] = [],
         context: [String] = [],
-        heartbeat: Bool = false,
-        semanticPunctuationEnabled: Bool = false,
-        multiThresholdModeEnabled: Bool = false
+        heartbeat: Bool = false
     ) async throws {
         try await sendText(QwenRunTaskASRProtocol.runTask(
             taskID: taskID, model: model, sampleRate: sampleRate,
             hotwords: hotwords, precompiledVocabularyID: precompiledVocabularyID,
             languageHints: languageHints, context: context,
-            heartbeat: heartbeat,
-            semanticPunctuationEnabled: semanticPunctuationEnabled,
-            multiThresholdModeEnabled: multiThresholdModeEnabled))
+            heartbeat: heartbeat))
     }
 
     /// Updates context while the task is active. A trailing final can arrive after `finish-task`;
