@@ -35,6 +35,7 @@ public enum QwenRunTaskASRProtocol {
         sampleRate: Int = 16_000,
         format: String = "pcm",
         hotwords: [String] = [],
+        precompiledVocabularyID: String? = nil,
         languageHint: String? = nil,
         languageHints: [String] = [],
         context: [String] = [],
@@ -49,7 +50,12 @@ public enum QwenRunTaskASRProtocol {
         }
         let vocabulary = QwenASRHotwords.vocabulary(from: hotwords, model: model)
         if !vocabulary.isEmpty {
+            // Official precedence: if both are configured, only instant vocabulary takes effect.
+            // Send the complete current vocabulary and omit the otherwise misleading ID.
             parameters["vocabulary"] = vocabulary
+        } else if QwenASRHotwords.supportsPrecompiledVocabulary(model: model),
+                  let identifier = QwenASRHotwords.normalizedVocabularyIdentifier(precompiledVocabularyID) {
+            parameters["vocabulary_id"] = identifier
         }
         if heartbeat {
             parameters["heartbeat"] = true

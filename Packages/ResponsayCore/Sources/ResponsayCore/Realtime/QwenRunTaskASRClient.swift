@@ -97,13 +97,15 @@ public actor QwenRunTaskASRClient {
         model: String,
         sampleRate: Int = 16_000,
         hotwords: [String] = [],
+        precompiledVocabularyID: String? = nil,
         languageHints: [String] = [],
         context: [String] = [],
         heartbeat: Bool = false
     ) async throws {
         try await sendText(QwenRunTaskASRProtocol.runTask(
             taskID: taskID, model: model, sampleRate: sampleRate,
-            hotwords: hotwords, languageHints: languageHints, context: context,
+            hotwords: hotwords, precompiledVocabularyID: precompiledVocabularyID,
+            languageHints: languageHints, context: context,
             heartbeat: heartbeat))
     }
 

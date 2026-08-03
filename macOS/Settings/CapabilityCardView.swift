@@ -41,6 +41,17 @@ struct CapabilityCardView: View {
             })
     }
 
+    /// Persist only user edits. Loading the stored value into the machine must not silently refresh
+    /// a stale model/region/workspace/dictionary binding.
+    private var qwenVocabularyID: Binding<String> {
+        Binding(
+            get: { machine.precompiledVocabularyID },
+            set: { value in
+                machine.precompiledVocabularyID = value
+                machine.writeQwenPrecompiledVocabulary()
+            })
+    }
+
     var body: some View {
         WarmCard {
             CapabilityHeader(systemImage: icon, title: capability.connectionTitle, subtitle: subtitle,
@@ -79,6 +90,29 @@ struct CapabilityCardView: View {
                             Text(machine.qwenWorkspaceHelp)
                                 .font(SettingsTheme.footnote)
                                 .foregroundStyle(SettingsTheme.ink3)
+                        }
+                    }
+                }
+            }
+            if machine.isQwenASRFlash {
+                LabeledRow(label: "长期词表") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            WarmField(placeholder: "选填，百炼生成的 vocab-… ID", text: qwenVocabularyID)
+                            if !machine.precompiledVocabularyID.isEmpty {
+                                Button("标记已同步") { machine.markQwenVocabularySynchronized() }
+                                    .controlSize(.small)
+                            }
+                        }
+                        if let validationMessage = machine.qwenVocabularyValidationMessage {
+                            Text(validationMessage)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(machine.qwenVocabularyHelp)
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }

@@ -208,6 +208,7 @@ public actor QwenRunTaskSession {
                         model: config.model,
                         sampleRate: 16_000,
                         hotwords: config.hotwords,
+                        precompiledVocabularyID: config.precompiledVocabularyID,
                         languageHints: config.languageHints,
                         context: config.context,
                         heartbeat: config.heartbeat)
