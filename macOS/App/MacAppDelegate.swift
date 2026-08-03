@@ -38,6 +38,10 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // 退役 provider（智谱）遗留的选择与钥匙串密钥一次性清理；带完成标记，正常只跑一次。
         if !underTest { RetiredProviderCleanup.run() }
 
+        // #55: persistent Qwen ASR Context is opt-in and privacy-bounded. Enforce its two-hour
+        // expiry at real application startup; when the switch is off, remove any stale store.
+        if !underTest { PersistentASRContextSettings.prepareAtLaunch() }
+
         // LOGIN-ITEM-001: re-register the login item if the stored "开机自启" pref says ON but
         // macOS dropped the registration (happens on every app-bundle replace). Without this,
         // the toggle shows ON forever while launch-at-login silently never fires.
