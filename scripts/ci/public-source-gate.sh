@@ -19,13 +19,16 @@ allowed_path() {
     .gitignore|.gitleaks.toml|CONTRIBUTING.md|LICENSE|README.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
       return 0
       ;;
-    docs/RELEASING.md)
+    docs/RELEASING.md|docs/evaluations/qwen-asr-vad-2026-08-03.md)
       return 0
       ;;
     Packages/ResponsayCore/*|Tests/ResponsayMacTests/*|macOS/*)
       return 0
       ;;
     scripts/fetch-sherpa-onnx.sh|scripts/release-macos.sh|scripts/ci/public-source-gate.sh|scripts/ci/scan-secrets.sh)
+      return 0
+      ;;
+    scripts/qwen-asr-vad-eval.py|scripts/qwen-asr-vad-eval-requirements.txt)
       return 0
       ;;
     scripts/architecture-lint.mjs|scripts/architecture-lint.test.mjs|scripts/diag-privacy-guard.mjs|scripts/diag-privacy-guard.test.mjs)

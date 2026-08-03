@@ -210,9 +210,7 @@ public actor QwenRunTaskSession {
                         hotwords: config.hotwords,
                         languageHints: config.languageHints,
                         context: config.context,
-                        heartbeat: config.heartbeat,
-                        semanticPunctuationEnabled: config.semanticPunctuationEnabled,
-                        multiThresholdModeEnabled: config.multiThresholdModeEnabled)
+                        heartbeat: config.heartbeat)
                     guard try await Self.awaitStarted(
                         client: client,
                         transport: lease.transport,
