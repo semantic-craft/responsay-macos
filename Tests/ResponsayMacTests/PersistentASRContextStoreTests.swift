@@ -69,15 +69,14 @@ final class PersistentASRContextStoreTests: XCTestCase {
             makeSessionStore().context(for: "com.apple.Notes"),
             (2...6).map { "raw final \($0)" })
         XCTAssertEqual(
-            PersistentASRContextStore(fileURL: fileURL, now: { self.now })
-                .items(for: "com.apple.Notes").count,
+            makePersistentStore().items(for: "com.apple.Notes").count,
             5)
     }
 
     func testTTLExpiresTheExactTwoHourBoundaryOnRead() throws {
         PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
         let anchor = now!
-        let store = PersistentASRContextStore(fileURL: fileURL, now: { self.now })
+        let store = makePersistentStore()
         now = anchor.addingTimeInterval(-PersistentASRContextStore.timeToLive - 1)
         store.record("older", scope: "com.apple.Notes")
         now = anchor.addingTimeInterval(-PersistentASRContextStore.timeToLive)
@@ -97,7 +96,8 @@ final class PersistentASRContextStoreTests: XCTestCase {
         PersistentASRContextSettings.prepareAtLaunch(
             defaults: defaults,
             fileURL: fileURL,
-            now: { self.now })
+            now: { self.now },
+            expiryScheduler: { _, _ in {} })
 
         XCTAssertEqual(try rawDiskTexts(), ["valid"])
     }
@@ -105,7 +105,7 @@ final class PersistentASRContextStoreTests: XCTestCase {
     func testWritePathCleansExpiredItemsBeforeAppending() throws {
         PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
         seedExpiredAndValidItems()
-        let store = PersistentASRContextStore(fileURL: fileURL, now: { self.now })
+        let store = makePersistentStore()
 
         store.record("new", scope: "com.apple.mail")
 
@@ -233,8 +233,7 @@ final class PersistentASRContextStoreTests: XCTestCase {
 
         session.record("matis is the host", scope: "com.apple.Terminal")
 
-        let diskItems = PersistentASRContextStore(fileURL: fileURL, now: { self.now })
-            .items(for: "com.apple.Terminal")
+        let diskItems = makePersistentStore().items(for: "com.apple.Terminal")
         XCTAssertEqual(diskItems.map(\.rawFinalText), ["matis is the host"])
         XCTAssertEqual(session.context(for: "com.apple.Terminal"), ["Metis is the host"])
     }
@@ -321,7 +320,7 @@ final class PersistentASRContextStoreTests: XCTestCase {
         let blockingFile = fileURL.deletingLastPathComponent().appendingPathComponent("not-a-directory")
         try Data("block".utf8).write(to: blockingFile)
         let invalidURL = blockingFile.appendingPathComponent("context.json")
-        let invalidStore = PersistentASRContextStore(fileURL: invalidURL, now: { self.now })
+        let invalidStore = makePersistentStore(at: invalidURL)
         XCTAssertNil(invalidStore.record("must stay ephemeral", scope: "com.apple.Notes"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: invalidURL.path))
         XCTAssertFalse(PersistentASRContextSettings.setEnabled(
@@ -421,12 +420,23 @@ final class PersistentASRContextStoreTests: XCTestCase {
     }
 
     private func makeSessionStore() -> RecentASRContextSessionStore {
-        RecentASRContextSessionStore(defaults: defaults, fileURL: fileURL, now: { self.now })
+        RecentASRContextSessionStore(
+            defaults: defaults,
+            fileURL: fileURL,
+            now: { self.now },
+            expiryScheduler: { _, _ in {} })
+    }
+
+    private func makePersistentStore(at targetURL: URL? = nil) -> PersistentASRContextStore {
+        PersistentASRContextStore(
+            fileURL: targetURL ?? fileURL,
+            now: { self.now },
+            expiryScheduler: { _, _ in {} })
     }
 
     private func seedExpiredAndValidItems() {
         let anchor = now!
-        let store = PersistentASRContextStore(fileURL: fileURL, now: { self.now })
+        let store = makePersistentStore()
         now = anchor.addingTimeInterval(-PersistentASRContextStore.timeToLive - 1)
         store.record("expired", scope: "com.apple.Notes")
         now = anchor.addingTimeInterval(-PersistentASRContextStore.timeToLive + 1)
