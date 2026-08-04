@@ -34,6 +34,11 @@ final class DiagnosticExporterTests: XCTestCase {
         super.tearDown()
     }
 
+    private func collectDiagnostics() -> [String: Any] {
+        DiagnosticExporter.collectDiagnostics(
+            dispatcher: ProviderConfigDispatcher(keyReader: { _ in nil }))
+    }
+
     func testDiagnosticsReportsCurrentAppDirectASRConfig() {
         let d = UserDefaults.standard
         d.set(ASREngine.cloudMimo.rawValue, forKey: ASREngine.defaultsKey)
@@ -43,7 +48,7 @@ final class DiagnosticExporterTests: XCTestCase {
         d.set("mimo-v2.5-asr", forKey: "byok.asr.model")
         d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.baseURL")
 
-        let payload = DiagnosticExporter.collectDiagnostics()
+        let payload = collectDiagnostics()
         let asr = payload["config_asr_active"] as? [String: Any]
 
         XCTAssertEqual(asr?["engine"] as? String, ASREngine.cloudMimo.rawValue)
@@ -62,7 +67,7 @@ final class DiagnosticExporterTests: XCTestCase {
         d.set("mimo-v2.5-asr", forKey: "byok.asr.model")
         d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.baseURL")
 
-        let payload = DiagnosticExporter.collectDiagnostics()
+        let payload = collectDiagnostics()
         let active = payload["config_asr_active"] as? [String: Any]
         let savedCloud = payload["config_asr_saved_cloud"] as? [String: Any]
 
@@ -80,7 +85,7 @@ final class DiagnosticExporterTests: XCTestCase {
         d.set("openai", forKey: "byok.asr.provider")
         d.set("https://api.openai.com/v1", forKey: "byok.asr.baseURL")
 
-        let payload = DiagnosticExporter.collectDiagnostics()
+        let payload = collectDiagnostics()
         let active = payload["config_asr_active"] as? [String: Any]
 
         XCTAssertEqual(active?["engine"] as? String, ASREngine.cloudMimo.rawValue)
