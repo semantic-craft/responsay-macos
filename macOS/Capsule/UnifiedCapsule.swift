@@ -112,7 +112,7 @@ struct UnifiedCapsule: View {
         let width = pillWidth + 2 * tipRowOverhang
         return ZStack {
             if let tip = hoverTip {
-                CapsuleHoverTipChip(text: tip.text)
+                CapsuleHoverTipChip(text: tip.text, tokens: t)
                     .position(x: tip.leadingSide ? tipSlotCenterX : width - tipSlotCenterX,
                               y: tipRowHeight / 2)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
