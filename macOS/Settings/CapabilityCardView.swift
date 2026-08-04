@@ -12,11 +12,17 @@ struct CapabilityCardView: View {
 
     @State private var machine: ProviderConfigMachine
 
-    init(capability: ModelCapability, preferredProviderId: String? = nil) {
+    init(
+        capability: ModelCapability,
+        preferredProviderId: String? = nil,
+        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) }
+    ) {
         self.capability = capability
         self.preferredProviderId = preferredProviderId
         _machine = State(initialValue: ProviderConfigMachine(
-            capability: capability, preferredProviderId: preferredProviderId))
+            capability: capability,
+            preferredProviderId: preferredProviderId,
+            keyReader: keyReader))
     }
 
     /// 预设 + 拉取合并的模型菜单（听写模型与技能平台模型两个选择器共用一份）。

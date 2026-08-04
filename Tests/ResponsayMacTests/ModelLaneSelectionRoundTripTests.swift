@@ -23,6 +23,16 @@ final class ModelLaneSelectionRoundTripTests: XCTestCase {
         super.tearDown()
     }
 
+    private func laneDisplay() -> ModelLaneDisplay {
+        ModelLaneDisplay(
+            defaults: defaults,
+            readiness: ModelLaneReadinessResolver(
+                dispatcher: ProviderConfigDispatcher(
+                    defaults: defaults,
+                    keyReader: { _ in nil }),
+                ocrKeyReader: { _ in nil }))
+    }
+
     func testEveryASROptionSticksWhenSelected() {
         for option in ModelRouteCatalog.asrOptions {
             ModelRouteSelectionActions.applyASRSelection(option.id, defaults: defaults)
@@ -69,7 +79,7 @@ final class ModelLaneSelectionRoundTripTests: XCTestCase {
     func testASRLanePickerValueMatchesAppliedOption() {
         for option in ModelRouteCatalog.asrOptions {
             ModelRouteSelectionActions.applyASRSelection(option.id, defaults: defaults)
-            let lane = ModelLaneDisplay(defaults: defaults).lanes().first { $0.lane == .asr }!
+            let lane = laneDisplay().lanes().first { $0.lane == .asr }!
             XCTAssertEqual(lane.currentOptionId, option.id, "ASR picker get for '\(option.id)'")
         }
     }
@@ -77,7 +87,7 @@ final class ModelLaneSelectionRoundTripTests: XCTestCase {
     func testLLMLanePickerValueMatchesAppliedOption() {
         for option in ModelRouteCatalog.llmOptions {
             ModelRouteSelectionActions.applyLLMSelection(option.id, defaults: defaults)
-            let lane = ModelLaneDisplay(defaults: defaults).lanes().first { $0.lane == .llm }!
+            let lane = laneDisplay().lanes().first { $0.lane == .llm }!
             XCTAssertEqual(lane.currentOptionId, option.id, "LLM picker get for '\(option.id)'")
         }
     }
@@ -85,7 +95,7 @@ final class ModelLaneSelectionRoundTripTests: XCTestCase {
     func testTTSLanePickerValueMatchesAppliedOption() {
         for option in ModelRouteCatalog.ttsOptions {
             ModelRouteSelectionActions.applyTTSSelection(option.id, defaults: defaults)
-            let lane = ModelLaneDisplay(defaults: defaults).lanes().first { $0.lane == .tts }!
+            let lane = laneDisplay().lanes().first { $0.lane == .tts }!
             XCTAssertEqual(lane.currentOptionId, option.id, "TTS picker get for '\(option.id)'")
         }
     }
