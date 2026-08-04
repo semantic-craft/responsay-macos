@@ -13,8 +13,15 @@ final class AppearanceStore {
         didSet { UserDefaults.standard.set(skin.rawValue, forKey: Skin.defaultsKey) }
     }
 
+    /// 录音胶囊外观 — a separate axis from `skin` (see `CapsuleSkin`). Default `.followSkin`
+    /// derives the capsule from `skin`, so this defaults to a no-op.
+    var capsuleSkin: CapsuleSkin {
+        didSet { UserDefaults.standard.set(capsuleSkin.rawValue, forKey: CapsuleSkin.defaultsKey) }
+    }
+
     init() {
         skin = Skin.current
+        capsuleSkin = CapsuleSkin.current
     }
 
     var palette: SkinPalette { skin.palette }

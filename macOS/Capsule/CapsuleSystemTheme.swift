@@ -1,54 +1,56 @@
 import SwiftUI
 
-/// Skin-driven tokens for the **Capsule System** (Claude Design handoff `Capsule System.dc.html`).
+/// Tokens for the **Capsule System** (Claude Design handoff `Capsule System.dc.html`), resolved
+/// from the active `CapsuleSkin`.
 ///
-/// The capsule follows the app's active `Skin` (default 荔园红): paper / ink / hairline come from
-/// the skin's card + ink family, the accent family (waveform, ✓, fill, glow) from the skin accent,
-/// so 珞珈青 shows a green pill and 嘉庚蓝 a blue one. The design's `themeVars` *recipe* — which
-/// token carries which alpha, wash-in-light vs near-solid-in-dark — is kept 1:1; only the source
-/// hues moved from the fixed warm-paper/wine constants to `Skin.current`. Error red stays
-/// semantic (not skinned). Tokens resolve the skin at render time, so a skin swap re-tints the
-/// next capsule. 永不纯黑 / 蓝.
+/// Two axes meet here. `CapsuleSkin` picks the capsule's colour world; its default `.followSkin`
+/// derives every token from the app-wide `Skin` exactly as this enum used to, so 珞珈青 still shows
+/// a green pill and nothing about the default install changed. The 高达 skins opt out of `Skin`
+/// and carry fixed palettes — see `CapsuleTokens`.
+///
+/// The static accessors below are the **听写-side** surface: `CopyCorrectPillView`,
+/// `IntentReviewCardView`, `CorrectionLearnView` and friends all render on the dictation path, so
+/// resolving at `.voice` is correct for them by construction. `UnifiedCapsule` is the one view
+/// rendered in *both* modes, and it calls `tokens(mode:)` directly — that is what lets 光之骨架
+/// turn pink for 提问 without threading a mode parameter through 132 call sites.
+///
+/// Anatomy constants are skin-independent: the pill never jumps between listening and thinking,
+/// whichever skin is on. 永不纯黑 / 蓝.
 enum CapsuleSystemTheme {
-    private static var p: SkinPalette { Skin.current.palette }
-    private static var hx: (accentLight: UInt32, accentDark: UInt32, inkLight: UInt32) {
-        Skin.current.capsuleHex
+    /// Token set for a given mode. The only caller that needs a non-default mode is
+    /// `UnifiedCapsule`; everything else is dictation-side.
+    static func tokens(mode: CapsuleMode = .voice) -> CapsuleTokens {
+        CapsuleSkin.current.tokens(mode: mode)
     }
 
-    /// surface ~96% alpha, sits over an `.ultraThinMaterial` (≈ the design's 20px backdrop blur).
-    static var surface: Color { p.card.opacity(0.96) }
-    static var ink: Color { p.ink }
-    static var ink2: Color { p.ink.opacity(0.55) }
-    static var line: Color { p.ink.opacity(0.125) }
-    static var chip: Color { p.ink.opacity(0.085) }
+    static var choreography: CapsulePhaseChoreography { CapsuleSkin.current.choreography }
 
-    static var accent: Color { p.accent }
-    /// Waveform / pulse dot — the skin's dark accent is already brightened so it reads on dark paper.
-    static var accentText: Color { p.accent }
-    static var accentInk: Color { p.onAccent }   // glyph on the accent
-    static var accentSoft: Color {
-        DynamicColor.make(hx.accentLight, hx.accentDark, lightA: 0.13, darkA: 0.16)
-    }
-    static var glow: Color {
-        DynamicColor.make(hx.accentLight, hx.accentLight, lightA: 0.4, darkA: 0.55)
-    }
-    /// Left→right progress fill behind the thinking label (brand hue in both modes, like the
-    /// original wine: a light wash in light, near-solid in dark).
-    static var fill: Color {
-        DynamicColor.make(hx.accentLight, hx.accentLight, lightA: 0.2, darkA: 0.85)
-    }
+    // MARK: - 听写-side accessors (resolve at .voice)
 
-    static let err = DynamicColor.make(0xB23A2E, 0xE0796B)
-    static let errSoft = DynamicColor.make(0xB23A2E, 0xE0796B, lightA: 0.12, darkA: 0.16)
+    static var surface: Color { tokens().surface }
+    static var ink: Color { tokens().ink }
+    static var ink2: Color { tokens().ink2 }
+    static var line: Color { tokens().line }
+    static var chip: Color { tokens().chip }
 
-    /// Soft drop shadow (never a hard black box) — tinted by the skin's ink in light.
-    static var shadow: Color {
-        DynamicColor.make(hx.inkLight, 0x000000, lightA: 0.38, darkA: 0.6)
-    }
+    static var accent: Color { tokens().accent }
+    static var accentText: Color { tokens().accentText }
+    static var accentInk: Color { tokens().accentInk }
+    static var accentSoft: Color { tokens().accentSoft }
+    static var glow: Color { tokens().glow }
+    static var fill: Color { tokens().fill }
+
+    static var err: Color { tokens().err }
+    static var errSoft: Color { tokens().errSoft }
+
+    /// Soft drop shadow (never a hard black box).
+    static var shadow: Color { tokens().shadow }
     static let shadowRadius: CGFloat = 14
     static let shadowY: CGFloat = 8
 
-    // Anatomy — the pill never jumps between listening and thinking (both 160 × 36).
+    // MARK: - Anatomy (skin-independent)
+    //
+    // The pill never jumps between listening and thinking (both 160 × 36).
     // Height matched to Typeless (~36); width kept a touch larger.
     static let pillHeight: CGFloat = 36
     static let cornerRadius: CGFloat = 18      // height ÷ 2
