@@ -27,7 +27,10 @@ struct ProviderConfigMachineTests {
         suffix: String
     ) -> ProviderConfigMachine {
         ProviderConfigMachine(
-            capability: capability, preferredProviderId: preferred, defaults: freshDefaults(suffix))
+            capability: capability,
+            preferredProviderId: preferred,
+            defaults: freshDefaults(suffix),
+            keyReader: { _ in nil })
     }
 
     // MARK: - load(): default provider seeding
@@ -56,7 +59,8 @@ struct ProviderConfigMachineTests {
         let d = freshDefaults("load-stored-scoped")
         d.set("openai", forKey: "byok.llm.provider")
         d.set("gpt-custom", forKey: "byok.llm.openai.model")
-        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         #expect(m.providerId == "openai")
         #expect(m.model == "gpt-custom")
@@ -67,7 +71,8 @@ struct ProviderConfigMachineTests {
         let d = freshDefaults("load-qwen-workspace")
         d.set("qwen", forKey: "byok.llm.provider")
         d.set("ws-abc123", forKey: "byok.llm.qwen.workspaceId")
-        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
 
         m.load()
 
@@ -101,7 +106,8 @@ struct ProviderConfigMachineTests {
         let d = freshDefaults("qwen-asr-workspace")
         d.set("qwen-asr-flash", forKey: "byok.asr.provider")
         d.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         #expect(m.workspaceID == "ws-abc123")
         #expect(m.usesQwenWorkspaceEndpoint)
@@ -116,7 +122,8 @@ struct ProviderConfigMachineTests {
         d.set("qwen-asr-flash", forKey: "byok.asr.provider")
         d.set("wss://dashscope.aliyuncs.com/api-ws/v1/realtime", forKey: "byok.asr.qwen-asr-flash.baseURL")
         d.set("qwen3-asr-flash-realtime-2026-02-10", forKey: "byok.asr.qwen-asr-flash.model")
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         #expect(m.baseURL == "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
         #expect(m.model == "qwen-audio-3.0-asr-flash-streaming")
@@ -131,7 +138,8 @@ struct ProviderConfigMachineTests {
         let d = freshDefaults("qwen-asr-keeps-fun")
         d.set("qwen-asr-flash", forKey: "byok.asr.provider")
         d.set("fun-asr-realtime", forKey: "byok.asr.qwen-asr-flash.model")
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         #expect(m.model == "fun-asr-realtime")
     }
@@ -140,7 +148,8 @@ struct ProviderConfigMachineTests {
         let d = freshDefaults("qwen-vocabulary-binding")
         d.set("qwen-asr-flash", forKey: "byok.asr.provider")
         ContextHotwordSettings.addManual("Westlaw", defaults: d)
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         m.workspaceID = "ws-abc123"
         m.precompiledVocabularyID = "vocab-curated-a1b2c3"
@@ -158,7 +167,8 @@ struct ProviderConfigMachineTests {
     @Test func qwenVocabularyBindingBecomesStaleInsteadOfFollowingAWorkspaceChange() {
         let d = freshDefaults("qwen-vocabulary-stale")
         d.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         m.workspaceID = "ws-first"
         m.precompiledVocabularyID = "vocab-curated-a1b2c3"
@@ -184,7 +194,8 @@ struct ProviderConfigMachineTests {
         // Stale batch config a user could have from before the realtime migration.
         d.set("https://stale.example.com/v1", forKey: "byok.asr.volcengine-flash.baseURL")
         d.set("stale-batch-model", forKey: "byok.asr.volcengine-flash.model")
-        let m = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         #expect(m.baseURL == "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream")
         #expect(m.model == "bigmodel")
@@ -293,7 +304,8 @@ struct ProviderConfigMachineTests {
 
     @Test func persistWritesScopedConfigToInjectedDefaults() {
         let d = freshDefaults("persist-scoped")
-        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()  // qwen
         m.model = "qwen3.7-plus"
         m.workspaceID = "ws-abc123"
@@ -310,7 +322,8 @@ struct ProviderConfigMachineTests {
     @Test func persistMirrorsToActiveKeyWhenProviderMatchesStored() {
         let d = freshDefaults("persist-active-mirror")
         d.set("qwen", forKey: "byok.llm.provider")
-        let m = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: d)
+        let m = ProviderConfigMachine(
+            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
         m.load()
         m.model = "qwen3.6-plus"
         m.persist()

@@ -41,11 +41,18 @@ final class ProviderConfigMachine {
 
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
+    @ObservationIgnored private let keyReader: (String) -> String?
 
-    init(capability: ModelCapability, preferredProviderId: String?, defaults: UserDefaults = .standard) {
+    init(
+        capability: ModelCapability,
+        preferredProviderId: String?,
+        defaults: UserDefaults = .standard,
+        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) }
+    ) {
         self.capability = capability
         self.preferredProviderId = preferredProviderId
         self.defaults = defaults
+        self.keyReader = keyReader
     }
 
     // MARK: Derived
@@ -205,8 +212,8 @@ final class ProviderConfigMachine {
             setScoped(model, suffix: "model")
         }
         apiKey = readApiKey(providerId: pid, plan: plan)
-        appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
-        accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
+        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
+        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
     }
@@ -274,8 +281,8 @@ final class ProviderConfigMachine {
             setScoped(model, suffix: "model")
         }
         apiKey = readApiKey(providerId: prov.id, plan: plan)
-        appId = BYOKKeychain.read(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
-        accessToken = BYOKKeychain.read(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
+        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
+        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
         status = ""
@@ -374,6 +381,6 @@ final class ProviderConfigMachine {
     private func readApiKey(providerId: String, plan: BillingPlan) -> String {
         let account = CapabilityCredentialAccount.apiKeyAccount(
             providerId: providerId, capability: capability, plan: plan)
-        return BYOKKeychain.read(account) ?? ""
+        return keyReader(account) ?? ""
     }
 }

@@ -18,7 +18,9 @@ public enum DiagnosticExporter {
         }
     }
     
-    static func collectDiagnostics() -> [String: Any] {
+    static func collectDiagnostics(
+        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+    ) -> [String: Any] {
         var payload: [String: Any] = [:]
         
         // 1. System Info
@@ -36,7 +38,6 @@ public enum DiagnosticExporter {
         // (`SpeechEngine` / `ttsProvider` / `coachProvider`) are no longer
         // authoritative after ADR-0029.
         let defaults = UserDefaults.standard
-        let dispatcher = ProviderConfigDispatcher()
         let asrEngine = ASREngine.selected
         if let providerId = asrEngine.associatedProviderId {
             payload["config_asr_active"] = providerConfigPayload(

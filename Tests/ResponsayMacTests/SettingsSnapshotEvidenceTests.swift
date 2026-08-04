@@ -141,7 +141,7 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
     /// Model prefilled from the catalog, Validate / Fetch models.
     func testLLMCardDefaultSnapshot() throws {
         clearBYOK("llm")
-        let url = try capture(CapabilityCardView(capability: .llm),
+        let url = try capture(CapabilityCardView(capability: .llm, keyReader: { _ in nil }),
                               size: NSSize(width: 660, height: 640),
                               named: "llm-card-default-qwen.png")
         print("SNAPSHOT llm-card-default -> \(url.path)")
@@ -150,12 +150,12 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
     /// ASR + TTS engine cards (the other two per-capability panes).
     func testASRandTTSCardSnapshots() throws {
         clearBYOK("asr")
-        let asr = try capture(CapabilityCardView(capability: .asr),
+        let asr = try capture(CapabilityCardView(capability: .asr, keyReader: { _ in nil }),
                               size: NSSize(width: 660, height: 520),
                               named: "asr-card-default.png")
         print("SNAPSHOT asr-card -> \(asr.path)")
         clearBYOK("tts")
-        let tts = try capture(CapabilityCardView(capability: .tts),
+        let tts = try capture(CapabilityCardView(capability: .tts, keyReader: { _ in nil }),
                               size: NSSize(width: 660, height: 520),
                               named: "tts-card-default.png")
         print("SNAPSHOT tts-card -> \(tts.path)")

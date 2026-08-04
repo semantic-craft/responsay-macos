@@ -165,7 +165,11 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
     @MainActor
     func test_machinePersistsSkillModel_llmOnly() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        let machine = ProviderConfigMachine(capability: .llm, preferredProviderId: nil, defaults: defaults)
+        let machine = ProviderConfigMachine(
+            capability: .llm,
+            preferredProviderId: nil,
+            defaults: defaults,
+            keyReader: { _ in nil })
         machine.load()
         XCTAssertEqual(machine.skillModel, "")               // 默认跟随
         machine.skillModel = "qwen3.7-max"
@@ -173,7 +177,11 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.skillModel"), "qwen3.7-max")
         XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.model"), machine.model)   // 听写模型未被牵动
 
-        let asrMachine = ProviderConfigMachine(capability: .asr, preferredProviderId: nil, defaults: defaults)
+        let asrMachine = ProviderConfigMachine(
+            capability: .asr,
+            preferredProviderId: nil,
+            defaults: defaults,
+            keyReader: { _ in nil })
         asrMachine.load()
         asrMachine.persist()
         XCTAssertNil(defaults.string(forKey: "byok.asr.\(asrMachine.providerId).skillModel"))
