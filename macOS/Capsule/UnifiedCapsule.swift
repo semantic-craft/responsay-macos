@@ -4,18 +4,23 @@ import ResponsayCore
 
 /// The Responsay **Capsule System** — *one small capsule, two modes* (Claude Design handoff
 /// `Capsule System.dc.html`). The everyday dictation pill and the 任意提问 (Ask-Anything) pill
-/// share one compact silhouette, one warm-paper surface and one rhythm; only a small label
-/// floating above (ask, while listening) tells them apart.
+/// share one compact silhouette, one surface and one rhythm; only a small label floating above
+/// (ask, while listening) tells them apart.
 ///
 /// Pure presentational: it takes value inputs (never a view model), so both
 /// `QuickCaptureViewModel` (dictation) and `VoiceAssistantViewModel` (ask) drive the same
-/// anatomy through thin adapters. Colours come from `CapsuleSystemTheme` — **skin-driven**
-/// (paper + accent follow the active `Skin`), dark-first, never pure black/blue.
+/// anatomy through thin adapters.
 ///
-/// Anatomy (one row, fixed slots → listening and thinking are both 184×46, so the pill never
-/// jumps on the most-watched transition): `[ ✕ 36 · waveform 84 · ✓ 36 ]`, gap 8, pad 6, r23.
+/// Colours come from `CapsuleSystemTheme`, driven by the **`CapsuleSkin`** axis. This is the one
+/// view rendered in *both* modes, so it resolves `tokens(mode:)` itself — that is what lets
+/// 光之骨架 be 青 for 听写 and 粉 for 提问. It also owns the **phase choreography**: how 待机 /
+/// 思考 / 结果 / 出错 behave differs per skin (see `CapsulePhaseChoreography`), which is why the
+/// leading slot and the thinking pill branch below. `.followSkin` renders exactly what this view
+/// rendered before the axis existed. Dark-first, never pure black/blue.
+///
+/// Anatomy (one row, fixed slots → listening and thinking are both 160×36, so the pill never
+/// jumps on the most-watched transition): `[ ✕ 30 · waveform 72 · ✓ 30 ]`, gap 8, pad 6, r18.
 /// **No timer, no live transcript inside the pill** — the silhouette never grows mid-capture.
-/// Processing swaps to a same-width **thinking pill** with a left→right accent fill.
 ///
 /// The ✕ / ✓ affordances mirror the hotkey controls: ✕ cancels a live capture, ✓ finishes it.
 /// Host panels stay non-activating so focus remains in the user's target app.
@@ -46,9 +51,18 @@ struct UnifiedCapsule: View {
     /// The control the pointer is over right now; drives the instant hover label + scale.
     @State private var hoverTip: CapsuleHoverTip?
 
+    /// Resolved at render time, so a skin swap re-dresses the next capsule.
+    private var skin: CapsuleSkin { CapsuleSkin.current }
+    private var chore: CapsulePhaseChoreography { skin.choreography }
+    private var t: CapsuleTokens { CapsuleSystemTheme.tokens(mode: mode) }
+
     private var live: Bool { phase == .listening || phase == .followup }
     private var isThinking: Bool { phase == .transcribing || phase == .thinking || phase == .searching }
-    private var hasLeading: Bool { live || phase == .error || phase == .result }
+    /// `.signature` keeps the mono-eye in the leading slot through *every* phase — that is the
+    /// whole claim of the skin, so the slot is no longer phase-gated for it.
+    private var hasLeading: Bool {
+        chore == .signature ? true : (live || phase == .error || phase == .result)
+    }
     private var hasTrailing: Bool { live || phase == .error }
     /// Phases whose pill carries tappable controls — exactly when the hover-tip row is reserved.
     private var hasControls: Bool { live || phase == .error }
@@ -58,7 +72,8 @@ struct UnifiedCapsule: View {
             // Label stays through listening → thinking → 联网搜索 (no height jump), and hosts the
             // 联网模型署名 chip during search (设计稿 Variant B).
             if mode == .ask, live || isThinking, let askLabelText {
-                CapsuleAskLabel(text: askLabelText, source: askSource, reduceMotion: reduceMotion)
+                CapsuleAskLabel(text: askLabelText, source: askSource,
+                                tokens: t, skin: skin, reduceMotion: reduceMotion)
             }
             // Reserved headroom for the hover label, kept right above the pill so it hugs the
             // ✕ / ✓ controls. Always present while controls are visible: the host panel measures
@@ -66,25 +81,28 @@ struct UnifiedCapsule: View {
             // it appears.
             if hasControls { hoverTipRow }
             if isThinking {
-                CapsuleThinkingPill(label: resolvedThinkingLabel, reduceMotion: reduceMotion)
+                CapsuleThinkingPill(label: resolvedThinkingLabel, tokens: t, skin: skin,
+                                    reduceMotion: reduceMotion)
             } else {
                 recordingPill
             }
         }
         // The recording ⇄ thinking swap is intentionally instant: the host window re-measures
         // and repositions on this change, so an animated swap would fight the resize. Motion
-        // lives inside each form (waveform / fill / halo).
+        // lives inside each form (waveform / eye / arc / fill / halo).
     }
 
     // MARK: - Recording form (idle / listening / followup / error / result)
 
-    /// Explicit pill width per phase — listening and thinking share 184 (never jumps).
+    /// Explicit pill width per phase — listening and thinking share 160 (never jumps).
+    /// `.signature` spends a 30pt slot on the eye in 待机 too, so its idle pill has to grow by
+    /// that slot + gap or the status line truncates.
     private var pillWidth: CGFloat {
         switch phase {
         case .result: return 216
         case .error:  return 192
-        case .idle:   return 150
-        default:      return CapsuleSystemTheme.liveWidth   // 164 · listening / followup
+        case .idle:   return chore == .signature ? 188 : 150
+        default:      return CapsuleSystemTheme.liveWidth   // 160 · listening / followup
         }
     }
 
@@ -94,7 +112,7 @@ struct UnifiedCapsule: View {
         let width = pillWidth + 2 * tipRowOverhang
         return ZStack {
             if let tip = hoverTip {
-                CapsuleHoverTipChip(text: tip.text)
+                CapsuleHoverTipChip(text: tip.text, tokens: t)
                     .position(x: tip.leadingSide ? tipSlotCenterX : width - tipSlotCenterX,
                               y: tipRowHeight / 2)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
@@ -121,50 +139,75 @@ struct UnifiedCapsule: View {
         // Explicit size: NSHostingView.fittingSize returns 0 for this view, so the host panel
         // must not rely on measurement — the pill carries its own definite size.
         .frame(width: pillWidth, height: CapsuleSystemTheme.pillHeight)
-        .background(Capsule(style: .continuous).fill(CapsuleSystemTheme.surface))
+        .background(Capsule(style: .continuous).fill(t.surface))
         .background(.ultraThinMaterial, in: Capsule(style: .continuous))
         // Clip the frosted backdrop to the capsule. Without this, the material's NSVisualEffectView
         // is un-clipped and its union with the floating label reads as a rectangular "outer frame"
         // (设计稿 核心修复). The dictation pill is single-element so it never showed the artifact.
         .clipShape(Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).strokeBorder(CapsuleSystemTheme.line, lineWidth: 1.5))
-        .shadow(color: CapsuleSystemTheme.shadow, radius: CapsuleSystemTheme.shadowRadius, y: CapsuleSystemTheme.shadowY)
-        .opacity(phase == .idle ? 0.62 : 1)
+        .background(CapsuleSkinChrome(skin: skin).clipShape(Capsule(style: .continuous)))
+        .overlay(Capsule(style: .continuous).strokeBorder(t.line, lineWidth: 1.5))
+        .overlay(edgeArc)
+        .shadow(color: t.shadow, radius: CapsuleSystemTheme.shadowRadius, y: CapsuleSystemTheme.shadowY)
+        .opacity(phase == .idle ? skin.idleOpacity : 1)
     }
 
-    /// Leading cue: ✕ cancel (live) / ⚠ (error) / ✓ result.
+    /// `.edgeArc`'s stand-in for the progress fill — only in the phases that have something to say.
+    @ViewBuilder private var edgeArc: some View {
+        if chore == .edgeArc, let kind = arcKind {
+            CapsuleEdgeArc(kind: kind, width: pillWidth, color: arcColor, glow: t.glow)
+        }
+    }
+
+    private var arcKind: CapsuleEdgeArc.Kind? {
+        switch phase {
+        case .result: return .solid
+        case .error:  return .alarm
+        default:      return nil
+        }
+    }
+    private var arcColor: Color { phase == .error ? t.err : t.accent }
+
+    /// Leading cue: ✕ cancel (live) / the mono-eye (`.signature`) / ⚠ error / ✓ result.
     @ViewBuilder private var leadingSlot: some View {
         if live {
-            controlButton(systemName: "xmark", fg: CapsuleSystemTheme.ink2, bg: CapsuleSystemTheme.chip,
+            controlButton(systemName: "xmark", fg: t.ink2, bg: t.chip,
                           glyphSize: 14, help: "取消", tipLeading: true, action: cancelAction)
                 .accessibilityLabel("取消")
+        } else if chore == .signature {
+            MonoEyeBadge(phase: phase, tint: t.accent, glow: t.glow, alarmTint: t.err)
         } else if phase == .error {
-            glyphBadge(systemName: "exclamationmark.triangle.fill", fg: CapsuleSystemTheme.err,
-                       bg: CapsuleSystemTheme.errSoft, diameter: 28, glyphSize: 13)
+            glyphBadge(systemName: "exclamationmark.triangle.fill", fg: t.err,
+                       bg: t.errSoft, diameter: 28, glyphSize: 13)
                 .accessibilityLabel("出错")
         } else if phase == .result {
-            glyphBadge(systemName: "checkmark", fg: CapsuleSystemTheme.accentInk,
-                       bg: CapsuleSystemTheme.accent, diameter: 24, glyphSize: 12, weight: .bold)
+            glyphBadge(systemName: "checkmark", fg: t.accentInk,
+                       bg: t.accent, diameter: 24, glyphSize: 12, weight: .bold)
                 .accessibilityHidden(true)
         }
     }
 
-    /// Center: waveform (live) → result text → idle/error status.
+    /// Center: waveform / mono-eye (live) → result text → idle/error status.
     @ViewBuilder private var centerSlot: some View {
         if live {
-            WaveformView(level: level, isRecording: true, style: .pill, tint: CapsuleSystemTheme.accentText)
-                .frame(width: CapsuleSystemTheme.slotWave)
+            if skin == .zaku {
+                MonoEyeView(level: level, tint: t.accent, glow: t.glow)
+                    .frame(width: CapsuleSystemTheme.slotWave)
+            } else {
+                WaveformView(level: level, isRecording: true, style: .pill, tint: t.accentText)
+                    .frame(width: CapsuleSystemTheme.slotWave)
+            }
         } else if phase == .result {
             Text(liveText)
                 .font(.system(size: 13))
-                .foregroundStyle(CapsuleSystemTheme.ink)
+                .foregroundStyle(t.ink)
                 .lineLimit(1)
                 .truncationMode(.head)   // keep the newest words, like macOS dictation
                 .frame(maxWidth: 212, alignment: .leading)
         } else {  // idle / error
             Text(resolvedStatusText)
                 .font(.system(size: 13))
-                .foregroundStyle(phase == .error ? CapsuleSystemTheme.err : CapsuleSystemTheme.ink2)
+                .foregroundStyle(phase == .error ? t.err : t.ink2)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, 6)
@@ -175,11 +218,11 @@ struct UnifiedCapsule: View {
     /// Trailing action: ✓ finish (live) / ↻ retry (error).
     @ViewBuilder private var trailingSlot: some View {
         if live {
-            controlButton(systemName: "checkmark", fg: CapsuleSystemTheme.accentInk, bg: CapsuleSystemTheme.accent,
+            controlButton(systemName: "checkmark", fg: t.accentInk, bg: t.accent,
                           glyphSize: 15, weight: .bold, glow: true, help: "完成 · Fn", action: finishAction)
                 .accessibilityLabel("完成")
         } else if phase == .error {
-            controlButton(systemName: "arrow.clockwise", fg: CapsuleSystemTheme.err, bg: CapsuleSystemTheme.errSoft,
+            controlButton(systemName: "arrow.clockwise", fg: t.err, bg: t.errSoft,
                           glyphSize: 16, help: "重试", action: finishAction)
                 .accessibilityLabel("重试")
         }
@@ -205,7 +248,7 @@ struct UnifiedCapsule: View {
 
     // MARK: - Pieces
 
-    /// A 36pt circular control button (tappable). `glow` adds the accent halo under the ✓.
+    /// A 30pt circular control button (tappable). `glow` adds the accent halo under the ✓.
     /// `help` doubles as the instant hover label; `tipLeading` picks which slot it floats over.
     @ViewBuilder
     private func controlButton(systemName: String, fg: Color, bg: Color, glyphSize: CGFloat,
@@ -219,7 +262,7 @@ struct UnifiedCapsule: View {
                 .foregroundStyle(fg)
         }
         .frame(width: CapsuleSystemTheme.slotSide, height: CapsuleSystemTheme.slotSide)
-        .shadow(color: glow ? CapsuleSystemTheme.glow : .clear, radius: glow ? 8 : 0, y: glow ? 4 : 0)
+        .shadow(color: glow ? t.glow : .clear, radius: glow ? 8 : 0, y: glow ? 4 : 0)
 
         if let action {
             Button(action: action) {
@@ -249,7 +292,7 @@ struct UnifiedCapsule: View {
         }
     }
 
-    /// A small non-interactive glyph badge (⚠ error, ✓ result), centered in the 36pt slot.
+    /// A small non-interactive glyph badge (⚠ error, ✓ result), centered in the 30pt slot.
     private func glyphBadge(systemName: String, fg: Color, bg: Color, diameter: CGFloat,
                             glyphSize: CGFloat, weight: Font.Weight = .regular) -> some View {
         ZStack {
@@ -259,118 +302,5 @@ struct UnifiedCapsule: View {
                 .foregroundStyle(fg)
         }
         .frame(width: diameter, height: diameter)
-    }
-}
-
-// MARK: - Thinking pill (same width as listening, left→right accent fill)
-
-private struct CapsuleThinkingPill: View {
-    let label: String
-    let reduceMotion: Bool
-    @State private var progress: CGFloat = 0.06
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            Rectangle()
-                .fill(CapsuleSystemTheme.fill)
-                .frame(width: CapsuleSystemTheme.liveWidth * progress, height: CapsuleSystemTheme.pillHeight)
-            Text(label)
-                .font(.system(size: 13.5, weight: .medium))
-                .tracking(0.7)               // ≈ letter-spacing .05em
-                .foregroundStyle(CapsuleSystemTheme.ink)
-                .frame(maxWidth: .infinity)
-        }
-        .frame(width: CapsuleSystemTheme.liveWidth, height: CapsuleSystemTheme.pillHeight)
-        .background(Capsule(style: .continuous).fill(CapsuleSystemTheme.surface))
-        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-        .clipShape(Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).strokeBorder(CapsuleSystemTheme.line, lineWidth: 1.5))
-        .shadow(color: CapsuleSystemTheme.shadow, radius: CapsuleSystemTheme.shadowRadius, y: CapsuleSystemTheme.shadowY)
-        .onAppear {
-            if reduceMotion {
-                progress = 0.7   // jump to a stable fill instead of sweeping
-            } else {
-                withAnimation(.timingCurve(0.3, 0.55, 0.35, 1, duration: 1.6)) { progress = 1.0 }
-            }
-        }
-        .accessibilityLabel(label)
-    }
-}
-
-// MARK: - Floating ask-identity label (pulse dot + soft accent halo)
-
-private struct CapsuleAskLabel: View {
-    let text: String
-    var source: CapsuleSearchSource? = nil
-    let reduceMotion: Bool
-    @State private var glow = false
-
-    var body: some View {
-        HStack(spacing: 6) {
-            CapsulePulseDot(reduceMotion: reduceMotion)
-            Text(text)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(CapsuleSystemTheme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: 220, alignment: .leading)
-            if let source { CapsuleSourceChip(source: source) }
-        }
-        .padding(.horizontal, 13)
-        .frame(height: 26)
-        .background(Capsule(style: .continuous).fill(CapsuleSystemTheme.surface))
-        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-        .clipShape(Capsule(style: .continuous))   // clip frost to the pill — no rectangular frame
-        .overlay(Capsule(style: .continuous).strokeBorder(CapsuleSystemTheme.line, lineWidth: 1.5))
-        .shadow(color: CapsuleSystemTheme.shadow, radius: CapsuleSystemTheme.shadowRadius, y: CapsuleSystemTheme.shadowY)
-        .shadow(color: CapsuleSystemTheme.glow.opacity(glow ? 0.7 : 0.4), radius: glow ? 16 : 11)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: glow)
-        .onAppear { if !reduceMotion { glow = true } }
-        .fixedSize()
-    }
-}
-
-/// 联网搜索模型署名 chip(设计稿 ask-anything-capsule · Variant B):9pt 单字纹章 + 模型名,
-/// 嵌在浮标签里,让用户一眼看出是哪个 AI 在联网搜索。取色随当前皮肤(胶囊纸面 + 皮肤强调色)。
-private struct CapsuleSourceChip: View {
-    let source: CapsuleSearchSource
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(source.monogram)
-                .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(CapsuleSystemTheme.surface)
-                .frame(width: 9, height: 9)
-                .background(RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                    .fill(CapsuleSystemTheme.accentText))
-            Text(source.name)
-                .font(.system(size: 10))
-                .foregroundStyle(CapsuleSystemTheme.ink)
-                .lineLimit(1)
-        }
-        .padding(.leading, 5).padding(.trailing, 6).padding(.vertical, 1)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(CapsuleSystemTheme.accentSoft))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("联网模型 \(source.name)")
-    }
-}
-
-// MARK: - Accent pulse dot (ask label)
-
-private struct CapsulePulseDot: View {
-    let reduceMotion: Bool
-    @State private var big = false
-
-    var body: some View {
-        Circle()
-            .fill(CapsuleSystemTheme.accentText)
-            .frame(width: 6, height: 6)
-            .shadow(color: CapsuleSystemTheme.accentText.opacity(0.6), radius: 4)
-            .scaleEffect(big ? 1.12 : 0.8)
-            .opacity(big ? 1 : 0.45)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: big)
-            .onAppear { if !reduceMotion { big = true } }
-            .accessibilityHidden(true)
     }
 }

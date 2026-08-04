@@ -7,6 +7,9 @@ import ResponsayCore
 struct ReadAloudControlView: View {
     let controller: ReadAloudController
 
+    /// 朗读 follows the app skin, independent of the recording-capsule appearance axis.
+    private var tokens: CapsuleTokens { CapsuleTokens.followingSkin() }
+
     /// 497: set when 朗读 fell back to a non-selected provider (e.g. 火山 key 失效 → 本机 Kokoro).
     private var notice: String? { controller.activeVoiceNotice }
 
@@ -20,10 +23,10 @@ struct ReadAloudControlView: View {
         HStack(spacing: 10) {
             Image(systemName: notice != nil ? "exclamationmark.triangle.fill" : "speaker.wave.2.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(notice != nil ? CapsuleSystemTheme.err : CapsuleSystemTheme.accentText)
+                .foregroundStyle(notice != nil ? tokens.err : tokens.accentText)
             Text(statusText)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(notice != nil ? CapsuleSystemTheme.err : CapsuleSystemTheme.ink)
+                .foregroundStyle(notice != nil ? tokens.err : tokens.ink)
                 .fixedSize()
                 .help(notice ?? statusText)
             controlButton(
@@ -35,9 +38,9 @@ struct ReadAloudControlView: View {
         .padding(.horizontal, 14)
         .frame(height: CapsuleSystemTheme.pillHeight + 8)
         .background(.ultraThinMaterial, in: Capsule())
-        .background(CapsuleSystemTheme.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(CapsuleSystemTheme.line, lineWidth: 1))
-        .shadow(color: CapsuleSystemTheme.shadow,
+        .background(tokens.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(tokens.line, lineWidth: 1))
+        .shadow(color: tokens.shadow,
                 radius: CapsuleSystemTheme.shadowRadius, y: CapsuleSystemTheme.shadowY)
         .padding(16)   // transparent shadow padding inside the panel
     }
@@ -46,9 +49,9 @@ struct ReadAloudControlView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(CapsuleSystemTheme.accentInk)
+                .foregroundStyle(tokens.accentInk)
                 .frame(width: 28, height: 28)
-                .background(Circle().fill(CapsuleSystemTheme.accent))
+                .background(Circle().fill(tokens.accent))
         }
         .buttonStyle(.plain)
         .disabled(disabled)
