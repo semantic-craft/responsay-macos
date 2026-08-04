@@ -16,16 +16,17 @@ struct CapsuleHoverTip: Equatable {
 /// instantly in both appearances without going pure black.
 struct CapsuleHoverTipChip: View {
     let text: String
+    let tokens: CapsuleTokens
 
     var body: some View {
         Text(text)
             .font(.system(size: 11.5, weight: .medium))
-            .foregroundStyle(CapsuleSystemTheme.surface)
+            .foregroundStyle(tokens.surface)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(CapsuleSystemTheme.ink))
-            .shadow(color: CapsuleSystemTheme.shadow.opacity(0.5), radius: 6, y: 3)
+                .fill(tokens.ink))
+            .shadow(color: tokens.shadow.opacity(0.5), radius: 6, y: 3)
             .fixedSize()
     }
 }
