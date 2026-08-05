@@ -37,7 +37,7 @@ been observed vanishing from the login keychain during a long release. Store a p
 with:
 
 ```bash
-xcrun notarytool store-credentials "responsay-notary" --apple-id <apple-id> --team-id <team-id>
+xcrun notarytool store-credentials "xw-notary" --apple-id <apple-id> --team-id <team-id>
 ```
 
 Omit `--password`; the tool prompts for it, keeping it out of shell history. The Apple ID
