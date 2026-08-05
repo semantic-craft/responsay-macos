@@ -172,7 +172,7 @@ done
 
 # Signing material is never configured: the Developer ID certificate and Sparkle's EdDSA
 # key already live in the maintainer's login keychain, and the release uses them there.
-NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-responsay-notary}"
+NOTARY_PROFILE="${RESPONSAY_NOTARY_PROFILE:-xw-notary}"
 # An App Store Connect key file is preferred when given: it is a plain file, so it cannot
 # vanish mid-run the way a keychain credential item can.
 if [[ -n "${RESPONSAY_ASC_KEY_PATH:-}" ]]; then
