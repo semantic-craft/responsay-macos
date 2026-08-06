@@ -80,6 +80,28 @@ struct ReadAloudScriptTests {
         #expect(script.remainingCharacters(from: 1) == Self.second.count)
         #expect(script.remainingCharacters(from: 2) == 0)
     }
+
+    @Test func preservesEnglishSentenceSpacingAcrossLines() {
+        let input = "This sentence is long enough to stand alone. The next sentence must not attach to it."
+        let noMerge = TTSChunkingPolicy(maxChars: 400, softMaxChars: 300, minMergeChars: 0)
+
+        let script = ReadAloudScript(text: input, policy: noMerge)
+
+        #expect(script.count == 2)
+        #expect(script.lines.map(\.text).joined() == input)
+        #expect(script[1]?.text.hasPrefix(" ") == true)
+    }
+
+    @Test func preservesMixedLanguageSentenceSpacingAcrossLines() {
+        let input = "This English sentence remains separate. 接下来这一句使用中文，而且同样保持原来的句间空格。"
+        let noMerge = TTSChunkingPolicy(maxChars: 400, softMaxChars: 300, minMergeChars: 0)
+
+        let script = ReadAloudScript(text: input, policy: noMerge)
+
+        #expect(script.count == 2)
+        #expect(script.lines.map(\.text).joined() == input)
+        #expect(script[1]?.text == " 接下来这一句使用中文，而且同样保持原来的句间空格。")
+    }
 }
 
 /// Line boundaries come from measured audio, so the highlight cannot drift onto a wrong

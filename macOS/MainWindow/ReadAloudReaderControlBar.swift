@@ -35,6 +35,14 @@ struct ReadAloudReaderControlBar: View {
             engine = .selected
             voiceID = engine.selectedVoiceID
         }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            let selectedEngine = TTSEngine.selected
+            let selectedVoiceID = selectedEngine.selectedVoiceID
+            guard selectedEngine != engine || selectedVoiceID != voiceID else { return }
+            engine = selectedEngine
+            voiceID = selectedVoiceID
+            reader.voiceDidChange()
+        }
     }
 
     // MARK: - Transport

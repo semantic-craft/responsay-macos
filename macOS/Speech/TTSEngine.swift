@@ -95,12 +95,8 @@ enum TTSEngine: String, CaseIterable {
         providerID.flatMap(TTSProviderCatalogPresets.catalog(for:))
     }
 
-    /// UserDefaults key holding the user's chosen voice for this engine.
-    var voiceDefaultsKey: String { "ttsVoice.\(rawValue)" }
-
-    /// The selected voice id — the TTS Settings card's voice when it targets this
-    /// provider, else the legacy per-engine pick if valid, else the catalog default
-    /// (issue 196).
+    /// The selected voice id from the provider-scoped TTS configuration shared by Settings and
+    /// the reader. Invalid ids on a closed roster resolve to the catalog default.
     var selectedVoiceID: String? {
         selectedVoiceID(defaults: .standard)
     }
@@ -108,39 +104,39 @@ enum TTSEngine: String, CaseIterable {
     func selectedVoiceID(defaults: UserDefaults) -> String? {
         guard let catalog else { return nil }
 
-        // The card's voice field is free-form ("输入或选择音色 ID") and most providers accept ids
-        // far beyond our curated list (MiniMax cloned voices, the long official rosters). So when
-        // the TTS card targets this provider, honor the typed voice verbatim — validating it
-        // against the bundled catalog silently swapped any off-catalog voice for the default,
-        // which is exactly the wrong failure (a bad id should error audibly at the provider).
-        // Qwen is the exception: a fixed surface with a closed, versioned roster where a retired
-        // id (e.g. "Cherry") would 400 every 朗读 — there the catalog check stays.
-        if let pid = providerID,
-           ttsSettingsProvider(defaults: defaults) == pid,
-           let byokVoice = nonEmpty(defaults.string(forKey: "byok.tts.voice")),
-           !hasClosedVoiceRoster || catalog.voices.contains(where: { $0.id == byokVoice }) {
-            return byokVoice
-        }
+        guard let pid = providerID else { return nil }
+        let activeProvider = ttsSettingsProvider(defaults: defaults)
+        let stored = CapabilityProviderConfigStore.string(
+            "voice",
+            providerId: pid,
+            capability: .tts,
+            defaults: defaults,
+            activeProviderId: activeProvider)
+        return normalizedVoiceID(stored) ?? catalog.defaults.voiceID
+    }
 
-        // The legacy per-engine pick predates the card and can carry stale ids — for that
-        // migration path the catalog check stays (issue 196).
-        if let stored = defaults.string(forKey: voiceDefaultsKey),
-           catalog.voices.contains(where: { $0.id == stored }) {
-            return stored
+    /// Resolve a voice value the same way every TTS surface does. Providers with an open roster
+    /// accept any non-empty id; Qwen's closed roster replaces unsupported ids with its catalog default.
+    func normalizedVoiceID(_ voiceID: String?) -> String? {
+        guard let catalog else { return nil }
+        guard let voiceID = nonEmpty(voiceID) else { return catalog.defaults.voiceID }
+        if !hasClosedVoiceRoster || catalog.voices.contains(where: { $0.id == voiceID }) {
+            return voiceID
         }
         return catalog.defaults.voiceID
     }
 
-    /// Persist a voice pick so `selectedVoiceID` reads it back. Writes whichever key that
-    /// getter consults first for this engine: the TTS settings card's field when the card
-    /// already targets this provider, else the legacy per-engine slot. Keeping the two in one
-    /// place is what stops the reader's picker and the settings card from disagreeing.
+    /// Persist a voice pick through the same provider-scoped store used by the TTS Settings card.
     func setSelectedVoiceID(_ voiceID: String, defaults: UserDefaults = .standard) {
-        if let pid = providerID, ttsSettingsProvider(defaults: defaults) == pid {
-            defaults.set(voiceID, forKey: "byok.tts.voice")
-        } else {
-            defaults.set(voiceID, forKey: voiceDefaultsKey)
-        }
+        guard let pid = providerID else { return }
+        CapabilityProviderConfigStore.set(
+            voiceID,
+            suffix: "voice",
+            providerId: pid,
+            capability: .tts,
+            defaults: defaults,
+            activeProviderId: ttsSettingsProvider(defaults: defaults))
+        ModelConfigurationEvents.post()
     }
 
     /// Build the `SpeechSynthesizer` for this engine. Local returns the real Kokoro

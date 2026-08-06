@@ -57,8 +57,12 @@ public struct TTSTextChunker: Sendable {
             if isBoundary {
                 var j = i + 1
                 while j < count, isClosing(chars[j]) { j += 1 }
-                let piece = String(chars[start..<j]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !piece.isEmpty { sentences.append(piece) }
+                // `start` may include the source whitespace after the previous sentence. Keep it
+                // so concatenating the emitted chunks reproduces the source paragraph exactly.
+                let piece = String(chars[start..<j])
+                if !piece.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    sentences.append(piece)
+                }
                 start = j
                 i = j
                 continue
@@ -66,8 +70,10 @@ public struct TTSTextChunker: Sendable {
             i += 1
         }
         if start < count {
-            let tail = String(chars[start..<count]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !tail.isEmpty { sentences.append(tail) }
+            let tail = String(chars[start..<count])
+            if !tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                sentences.append(tail)
+            }
         }
         return sentences
     }
@@ -109,12 +115,12 @@ public struct TTSTextChunker: Sendable {
                 p -= 1
             }
             if cut <= start { cut = min(start + policy.maxChars, softLimit) } // no boundary → hard cut
-            let piece = String(chars[start..<cut]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let piece = String(chars[start..<cut])
             if !piece.isEmpty { result.append(piece) }
             start = cut
         }
         if start < chars.count {
-            let tail = String(chars[start..<chars.count]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let tail = String(chars[start..<chars.count])
             if !tail.isEmpty { result.append(tail) }
         }
         return result
@@ -149,7 +155,7 @@ public struct TTSTextChunker: Sendable {
 
     private static func needsSpace(between left: String, and right: String) -> Bool {
         guard let l = left.last, let r = right.first else { return false }
-        return l.isASCII && r.isASCII && !l.isWhitespace
+        return l.isASCII && r.isASCII && !l.isWhitespace && !r.isWhitespace
     }
 
     private static func nextNonSpace(_ chars: [Character], from index: Int) -> Character? {

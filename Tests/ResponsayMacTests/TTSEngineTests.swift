@@ -116,13 +116,46 @@ final class TTSEngineTests: XCTestCase {
         }
     }
 
-    func testSelectedVoiceHonorsValidStoredPickElseDefault() {
+    func testSelectedVoiceHonorsProviderScopedPickElseDefault() {
         let defaults = freshDefaults("voice-pick")
-        let key = TTSEngine.cloudOpenAI.voiceDefaultsKey
-        defaults.set("nova", forKey: key)
+        defaults.set("openai", forKey: "byok.tts.provider")
+        defaults.set("nova", forKey: "byok.tts.openai.voice")
         XCTAssertEqual(TTSEngine.cloudOpenAI.selectedVoiceID(defaults: defaults), "nova")
-        defaults.set("not-a-voice", forKey: key)
-        XCTAssertEqual(TTSEngine.cloudOpenAI.selectedVoiceID(defaults: defaults), "alloy")  // invalid → default
+        defaults.set("not-a-voice", forKey: "byok.tts.openai.voice")
+        XCTAssertEqual(TTSEngine.cloudOpenAI.selectedVoiceID(defaults: defaults), "not-a-voice")
+    }
+
+    func testLegacyVoiceSlotCannotOverrideTheSharedProviderSelection() {
+        let defaults = freshDefaults("legacy-voice-ignored")
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("unsupported-qwen-voice", forKey: "byok.tts.voice")
+        defaults.set("unsupported-qwen-voice", forKey: "byok.tts.qwen.voice")
+        defaults.set("longjielidou_v3.6", forKey: "ttsVoice.cloud-qwen-tts")
+
+        XCTAssertEqual(TTSEngine.cloudQwen.selectedVoiceID(defaults: defaults), "loongeva_v3.6")
+    }
+
+    func testReaderVoicePickWritesTheSameScopedSettingAsTheConfigCard() {
+        let defaults = freshDefaults("voice-shared-setting")
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("unsupported-qwen-voice", forKey: "byok.tts.voice")
+        defaults.set("unsupported-qwen-voice", forKey: "byok.tts.qwen.voice")
+
+        TTSEngine.cloudQwen.setSelectedVoiceID("longjielidou_v3.6", defaults: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "longjielidou_v3.6")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.voice"), "longjielidou_v3.6")
+        XCTAssertEqual(TTSEngine.cloudQwen.selectedVoiceID(defaults: defaults), "longjielidou_v3.6")
+    }
+
+    func testReaderVoicePickPublishesAConfigurationChange() {
+        let defaults = freshDefaults("voice-change-notification")
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        let changed = expectation(forNotification: .modelConfigurationDidChange, object: nil)
+
+        TTSEngine.cloudQwen.setSelectedVoiceID("longanhuan_v3.6", defaults: defaults)
+
+        wait(for: [changed], timeout: 0.2)
     }
 
     private func freshDefaults(_ suffix: String) -> UserDefaults {

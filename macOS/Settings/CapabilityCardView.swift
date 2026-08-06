@@ -258,6 +258,10 @@ struct CapabilityCardView: View {
         .onChange(of: machine.appId) { _, _ in machine.writeAppId() }
         .onChange(of: machine.accessToken) { _, _ in machine.writeAccessToken() }
         .onChange(of: machine.boostingTableId) { _, _ in machine.writeBoostingTableId() }
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            guard capability == .tts else { return }
+            machine.refreshVoiceFromDefaults()
+        }
     }
 
     @ViewBuilder private var credentialRows: some View {
