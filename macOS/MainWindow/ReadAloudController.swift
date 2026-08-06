@@ -4,7 +4,7 @@ import ResponsayCore
 
 @MainActor
 @Observable
-final class ReadAloudController {
+final class ReadAloudController: ReadAloudStoppable {
     enum Mode: Equatable { case idle, reading, repeating }
 
     // internal(set): the +Playback extension (sibling file) updates these during playback.

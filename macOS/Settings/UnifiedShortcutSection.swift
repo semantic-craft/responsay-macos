@@ -17,7 +17,7 @@ struct UnifiedShortcutSection: View {
     /// 子动作) are intentionally omitted — they only appear below if a binding already exists.
     private static let primaryActions: [ShortcutAction] = [
         .raw, .translate, .askAnything, .expressInEnglish,
-        .selectionMenu, .snapOCR, .snapTextOCR, .snapImageCopy,
+        .selectionMenu, .readAloudSelection, .snapOCR, .snapTextOCR, .snapImageCopy,
     ]
 
     private var displayedActions: [ShortcutAction] {

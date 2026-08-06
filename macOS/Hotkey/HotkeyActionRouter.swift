@@ -44,6 +44,8 @@ final class HotkeyActionRouter {
             handlers.snapImageCopy()
         case .selectionMenu:
             handlers.showSelectionMenu()
+        case .readAloudSelection:
+            handlers.readAloudSelection()
         case .askAnything:
             handlers.beginAskAnything(trigger)
         case .openApp:
@@ -68,7 +70,7 @@ final class HotkeyActionRouter {
         case .askAnything:
             handlers.finishAskAnything(trigger)
         case .rewriteSelection, .translateSelection, .snapOCR, .snapTextOCR, .snapImageCopy,
-             .selectionMenu, .openApp, .openSettings, .confirmInsert:
+             .selectionMenu, .readAloudSelection, .openApp, .openSettings, .confirmInsert:
             break
         }
     }

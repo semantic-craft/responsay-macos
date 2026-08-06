@@ -131,6 +131,18 @@ enum TTSEngine: String, CaseIterable {
         return catalog.defaults.voiceID
     }
 
+    /// Persist a voice pick so `selectedVoiceID` reads it back. Writes whichever key that
+    /// getter consults first for this engine: the TTS settings card's field when the card
+    /// already targets this provider, else the legacy per-engine slot. Keeping the two in one
+    /// place is what stops the reader's picker and the settings card from disagreeing.
+    func setSelectedVoiceID(_ voiceID: String, defaults: UserDefaults = .standard) {
+        if let pid = providerID, ttsSettingsProvider(defaults: defaults) == pid {
+            defaults.set(voiceID, forKey: "byok.tts.voice")
+        } else {
+            defaults.set(voiceID, forKey: voiceDefaultsKey)
+        }
+    }
+
     /// Build the `SpeechSynthesizer` for this engine. Local returns the real Kokoro
     /// engine (throws `.modelNotInstalled` if the voice model isn't downloaded);
     /// wired cloud cases return direct BYOK engines, and unwired providers return a

@@ -10,6 +10,7 @@ enum ShortcutAction: String, CaseIterable, Codable, Hashable, Identifiable, Send
     case snapImageCopy
     case askAnything
     case selectionMenu
+    case readAloudSelection
     case openApp
     case openSettings
     case confirmInsert
