@@ -48,6 +48,9 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
 
     private let player: any ReadAloudAudioPlaying
     private var pipeline: Task<Void, Never>?
+    /// Identifies the pipeline allowed to finalize the shared audio stream. A cancelled
+    /// synthesizer may still return, so task cancellation alone cannot protect a replacement.
+    private var pipelineGeneration: UInt = 0
     private var ticker: Task<Void, Never>?
     /// Line the current audio stream starts at — every restart (speed, voice, jump) rebases here,
     /// so timeline offsets stay relative to the live stream rather than the whole document.
@@ -104,6 +107,8 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
         guard hasText else { return }
         coordinator?.activate(self)
         teardownTasks()
+        pipelineGeneration &+= 1
+        let generation = pipelineGeneration
         player.stop()
         timeline.reset()
         streamOrigin = max(0, min(line, script.count - 1))
@@ -113,7 +118,9 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
         didReachEnd = false
         needsRebuildOnResume = false
         phase = .preparing
-        pipeline = Task { @MainActor [weak self] in await self?.runPipeline() }
+        pipeline = Task { @MainActor [weak self] in
+            await self?.runPipeline(generation: generation)
+        }
     }
 
     func pauseOrResume() {
@@ -139,6 +146,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
 
     func stop() {
         teardownTasks()
+        pipelineGeneration &+= 1
         player.stop()
         timeline.reset()
         phase = .idle
@@ -186,15 +194,10 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
 
     // MARK: - Pipeline
 
-    private func runPipeline() async {
+    private func runPipeline(generation: UInt) async {
         let (synth, fallbackProvider) = makeSynthesizer()
         voiceNotice = fallbackProvider.map { "已回退到可用音色朗读（\($0) 未就绪）" }
-        do {
-            try player.beginStreaming(sampleRate: Double(TTSAudio.defaultSampleRate))
-        } catch {
-            fail("朗读失败：音频播放没有启动。")
-            return
-        }
+        var streamStarted = false
         var anchored = false
         var line = streamOrigin
         while line < script.count, !Task.isCancelled {
@@ -209,6 +212,15 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
             do {
                 let speech = try await synth.synthesize(entry.text, speed: speed)
                 guard !Task.isCancelled else { break }
+                if !streamStarted {
+                    do {
+                        try player.beginStreaming(sampleRate: Double(speech.sampleRate))
+                        streamStarted = true
+                    } catch {
+                        fail("朗读失败：音频播放没有启动。")
+                        return
+                    }
+                }
                 player.appendStreaming(speech)
                 timeline.append(line: line, duration: speech.duration)
             } catch {
@@ -235,6 +247,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
             }
             line += 1
         }
+        guard generation == pipelineGeneration else { return }
         player.endStreaming()
         didReachEnd = !Task.isCancelled
     }
@@ -264,6 +277,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
 
     private func fail(_ message: String) {
         teardownTasks()
+        pipelineGeneration &+= 1
         player.stop()
         phase = .idle
         activeLine = nil
