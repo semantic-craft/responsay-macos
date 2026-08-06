@@ -67,6 +67,37 @@ struct ProviderConfigMachineTests {
         #expect(m.baseURL == "https://api.openai.com/v1")
     }
 
+    @Test func loadResolvesAnInvalidQwenVoiceTheSameWayAsTheReaderWithoutRewritingIt() {
+        let d = freshDefaults("load-resolves-invalid-qwen-voice")
+        d.set("qwen", forKey: "byok.tts.provider")
+        d.set("unsupported-qwen-voice", forKey: "byok.tts.voice")
+        d.set("unsupported-qwen-voice", forKey: "byok.tts.qwen.voice")
+        d.set("longjielidou_v3.6", forKey: "ttsVoice.cloud-qwen-tts")
+        let m = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
+
+        m.load()
+
+        #expect(m.voice == "loongeva_v3.6")
+        #expect(m.voice == TTSEngine.cloudQwen.selectedVoiceID(defaults: d))
+        #expect(d.string(forKey: "byok.tts.voice") == "unsupported-qwen-voice")
+        #expect(d.string(forKey: "byok.tts.qwen.voice") == "unsupported-qwen-voice")
+    }
+
+    @Test func openTTSConfigRefreshesAfterTheReaderChangesVoice() {
+        let d = freshDefaults("open-tts-config-refreshes-voice")
+        d.set("qwen", forKey: "byok.tts.provider")
+        let m = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
+        m.load()
+        #expect(m.voice == "loongeva_v3.6")
+
+        TTSEngine.cloudQwen.setSelectedVoiceID("longjielidou_v3.6", defaults: d)
+        m.refreshVoiceFromDefaults()
+
+        #expect(m.voice == "longjielidou_v3.6")
+    }
+
     @Test func loadReadsQwenWorkspaceIDAndDerivesDedicatedResponsesEndpoint() {
         let d = freshDefaults("load-qwen-workspace")
         d.set("qwen", forKey: "byok.llm.provider")
@@ -221,6 +252,21 @@ struct ProviderConfigMachineTests {
         #expect(m.baseURL == "https://api.openai.com/v1")
         #expect(m.status.isEmpty)
         #expect(m.fetchedModels.isEmpty)
+    }
+
+    @Test func selectingQwenResolvesItsInvalidScopedVoiceWithoutRewritingIt() {
+        let d = freshDefaults("select-qwen-resolves-invalid-voice")
+        d.set("openai", forKey: "byok.tts.provider")
+        d.set("unsupported-qwen-voice", forKey: "byok.tts.qwen.voice")
+        let m = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: "openai", defaults: d, keyReader: { _ in nil })
+        m.load()
+
+        m.providerId = "qwen"
+        m.selectProvider()
+
+        #expect(m.voice == "loongeva_v3.6")
+        #expect(d.string(forKey: "byok.tts.qwen.voice") == "unsupported-qwen-voice")
     }
 
     @Test func selectProviderToMimoLLMPicksItsFirstEndpoint() {

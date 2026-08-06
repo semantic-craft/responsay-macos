@@ -11,7 +11,8 @@ struct TTSTextChunkerTests {
 
     @Test func sentenceBoundarySplit_english() {
         let chunks = chunker.chunk("Hello world. How are you? I am fine.", policy: noMerge)
-        #expect(chunks.map(\.text) == ["Hello world.", "How are you?", "I am fine."])
+        #expect(chunks.map(\.text) == ["Hello world.", " How are you?", " I am fine."])
+        #expect(chunks.map(\.text).joined() == "Hello world. How are you? I am fine.")
     }
 
     @Test func mixedZhEn_splitsAtEachBoundary() {
@@ -31,7 +32,7 @@ struct TTSTextChunkerTests {
         let chunks = chunker.chunk(text, policy: noMerge)
         #expect(chunks.count == 2)
         #expect(chunks[0].text == "Dr. Smith paid $3.50 to the U.S. team.")
-        #expect(chunks[1].text == "Done.")
+        #expect(chunks[1].text == " Done.")
     }
 
     @Test func overLongSentence_softSplitsUnderMax() {
@@ -41,6 +42,15 @@ struct TTSTextChunkerTests {
         let chunks = chunker.chunk(clause, policy: policy)
         #expect(chunks.count > 1)
         #expect(chunks.allSatisfy { $0.text.count <= policy.maxChars })
+    }
+
+    @Test func overLongFollowingSentence_preservesItsLeadingSeparator() {
+        let text = "A test. " + Array(repeating: "This clause stays readable", count: 8).joined(separator: ", ") + "."
+        let policy = TTSChunkingPolicy(maxChars: 48, softMaxChars: 36, minMergeChars: 0)
+
+        let chunks = chunker.chunk(text, policy: policy)
+
+        #expect(chunks.map(\.text).joined() == text)
     }
 
     @Test func smallBlocksMerged() {
