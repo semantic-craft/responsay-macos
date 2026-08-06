@@ -130,6 +130,8 @@ final class RecordingAudioPlayer: ReadAloudAudioPlaying {
     private(set) var playCalls: [ComposedReadAloud] = []
     private(set) var stopCalls = 0
     private(set) var appendStreamingCalls = 0
+    private(set) var beginStreamingRates: [Double] = []
+    private(set) var endStreamingCalls = 0
 
     func play(_ composed: ComposedReadAloud) throws {
         playCalls.append(composed)
@@ -139,12 +141,16 @@ final class RecordingAudioPlayer: ReadAloudAudioPlaying {
 
     func waitForPlaybackAnchor(timeout: TimeInterval) async -> Bool { true }
     func playFileEmergency(_ composed: ComposedReadAloud) -> Bool { false }
-    func beginStreaming(sampleRate: Double) throws {}
+    func beginStreaming(sampleRate: Double) throws {
+        beginStreamingRates.append(sampleRate)
+    }
     func appendStreaming(_ speech: SynthesizedSpeech) -> TimeInterval {
         appendStreamingCalls += 1
         return speech.duration
     }
-    func endStreaming() {}
+    func endStreaming() {
+        endStreamingCalls += 1
+    }
     func pause() {}
     func resume() {}
     func stop() {
