@@ -174,6 +174,7 @@ final class FnLetterBindingTests: XCTestCase {
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .expressInEnglish, chord: .fnE),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 

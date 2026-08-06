@@ -45,10 +45,14 @@ final class FnChordTests: XCTestCase {
     func testSettingsQuickAddIncludesFnSpace() {
         let ids = FnChord.settingsQuickAddAllowed.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count)
-        XCTAssertEqual(ids, ["fn", "fn+shift", "fn+option", "fn+control", "fn+command", "fn+space", "fn+v", "fn+e"])
+        XCTAssertEqual(
+            ids,
+            ["fn", "fn+shift", "fn+option", "fn+control", "fn+command",
+             "fn+space", "fn+v", "fn+e", "fn+r"])
         XCTAssertEqual(FnChord.fnSpace.displayString, "Fn Space")
         XCTAssertEqual(FnChord.fnV.displayString, "Fn V")
         XCTAssertEqual(FnChord.fnE.displayString, "Fn E")
+        XCTAssertEqual(FnChord.fnR.displayString, "Fn R")
     }
 
     // MARK: - Issue 271: FnKey model enrichment

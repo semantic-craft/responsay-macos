@@ -48,6 +48,7 @@ struct FnChord: Codable, Hashable, Identifiable, Sendable {
     static let fnSpace = FnChord(modifiers: [], key: .space)
     static let fnV = FnChord(modifiers: [], key: .v)
     static let fnE = FnChord(modifiers: [], key: .e)
+    static let fnR = FnChord(modifiers: [], key: .r)
 
     static let rightOptionOnly = FnChord(anchor: .rightOption, modifiers: [], key: nil)
     static let rightOptionShift = FnChord(anchor: .rightOption, modifiers: [.shift], key: nil)
@@ -82,7 +83,7 @@ struct FnChord: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
-    static let settingsQuickAddAllowed: [FnChord] = stageOneAllowed + [.fnSpace, .fnV, .fnE]
+    static let settingsQuickAddAllowed: [FnChord] = stageOneAllowed + [.fnSpace, .fnV, .fnE, .fnR]
 
     /// Anchor + single-letter chords a user can hand-pick in settings (Fn + A … Fn + Z).
     /// The runtime path (FnChordStateMachine letter detection, conflict checks, persistence)

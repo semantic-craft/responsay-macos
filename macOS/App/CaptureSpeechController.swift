@@ -131,7 +131,7 @@ final class CaptureSpeechController {
             // merged into 听写翻译 / Fn+Shift (nativeIntent translate).
             ExpressInsertSettings.mode().outputMode
         case .rewriteSelection, .translateSelection, .snapOCR, .snapTextOCR, .snapImageCopy,
-             .selectionMenu, .askAnything, .openApp, .openSettings, .confirmInsert:
+             .selectionMenu, .readAloudSelection, .askAnything, .openApp, .openSettings, .confirmInsert:
             nil
         }
     }

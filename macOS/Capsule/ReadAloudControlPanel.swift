@@ -11,11 +11,15 @@ import ResponsayCore
 /// `ReadAloudController` and shows while a read is preparing/playing/paused, hides when idle.
 @MainActor
 final class ReadAloudControlPanel {
-    private let controller: ReadAloudController
+    private let reader: ReadAloudDocumentReader
+    private let onOpenReader: () -> Void
     private var panel: NSPanel?
     private var hoverTimer: Timer?
 
-    init(controller: ReadAloudController) { self.controller = controller }
+    init(reader: ReadAloudDocumentReader, onOpenReader: @escaping () -> Void) {
+        self.reader = reader
+        self.onOpenReader = onOpenReader
+    }
 
     /// Begin reflecting the controller's activity. Call once.
     func start() {
@@ -25,9 +29,8 @@ final class ReadAloudControlPanel {
 
     private func observe() {
         withObservationTracking {
-            _ = controller.isActive
-            _ = controller.isPlaying
-            _ = controller.isPreparing
+            _ = reader.isActive
+            _ = reader.phase
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -38,7 +41,7 @@ final class ReadAloudControlPanel {
     }
 
     private func apply() {
-        if controller.isActive { show() } else { hide() }
+        if reader.isActive { show() } else { hide() }
     }
 
     private func show() {
@@ -46,14 +49,15 @@ final class ReadAloudControlPanel {
         let panel = panel ?? makePanel()
         if panel.contentViewController == nil {
             // NSHostingController (a raw NSHostingView paints nothing here — same fix CapsulePanel uses).
-            let hc = NSHostingController(rootView: ReadAloudControlView(controller: controller))
+            let hc = NSHostingController(
+                rootView: ReadAloudControlView(reader: reader, onOpenReader: onOpenReader))
             hc.sizingOptions = []
             panel.contentViewController = hc
         }
         panel.contentViewController?.view.layoutSubtreeIfNeeded()
         let size = OverlayPanelSizing.resolved(
             panel.contentViewController?.view.fittingSize,
-            fallback: CGSize(width: 220, height: 76))
+            fallback: CGSize(width: 260, height: 76))
         OverlayPanelSizing.pin(panel, contentSize: size, label: "read-aloud")
         panel.setFrameOrigin(PanelPlacement.bottomCentered(
             panelSize: size, visibleFrame: screen.visibleFrame, margin: 6))

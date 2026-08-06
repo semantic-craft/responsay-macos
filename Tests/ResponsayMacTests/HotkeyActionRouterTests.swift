@@ -68,6 +68,7 @@ final class HotkeyActionRouterTests: XCTestCase {
         var finishCaptureCount = 0
         var rewriteSelectionCount = 0
         var showSelectionMenuCount = 0
+        var readAloudSelectionCount = 0
         var beginAskAnythingCount = 0
         var finishAskAnythingCount = 0
 
@@ -82,6 +83,7 @@ final class HotkeyActionRouterTests: XCTestCase {
                 snapTextOCR: {},
                 snapImageCopy: {},
                 showSelectionMenu: { self.showSelectionMenuCount += 1 },
+                readAloudSelection: { self.readAloudSelectionCount += 1 },
                 beginAskAnything: { _ in self.beginAskAnythingCount += 1 },
                 finishAskAnything: { _ in self.finishAskAnythingCount += 1 },
                 openApp: {},

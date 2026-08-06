@@ -25,6 +25,7 @@ final class SelectionMenuHotkeyTests: XCTestCase {
             snapTextOCR: {},
             snapImageCopy: {},
             showSelectionMenu: { didShowMenu = true },
+            readAloudSelection: {},
             beginAskAnything: { _ in },
             finishAskAnything: { _ in },
             openApp: {},
