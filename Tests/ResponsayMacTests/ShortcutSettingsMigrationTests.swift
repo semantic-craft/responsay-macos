@@ -14,6 +14,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .translate, chord: .fnShift),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
         XCTAssertTrue(defaults.bool(forKey: "shortcutSettings.didMigrate.v1"))
     }
@@ -28,6 +29,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .translate, chord: .fnShift),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -41,6 +43,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .raw, chord: .fnShift),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -56,6 +59,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .expressInEnglish, chord: .fnOption),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -70,6 +74,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .raw, chord: .fnShift),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -140,6 +145,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
             .fn(action: .expressInEnglish, chord: .fnE),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
         let saved = try XCTUnwrap(defaults.data(forKey: "shortcutSettings.v1"))
         let decoded = try JSONDecoder().decode(ShortcutSettingsSnapshot.self, from: saved)
@@ -165,6 +171,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .translate, chord: .fnShift),
             .fn(action: .selectionMenu, chord: .fnV),
             .fn(action: .expressInEnglish, chord: .fnE),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -187,6 +194,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
             .fn(action: .expressInEnglish, chord: .fnE),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 
@@ -202,6 +210,7 @@ final class ShortcutSettingsMigrationTests: XCTestCase {
             .fn(action: .translate, chord: .fnShift),
             .fn(action: .askAnything, chord: .fnSpace),
             .fn(action: .selectionMenu, chord: .fnV),
+            .fn(action: .readAloudSelection, chord: .fnR),
         ])
     }
 

@@ -22,13 +22,18 @@ final class CaptureSelectionController {
     private let onCounterargumentDebate: @MainActor (String) -> Void
     private lazy var selectionActionPanel = SelectionActionPanel()
     private lazy var verifyMenuController = SelectionVerifyMenuController()
-    private let readAloudController = ReadAloudController()
-    /// 屏底浮窗朗读控制条(暂停/继续 + 停止)。lazy 确保 `start()` 只挂一次观察。
+    /// 朗读引擎：按句流水线合成，长文粘进阅读器也能边合边读。
+    private let documentReader = ReadAloudDocumentReader()
+    /// 屏底浮窗朗读控制条(暂停/继续 + 停止 + 打开阅读器)。lazy 确保 `start()` 只挂一次观察。
     private lazy var readAloudControlPanel: ReadAloudControlPanel = {
-        let panel = ReadAloudControlPanel(controller: readAloudController)
+        let panel = ReadAloudControlPanel(
+            reader: documentReader,
+            onOpenReader: { [weak self] in self?.openReaderWindow() })
         panel.start()
         return panel
     }()
+    /// 独立阅读器窗口。lazy: 多数朗读只用屏底胶囊，窗口不开就不建。
+    private lazy var readerWindow = ReadAloudReaderWindowController(reader: documentReader)
     private let legalSkillLibrary = LegalSkillLibrary()
 
     init(
@@ -106,11 +111,22 @@ final class CaptureSelectionController {
         guard prepareSelectionAction("Read Aloud selection", applyLocale: false) else { return }
         _ = readAloudControlPanel   // ensure the bottom-center 暂停/停止 control is live
         Task {
-            if let selectedText = await resolveSelectionText(prefetched: prefetched),
-               !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                readAloudController.toggleRead(.followReadSeed(from: selectedText))
+            guard let selectedText = await resolveSelectionText(prefetched: prefetched),
+                  !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                // No selection is the normal way to reach the reader empty-handed: open the
+                // window so the next move (⌘V a long passage) is one keystroke away.
+                log.info("Read Aloud selection: nothing selected, opening the reader instead")
+                openReaderWindow()
+                return
             }
+            documentReader.read(selectedText)
         }
+    }
+
+    /// 打开独立阅读器窗口 — 胶囊上的 ⤢，以及无选区时按朗读快捷键的落点。
+    func openReaderWindow() {
+        _ = readAloudControlPanel   // keep the remote wired even when the window drives the read
+        readerWindow.show()
     }
 
 

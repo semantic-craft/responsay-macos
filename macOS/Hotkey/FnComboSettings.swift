@@ -44,6 +44,9 @@ enum FnComboSettings {
             // New 划词菜单 action — Fn+V out of the box, so a fresh install's legacy-seed
             // path (no snapshot yet) gets it just like raw / translate / 任意提问 do.
             .fnV
+        case .readAloudSelection:
+            // 朗读选中文本 — Fn+R out of the box, same fresh-install seeding as 划词菜单.
+            .fnR
         default:
             nil
         }
@@ -75,6 +78,8 @@ enum FnComboSettings {
         case .askAnything:
             ["fnCombo.askAnything"]
         case .selectionMenu:
+            []   // new action — no legacy `fnCombo.*` key ever existed to migrate
+        case .readAloudSelection:
             []   // new action — no legacy `fnCombo.*` key ever existed to migrate
         case .openApp:
             ["fnCombo.openApp"]

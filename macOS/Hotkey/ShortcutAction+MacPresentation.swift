@@ -25,6 +25,8 @@ extension ShortcutAction {
             "任意提问"
         case .selectionMenu:
             "划词菜单"
+        case .readAloudSelection:
+            "朗读选中文本"
         case .openApp:
             "打开 \(AppBrand.displayName)"
         case .openSettings:
@@ -56,6 +58,8 @@ extension ShortcutAction {
             "语音问任何事；选中文本时基于选区改写/摘要/翻译/问答"
         case .selectionMenu:
             "选中文字后按快捷键，在光标处弹出菜单：来源核验、翻译、朗读、加入识别词典等。"
+        case .readAloudSelection:
+            "选中文字后直接朗读，屏底出现控制胶囊；点胶囊上的 ⤢ 打开阅读器窗口，可粘贴长文、调语速换音色。"
         default:
             rawValue
         }
@@ -76,6 +80,7 @@ extension ShortcutAction {
             // the 划词菜单 (.selectionMenu) and route by each skill's `interaction`. A persisted
             // legalPalette binding migrates to .selectionMenu (see ShortcutAction decode).
             .selectionMenu,
+            .readAloudSelection,
             .openApp,
             .openSettings,
             .confirmInsert

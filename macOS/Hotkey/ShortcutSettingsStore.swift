@@ -29,6 +29,7 @@ final class ShortcutSettingsStore {
         .fn(action: .askAnything, chord: .fnSpace),
         .fn(action: .expressInEnglish, chord: .fnE),
         .fn(action: .selectionMenu, chord: .fnV),
+        .fn(action: .readAloudSelection, chord: .fnR),
     ]
     @ObservationIgnored private static let snapshotVersionTwoAdditions: [ShortcutBinding] = [
         .fn(action: .translate, chord: .fnShift),
@@ -364,6 +365,12 @@ final class ShortcutSettingsStore {
         if !bindings.contains(where: { $0.isEnabled && $0.family == .fn && $0.action == .expressInEnglish }),
            !bindings.contains(where: { $0.isEnabled && $0.family == .fn && $0.fnChord == .fnE }) {
             bindings.append(.fn(action: .expressInEnglish, chord: .fnE))
+        }
+        // v6: seed the 朗读选中文本 default (Fn+R) for users upgrading from an earlier snapshot,
+        // unless they already bound 朗读选中文本 or took Fn+R for something else.
+        if !bindings.contains(where: { $0.isEnabled && $0.family == .fn && $0.action == .readAloudSelection }),
+           !bindings.contains(where: { $0.isEnabled && $0.family == .fn && $0.fnChord == .fnR }) {
+            bindings.append(.fn(action: .readAloudSelection, chord: .fnR))
         }
         seedRightOptionDefaultsIfMissing(in: &bindings)
 

@@ -18,6 +18,7 @@ struct FnKey: Codable, Hashable, Identifiable, Sendable {
     static let space = FnKey(keyCode: 49, display: "Space")
     static let v = FnKey(keyCode: 9, display: "V")
     static let e = FnKey(keyCode: 14, display: "E")
+    static let r = FnKey(keyCode: 15, display: "R")
 
     /// A–Z in alphabetical order, for the "pick a custom letter" settings menu.
     static let letters: [FnKey] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".compactMap { ch in

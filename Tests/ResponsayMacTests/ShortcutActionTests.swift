@@ -11,7 +11,7 @@ final class ShortcutActionTests: XCTestCase {
             ShortcutAction.visibleInShortcutSettings,
             [.raw, .translate, .askAnything, .polish, .expressInEnglish,
              .rewriteSelection, .snapOCR, .snapTextOCR, .snapImageCopy, .selectionMenu,
-             .openApp, .openSettings, .confirmInsert]
+             .readAloudSelection, .openApp, .openSettings, .confirmInsert]
         )
     }
 
