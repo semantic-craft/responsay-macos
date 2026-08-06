@@ -42,6 +42,13 @@ enum MainMenuBuilder {
         window.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         window.addItem(.separator())
+        let cycle = NSMenuItem(
+            title: "下一个窗口",
+            action: #selector(AppMenuActions.cycleWindows(_:)),
+            keyEquivalent: "`")
+        cycle.keyEquivalentModifierMask = [.command]
+        cycle.target = AppMenuActions.shared
+        window.addItem(cycle)
         window.addItem(withTitle: "前置全部窗口",
                        action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         main.addItem(submenu(window, title: "窗口"))
@@ -62,4 +69,19 @@ enum MainMenuBuilder {
 final class AppMenuActions: NSObject {
     static let shared = AppMenuActions()
     @objc func openSettings() { MacSettingsWindowController.shared.show() }
+
+    /// The app builds its menu without a storyboard, so AppKit has no standard ⌘` item to route.
+    /// Cycle only visible keyable document windows; non-activating capsule panels are excluded by
+    /// `canBecomeKey`, while the floating Read Aloud reader remains a normal participant.
+    @objc func cycleWindows(_ sender: Any?) {
+        let candidates = NSApp.orderedWindows.filter {
+            $0.isVisible && !$0.isMiniaturized && $0.canBecomeKey
+        }
+        guard candidates.count > 1 else { return }
+        let currentIndex = NSApp.keyWindow.flatMap { current in
+            candidates.firstIndex(where: { $0 === current })
+        }
+        let nextIndex = currentIndex.map { ($0 + 1) % candidates.count } ?? 0
+        candidates[nextIndex].makeKeyAndOrderFront(sender)
+    }
 }

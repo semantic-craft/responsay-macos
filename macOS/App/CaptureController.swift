@@ -143,6 +143,9 @@ final class CaptureController {
             showSelectionMenu: { [weak self] in
                 self?.selectionController.showSelectionMenuFromHotkey()
             },
+            readAloudSelection: { [weak self] in
+                self?.readAloudSelection()
+            },
             beginAskAnything: { [weak self] trigger in self?.askAnythingController.handleDown(trigger: trigger) },
             finishAskAnything: { [weak self] trigger in self?.askAnythingController.handleUp(trigger: trigger) },
             openApp: { MainWindowController.shared.show() },

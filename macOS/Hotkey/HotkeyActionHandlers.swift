@@ -8,6 +8,7 @@ struct HotkeyActionHandlers {
     var snapTextOCR: @MainActor () -> Void
     var snapImageCopy: @MainActor () -> Void
     var showSelectionMenu: @MainActor () -> Void
+    var readAloudSelection: @MainActor () -> Void
     var beginAskAnything: @MainActor (HotkeyTrigger) -> Void
     var finishAskAnything: @MainActor (HotkeyTrigger) -> Void
     var openApp: @MainActor () -> Void
