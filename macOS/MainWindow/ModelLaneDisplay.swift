@@ -124,13 +124,13 @@ struct ModelLaneDisplay {
         // preset lookup and the model id falls back to the literal "默认模型".
         let (base, _) = ModelRouteOptionID.parse(id)
         let (_, plan) = ModelRouteOptionID.parse(id)
-        let config = readiness.resolvedConfig(.llm, providerId: base, plan: plan)
+        let lanes = readiness.resolvedLLM(providerId: base, plan: plan)
+        let config = lanes.provider
         let preset = ProviderCatalog.presets(for: .llm).first { $0.id == config.providerId }
         let state = readiness.llmState(optionId: id)
         // 技能平台模型显式分流时快照要能区分两个选择；跟随时保持单模型显示不变。
-        let skillModel = SkillPlatformModelSettings.explicitModel(
-            providerId: config.providerId, defaults: defaults)
-        let modelId = (skillModel == nil || skillModel == config.model)
+        let skillModel = lanes.explicitSkillModel
+        let modelId = (lanes.skillFollowsDictation || skillModel == config.model)
             ? config.model
             : "\(config.model) · 技能 \(skillModel!)"
         return ModelLaneInfo(

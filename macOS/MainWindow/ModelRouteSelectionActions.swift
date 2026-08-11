@@ -14,8 +14,20 @@ enum ModelRouteSelectionActions {
     static func applyLLMSelection(_ id: String, defaults: UserDefaults = .standard) {
         defer { ModelConfigurationEvents.post() }
         let (base, plan) = ModelRouteOptionID.parse(id)
+        guard let preset = ProviderCatalog.presets(for: .llm).first(where: { $0.id == base }) else {
+            return
+        }
+
+        let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+        let previous = dispatcher.resolveLLM(providerId: base).provider
+        let selected = plan.map { dispatcher.resolveLLM(providerId: base, plan: $0).provider }
+            ?? previous
         CapabilitySelectionSync.selectProvider(base, capability: .llm, defaults: defaults)
-        if let plan { applyPlan(plan, providerId: base, capability: .llm, defaults: defaults) }
+        persistLLMSelection(
+            selected,
+            previous: previous,
+            preset: preset,
+            defaults: defaults)
     }
 
     static func applyTTSSelection(_ id: String, defaults: UserDefaults = .standard) {
@@ -55,5 +67,38 @@ enum ModelRouteSelectionActions {
         write("plan", plan.rawValue)
         write("baseURL", baseURL)
         write("model", model)
+    }
+
+    /// Persist the already-normalized LLM snapshot selected by the quick picker. Resolution stays
+    /// pure in `ProviderConfigDispatcher`; this command handler owns the UserDefaults mutation.
+    private static func persistLLMSelection(
+        _ selected: ResolvedProviderConfig,
+        previous: ResolvedProviderConfig,
+        preset: ProviderPreset,
+        defaults: UserDefaults
+    ) {
+        let routeChanged = selected.region != previous.region || selected.plan != previous.plan
+        let oldDefault = preset.defaultModel(for: .llm, plan: previous.plan) ?? ""
+        let newDefault = preset.defaultModel(for: .llm, plan: selected.plan) ?? ""
+        let model = routeChanged && (previous.model.isEmpty || previous.model == oldDefault)
+            ? newDefault
+            : previous.model
+
+        func write(_ suffix: String, _ value: String) {
+            CapabilityProviderConfigStore.set(
+                value,
+                suffix: suffix,
+                providerId: selected.providerId,
+                capability: .llm,
+                defaults: defaults,
+                activeProviderId: selected.providerId)
+        }
+        write("region", selected.region.rawValue)
+        write("plan", selected.plan.rawValue)
+        write("baseURL", selected.baseURL)
+        write("model", model)
+        if selected.providerId == "qwen" {
+            write("workspaceId", selected.workspaceID ?? "")
+        }
     }
 }

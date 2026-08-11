@@ -168,6 +168,10 @@ struct ModelLaneReadinessResolver {
             ?? dispatcher.resolve(capability, providerId: providerId)
     }
 
+    func resolvedLLM(providerId: String, plan: BillingPlan? = nil) -> ResolvedLLMLanes {
+        dispatcher.resolveLLM(providerId: providerId, plan: plan)
+    }
+
     static func cloudState(for config: ResolvedProviderConfig) -> ModelLaneState {
         guard !config.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .missingModel)

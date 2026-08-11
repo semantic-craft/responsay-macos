@@ -41,7 +41,7 @@ final class ProviderConfigMachine {
 
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
-    @ObservationIgnored private let keyReader: (String) -> String?
+    @ObservationIgnored let keyReader: (String) -> String?
     @ObservationIgnored private let keyWriter: (String, String) -> Void
 
     init(
@@ -169,7 +169,7 @@ final class ProviderConfigMachine {
         model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
         skillModel = capability == .llm
-            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: pid, activeProviderId: storedProvider) ?? "")
+            ? (SkillPlatformModelSettings.explicitModel(providerId: pid, defaults: defaults) ?? "")
             : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
@@ -204,7 +204,9 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        if capability == .asr, pid == QwenASRFlashRouting.providerId {
+        if capability == .llm {
+            applyEffectiveLLMConfiguration(providerId: pid)
+        } else if capability == .asr, pid == QwenASRFlashRouting.providerId {
             applyEffectiveQwenASRConfiguration()
         } else {
             apiKey = readApiKey(providerId: pid, plan: plan)
@@ -240,7 +242,7 @@ final class ProviderConfigMachine {
         model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
             ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
         skillModel = capability == .llm
-            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: prov.id, activeProviderId: activeProvider) ?? "")
+            ? (SkillPlatformModelSettings.explicitModel(providerId: prov.id, defaults: defaults) ?? "")
             : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
@@ -267,7 +269,9 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
+        if capability == .llm {
+            applyEffectiveLLMConfiguration(providerId: prov.id)
+        } else if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
             applyEffectiveQwenASRConfiguration()
         } else {
             apiKey = readApiKey(providerId: prov.id, plan: plan)
@@ -322,8 +326,10 @@ final class ProviderConfigMachine {
         setScoped(planRaw, suffix: "plan")
         setScoped(model, suffix: "model")
         if capability == .llm {
-            setScoped(skillModel.trimmingCharacters(in: .whitespacesAndNewlines),
-                      suffix: SkillPlatformModelSettings.suffix)
+            SkillPlatformModelSettings.setExplicitModel(
+                skillModel,
+                providerId: providerId,
+                defaults: defaults)
         }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")

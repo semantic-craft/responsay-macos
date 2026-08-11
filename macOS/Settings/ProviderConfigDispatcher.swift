@@ -26,6 +26,17 @@ struct ResolvedProviderConfig: Equatable, Sendable {
     var hasKey: Bool { !(apiKey ?? "").isEmpty || (!(appId ?? "").isEmpty && !(accessToken ?? "").isEmpty) }
 }
 
+/// One effective snapshot for the two LLM lanes. Provider routing and credentials are resolved
+/// once; the skill lane may only replace the model within that same snapshot.
+struct ResolvedLLMLanes: Equatable, Sendable {
+    let provider: ResolvedProviderConfig
+    let dictationEndpoint: LLMEndpoint
+    let skillEndpoint: LLMEndpoint
+    let explicitSkillModel: String?
+
+    var skillFollowsDictation: Bool { explicitSkillModel == nil }
+}
+
 struct ProviderConfigDispatcher {
     private let defaults: UserDefaults
     /// account (e.g. `"byok.qwen"` or `"byok.tts.qwen"`) → key.
@@ -58,6 +69,34 @@ struct ProviderConfigDispatcher {
         resolve(capability, providerIdOverride: providerIdOverride, planOverride: plan)
     }
 
+    /// Resolve both LLM lanes from one provider snapshot. The skill override is provider-scoped;
+    /// an obsolete active mirror can therefore never contribute a foreign provider's model.
+    func resolveLLM(providerId: String? = nil, plan: BillingPlan? = nil) -> ResolvedLLMLanes {
+        let provider: ResolvedProviderConfig
+        if let providerId, let plan {
+            provider = resolve(.llm, providerId: providerId, plan: plan)
+        } else if let providerId {
+            provider = resolve(.llm, providerId: providerId)
+        } else if let plan {
+            let active = resolve(.llm)
+            provider = resolve(.llm, providerId: active.providerId, plan: plan)
+        } else {
+            provider = resolve(.llm)
+        }
+        let explicitSkillModel = SkillPlatformModelSettings.explicitModel(
+            providerId: provider.providerId,
+            defaults: defaults)
+        let dictationEndpoint = llmEndpoint(provider: provider, model: provider.model)
+        let skillEndpoint = llmEndpoint(
+            provider: provider,
+            model: explicitSkillModel ?? provider.model)
+        return ResolvedLLMLanes(
+            provider: provider,
+            dictationEndpoint: dictationEndpoint,
+            skillEndpoint: skillEndpoint,
+            explicitSkillModel: explicitSkillModel)
+    }
+
     private func resolve(_ capability: ModelCapability, providerIdOverride: String?, planOverride: BillingPlan? = nil) -> ResolvedProviderConfig {
         let presets = ProviderCatalog.presets(for: capability)
         func activeField(_ suffix: String) -> String {
@@ -82,20 +121,34 @@ struct ProviderConfigDispatcher {
             "workspaceId", providerId: providerId, capability: capability,
             defaults: defaults, activeProviderId: storedProviderId)
 
+        let variants = preset.endpoints(for: capability)
         let availableRegions = preset.regions(for: capability)
         let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
-        let region = requestedRegion.flatMap { availableRegions.contains($0) ? $0 : nil }
+        let storedRegionSelection = requestedRegion.flatMap { availableRegions.contains($0) ? $0 : nil }
+        let initialRegion = storedRegionSelection
             ?? availableRegions.first ?? .global
-        let requestedPlan = planOverride ?? MiMoASRRouting.normalizedPlan(
+        let storedPlanSelection = MiMoASRRouting.normalizedPlan(
             providerId: providerId,
             capability: capability,
             stored: BillingPlan(rawValue: storedPlan ?? ""),
             fallback: preset.plans(for: capability).first ?? .payg)
+        let initialPlan = planOverride ?? storedPlanSelection
+        let planOverrideChangedStoredSelection = planOverride.map { $0 != storedPlanSelection } ?? false
         let availablePlans = preset.plans(for: capability)
-        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
-        let plan = availablePlans.contains(requestedPlan)
-            ? requestedPlan
+        let requestedPlanIsUnavailable = !availablePlans.contains(initialPlan)
+        let availablePlan = availablePlans.contains(initialPlan)
+            ? initialPlan
             : (availablePlans.first ?? .payg)
+        // Region and plan form one endpoint selection, not independent axes. In particular,
+        // MiMo PAYG exists only in China; a persisted Singapore + PAYG combination must resolve
+        // to China PAYG instead of pairing a Singapore Token Plan host with the PAYG credential.
+        let selectedVariant = variants.first { $0.region == initialRegion && $0.plan == availablePlan }
+            ?? variants.first { $0.plan == availablePlan }
+            ?? variants.first
+        let region = selectedVariant?.region ?? initialRegion
+        let plan = selectedVariant?.plan ?? availablePlan
+        let routePairWasNormalized = region != initialRegion || plan != availablePlan
+        let storedRegionWasUnavailable = nonEmpty(storedRegion) != nil && storedRegionSelection == nil
         // 千问非实时 ASR: the model is user-selectable (Qwen-Audio-3.0-ASR-Flash / Fun-ASR-Flash),
         // but a stored `…-realtime-…` id left by the retired OmniRealtime engine must not be sent.
         let isQwenASRFlash = capability == .asr && providerId == QwenASRFlashRouting.providerId
@@ -110,13 +163,17 @@ struct ProviderConfigDispatcher {
         } else {
             model = nonEmpty(storedModel) ?? catalogModel
         }
-        let catalogBaseURL = preset.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? ""
+        let catalogBaseURL = selectedVariant?.baseURL
+            ?? preset.endpoint(for: capability, region: region, plan: plan)?.baseURL
+            ?? ""
         let normalizedBaseURL = MiMoASRRouting.normalizedBaseURL(
             providerId: providerId,
             capability: capability,
             stored: storedBaseURL,
             fallback: catalogBaseURL)
         let selectedBaseURL = fixedProviderSurface || requestedPlanIsUnavailable
+            || planOverrideChangedStoredSelection
+            || routePairWasNormalized || storedRegionWasUnavailable
             ? catalogBaseURL
             : normalizedBaseURL
         let workspaceID: String?
@@ -186,6 +243,15 @@ struct ProviderConfigDispatcher {
         let account = CapabilityCredentialAccount.apiKeyAccount(
             providerId: providerId, capability: capability, plan: plan)
         return nonEmpty(keyReader(account))
+    }
+
+    private func llmEndpoint(provider: ResolvedProviderConfig, model: String) -> LLMEndpoint {
+        LLMEndpoint(
+            providerId: provider.providerId,
+            baseURL: provider.baseURL,
+            model: model,
+            apiKey: provider.apiKey,
+            thinkingEnabled: false)
     }
 
     private static func defaultProviderId(_ presets: [ProviderPreset]) -> String {

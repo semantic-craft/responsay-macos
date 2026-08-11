@@ -90,15 +90,12 @@ enum ModelRouteCatalog {
     }
 
     static func currentLLMId(defaults: UserDefaults = .standard) -> String {
-        let stored = defaults.string(forKey: "byok.llm.provider") ?? ""
-        let providerId = ProviderCatalog.presets(for: .llm).contains(where: { $0.id == stored })
-            ? stored
-            : (ProviderCatalog.presets(for: .llm).first?.id ?? "custom")
-        guard ProviderCatalog.providerHasMultipleBillingPlans(providerId, capability: .llm) else {
-            return providerId
+        let config = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .resolveLLM().provider
+        guard ProviderCatalog.providerHasMultipleBillingPlans(config.providerId, capability: .llm) else {
+            return config.providerId
         }
-        let plan = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil }).resolve(.llm).plan
-        return ModelRouteOptionID.make(providerId, plan: plan)
+        return ModelRouteOptionID.make(config.providerId, plan: config.plan)
     }
 
     static func currentTTSId(defaults: UserDefaults = .standard) -> String {
