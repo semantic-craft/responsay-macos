@@ -98,6 +98,20 @@ struct ProviderConfigMachineTests {
         #expect(m.voice == "longjielidou_v3.6")
     }
 
+    @Test func loadingTTSConfigDoesNotTurnItsDisplayedProviderIntoARouteSelection() {
+        let d = freshDefaults("load-tts-does-not-select-route")
+        d.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
+        d.set("qwen-audio-3.0-tts-flash", forKey: "byok.tts.qwen.model")
+        let m = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
+
+        m.load()
+
+        #expect(m.providerId == "qwen")
+        #expect(d.string(forKey: "byok.tts.provider") == nil)
+        #expect(TTSEngine.selected(defaults: d) == .sherpaKokoroLocal)
+    }
+
     @Test func loadReadsQwenWorkspaceIDAndDerivesDedicatedResponsesEndpoint() {
         let d = freshDefaults("load-qwen-workspace")
         d.set("qwen", forKey: "byok.llm.provider")
