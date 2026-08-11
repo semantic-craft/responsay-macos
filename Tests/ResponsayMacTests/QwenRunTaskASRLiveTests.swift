@@ -121,22 +121,26 @@ private final class LiveQwenRunTaskProbe: @unchecked Sendable, QwenRunTaskTransc
 /// Keychain credential. Normal local and CI runs skip it, and neither the key nor transcript is
 /// logged. It intentionally exercises the production router, capture service, Context history, and
 /// run-task session in two bounded tasks: an unassisted baseline, followed by the exact same audio
-/// after a real `matis` → `Metis` correction. The enhanced request covers instant vocabulary,
-/// mixed-language hints, Context, heartbeat, and session-managed Context refresh.
+/// after correcting that observed baseline to `Metis`. The enhanced request covers instant
+/// vocabulary, mixed-language hints, Context, heartbeat, and session-managed Context refresh.
+/// Its configuration evidence and final transcript intentionally prove separate boundaries: the
+/// request carries the production biasing state, while the router returns the canonicalized output.
 /// VAD/noise tuning stays on provider defaults; the separate
 /// `scripts/qwen-asr-vad-eval.py` live matrix owns any future evidence for changing them.
 @MainActor
 final class QwenRunTaskASRLiveTests: XCTestCase {
-    func testEnhancedStreamingRecognitionAgainstConfiguredAccount() async throws {
+    func testProductionContextAndFinalizationAgainstConfiguredAccount() async throws {
         let environment = ProcessInfo.processInfo.environment
         let liveDefaultsName = "com.semanticcraft.responsay.qwen-asr-live-test"
         let liveDefaults = try XCTUnwrap(UserDefaults(suiteName: liveDefaultsName))
         guard environment["RESPONSAY_QWEN_ASR_LIVE"] == "1" || liveDefaults.bool(forKey: "enabled") else {
             throw XCTSkip("Set RESPONSAY_QWEN_ASR_LIVE=1 to run Qwen ASR live acceptance.")
         }
+        let configuredPCMPath =
+            environment["QWEN_ASR_PCM_PATH"] ?? liveDefaults.string(forKey: "pcmPath")
+        liveDefaults.removePersistentDomain(forName: liveDefaultsName)
         defer { liveDefaults.removePersistentDomain(forName: liveDefaultsName) }
-        let pcmPath = try XCTUnwrap(
-            environment["QWEN_ASR_PCM_PATH"] ?? liveDefaults.string(forKey: "pcmPath"))
+        let pcmPath = try XCTUnwrap(configuredPCMPath)
         let pcm = try Data(contentsOf: URL(fileURLWithPath: pcmPath))
         XCTAssertFalse(pcm.isEmpty)
 
@@ -174,14 +178,22 @@ final class QwenRunTaskASRLiveTests: XCTestCase {
                 scope: scope,
                 runTask: runTask)
             XCTAssertEqual(runTask.evidence.first?.contextCount, 0)
+            let baselineSurface = baseline.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedBaseline = baselineSurface
+                .trimmingCharacters(in: .punctuationCharacters)
+                .lowercased()
+            _ = try XCTUnwrap(
+                ["matis", "matisse"].first(where: { $0 == normalizedBaseline }),
+                "The PCM fixture must decode as the intended matis/Matisse surface before correction.")
 
-            XCTAssertEqual(
-                CaptureCorrectionLearner.learn(
-                    wrong: "matis",
-                    correct: "Metis",
-                    defaults: liveDefaults,
-                    notify: { _ in }),
-                .learned)
+            let learningOutcome = CaptureCorrectionLearner.learn(
+                wrong: baselineSurface,
+                correct: "Metis",
+                defaults: liveDefaults,
+                notify: { _ in })
+            _ = try XCTUnwrap(
+                learningOutcome == .learned ? learningOutcome : nil,
+                "The validated fixture correction must be learned before the enhanced request.")
             let enhancedContext = contextStore.context(for: scope)
             XCTAssertFalse(enhancedContext.isEmpty)
             XCTAssertTrue(enhancedContext.contains {
@@ -203,13 +215,9 @@ final class QwenRunTaskASRLiveTests: XCTestCase {
             XCTAssertTrue(
                 runTask.evidence.last?.hotwordsContainMetis == true,
                 "Enhanced request did not include the learned hotword.")
-            XCTAssertFalse(baseline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            XCTAssertFalse(
-                baseline.localizedCaseInsensitiveContains("Metis"),
-                "The live fixture is not discriminating because the unassisted baseline already contains Metis.")
             XCTAssertTrue(
                 enhanced.localizedCaseInsensitiveContains("Metis"),
-                "Enhanced decoding did not preserve the learned canonical hotword.")
+                "The final production output did not preserve the learned canonical hotword.")
         } catch {
             await runTask.shutdown()
             throw error
