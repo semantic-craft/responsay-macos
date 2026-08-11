@@ -5,36 +5,11 @@ import ResponsaySpeech
 @MainActor
 final class RoutedSpeechCaptureService: SpeechCaptureService {
     private let defaults: UserDefaults
-    private let readiness: ModelLaneReadinessResolver
-    private let apple = AppleSpeechCaptureService()
-    // 猎虫① H9: the batch clients are built through `clientBuilder` so the
-    // hotword weak hint (ADR-0011 keeps it alongside hard-match) and the live
-    // capture profile reach the request — both were silently dropped at the
-    // app-direct migration (the old `client:` shape froze the `{ [] }` /
-    // `.dictation` defaults forever).
-    private let cloudOpenAI = CloudQwenSpeechCaptureService(provider: "openai", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.batchClient(for: .openAI, profileProvider: profile)
-    }
-    private let cloudMimo = CloudQwenSpeechCaptureService(provider: "mimo", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.batchClient(for: .mimo, profileProvider: profile)
-    }
-    /// Google Gemini 整段识别 — batch transcription via native :generateContent (BYOK-direct).
-    private let cloudGemini = CloudQwenSpeechCaptureService(provider: "gemini", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.batchClient(for: .gemini, profileProvider: profile)
-    }
-    /// 火山引擎大模型流式 — final-only over the `bigmodel_nostream` streaming socket (#580): record the
-    /// clip, then on stop replay it over the WebSocket for one clean final (lower stop-to-final
-    /// latency than the submit/query 录音文件 path). No live partials yet. Same 火山 key.
-    private let cloudVolcengineRealtime = CloudQwenSpeechCaptureService(provider: "volcengine-realtime", requireMicPermission: { try MicrophonePermission.ensure(feature: "Volcengine BigASR streaming") }) { profile in
-        ASRTranscriptionClientFactory.batchClient(for: .volcengineRealtime, profileProvider: profile)
-    }
-    /// 阿里云百炼 千问实时 — 实时语音识别 over the run-task WebSocket (#588): frames stream while the
-    /// hotkey is held, `finish-task` on release returns the 整段 transcript. Replaced the
-    /// OmniRealtime socket, which spoke a different protocol on the sibling `/api-ws/v1/realtime`
-    /// path and whose only model (qwen3-asr-flash-realtime) supports no hotwords at all; this one
-    /// takes the 词典 through 即时热词 `vocabulary`. Final-only on purpose — streaming is for latency,
-    /// not for a live capsule preview.
-    private let qwenASRFlashRealtime: QwenRunTaskStreamingCaptureService
+    private let cloudIsReady: (ASREngine) -> Bool
+    private let apple: any SpeechCaptureService
+    /// Internal seam for the six cloud adapters. Callers and tests still use only the router's
+    /// `SpeechCaptureService` interface; production owns provider-specific construction here.
+    private let cloudAdapter: (ASRProviderRoute) -> any SpeechCaptureService
     private let hotwordCorrector: SettingsBackedHotwordCorrectionAPI
     /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
     private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
@@ -56,10 +31,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     /// In-process offline ASR — Fun-ASR Nano (Alibaba, LLM-based, broad dialect coverage).
     private let funAsrNanoLocal = OfflineSherpaCaptureService(spec: .funAsrNano) {
         try FunASRNanoRecognizer(modelDir: LocalModelSpec.funAsrNano.storagePath)
-    }
-    // Custom ASR endpoint/model resolve exclusively from the provider card's effective state.
-    private let customOpenAI = CloudQwenSpeechCaptureService(provider: "custom", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.batchClient(for: .customOpenAI, profileProvider: profile)
     }
     private var active: SpeechCaptureService?
     private var captureProfile: SpeechCaptureProfile = .dictation
@@ -90,7 +61,9 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     ) {
         self.defaults = defaults
         let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
-        readiness = ModelLaneReadinessResolver(dispatcher: dispatcher)
+        let readiness = ModelLaneReadinessResolver(dispatcher: dispatcher)
+        cloudIsReady = { readiness.asr(optionId: $0.rawValue).isReady }
+        apple = AppleSpeechCaptureService()
         hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
             isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
             resolveEndpoint: {
@@ -98,7 +71,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                     defaults: defaults,
                     dispatcher: dispatcher)
             })
-        qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
+        let qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
             configProvider: {
                 let scope = contextScopeProvider()
                 return ASRTranscriptionClientFactory.qwenRunTaskConfig(
@@ -113,6 +86,64 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                 qwenContextStore.record(text, scope: scope)
             },
             requireMicPermission: requireQwenMicPermission)
+        cloudAdapter = { route in
+            if route == .qwenASRFlashRealtime { return qwenASRFlashRealtime }
+
+            let provider: String
+            let permissionFeature: String
+            switch route {
+            case .openAI:
+                provider = "openai"
+                permissionFeature = "cloud ASR"
+            case .mimo:
+                provider = "mimo"
+                permissionFeature = "cloud ASR"
+            case .gemini:
+                provider = "gemini"
+                permissionFeature = "cloud ASR"
+            case .volcengineRealtime:
+                provider = "volcengine-realtime"
+                permissionFeature = "Volcengine BigASR streaming"
+            case .customOpenAI:
+                provider = "custom"
+                permissionFeature = "cloud ASR"
+            case .apple, .qwenASRFlashRealtime, .sensevoiceLocal, .qwen3LocalASR,
+                    .fireRedASR2AEDLocal, .funAsrNanoLocal:
+                preconditionFailure("ASR route \(route) does not use a batch cloud adapter")
+            }
+            return CloudQwenSpeechCaptureService(
+                provider: provider,
+                requireMicPermission: {
+                    try MicrophonePermission.ensure(feature: permissionFeature)
+                },
+                clientBuilder: { profile in
+                    ASRTranscriptionClientFactory.batchClient(
+                        for: route,
+                        defaults: defaults,
+                        profileProvider: profile,
+                        keyReader: keyReader)
+                })
+        }
+    }
+
+    /// Deterministic internal seam for router-interface tests. Production callers use the
+    /// convenience initializer above and cannot supply or observe provider construction.
+    init(
+        defaults: UserDefaults,
+        cloudIsReady: @escaping (ASREngine) -> Bool,
+        appleAdapter: any SpeechCaptureService,
+        cloudAdapter: @escaping (ASRProviderRoute) -> any SpeechCaptureService
+    ) {
+        self.defaults = defaults
+        self.cloudIsReady = cloudIsReady
+        self.apple = appleAdapter
+        self.cloudAdapter = cloudAdapter
+        let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+        hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
+            isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
+            resolveEndpoint: {
+                LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher)
+            })
     }
 
     /// Delegates to the resolved engine so callers see the ACTIVE engine's real capability
@@ -163,7 +194,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         // capture without mutating the stored selection. Non-blocking — never throws.
         let route = ASRProviderRoute.dictation(
             selected: selected,
-            cloudHasKey: { readiness.asr(optionId: $0.rawValue).isReady })
+            cloudHasKey: cloudIsReady)
         if route != ASRProviderRoute.from(engine: selected) {
             Diag.asr(.info, "selected engine not ready — using Apple for this capture",
                      fields: ["selected": selected.title])
@@ -172,16 +203,9 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
 
         case .apple:
             return apple
-        case .openAI:
-            return cloudOpenAI
-        case .mimo:
-            return cloudMimo
-        case .gemini:
-            return cloudGemini
-        case .qwenASRFlashRealtime:
-            return qwenASRFlashRealtime
-        case .volcengineRealtime:
-            return cloudVolcengineRealtime
+        case .openAI, .mimo, .gemini, .qwenASRFlashRealtime, .volcengineRealtime,
+                .customOpenAI:
+            return cloudAdapter(route)
         case .sensevoiceLocal:
             return sensevoiceLocal
         case .qwen3LocalASR:
@@ -190,8 +214,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
             return fireRedASR2AEDLocal
         case .funAsrNanoLocal:
             return funAsrNanoLocal
-        case .customOpenAI:
-            return customOpenAI
         }
     }
 

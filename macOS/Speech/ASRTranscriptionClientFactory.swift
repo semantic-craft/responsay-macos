@@ -47,7 +47,7 @@ enum ASRTranscriptionClientFactory {
         }
     }
 
-    static func openAI(
+    private static func openAI(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
@@ -64,7 +64,7 @@ enum ASRTranscriptionClientFactory {
             apiKeyProvider: { effective.apiKey ?? "" })
     }
 
-    static func mimo(
+    private static func mimo(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
@@ -86,7 +86,7 @@ enum ASRTranscriptionClientFactory {
     /// (see DirectGeminiTranscriptionAPI); the BYOK key is the same Gemini slot
     /// the LLM/TTS lanes use. Base URL resolves to the native host, not the
     /// `/v1beta/openai/` LLM endpoint, via the preset's `.asr` capabilityEndpoints.
-    static func gemini(
+    private static func gemini(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
@@ -103,7 +103,7 @@ enum ASRTranscriptionClientFactory {
             apiKeyProvider: { effective.apiKey ?? "" })
     }
 
-    static func customOpenAI(
+    private static func customOpenAI(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
@@ -122,7 +122,7 @@ enum ASRTranscriptionClientFactory {
 
     /// 火山引擎 大模型流式 (bigmodel_nostream, #580). Reuses the `volcengine-flash` key slot (same 火山
     /// account) and feeds 词典 hotwords through the request's `corpus.context` biasing channel.
-    static func volcengineRealtime(
+    private static func volcengineRealtime(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },

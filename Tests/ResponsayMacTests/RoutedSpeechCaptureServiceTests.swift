@@ -4,57 +4,6 @@ import ResponsayCore
 import XCTest
 @testable import ResponsayMac
 
-private final class ASRRuntimeStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var responseData = Data()
-    nonisolated(unsafe) static var requestURL: URL?
-    nonisolated(unsafe) static var requestHeaders: [String: String] = [:]
-    nonisolated(unsafe) static var requestBody = Data()
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {
-        Self.requestURL = request.url
-        Self.requestHeaders = request.allHTTPHeaderFields ?? [:]
-        Self.requestBody = request.httpBody ?? Self.readBodyStream(request.httpBodyStream)
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: nil)!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.responseData)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-    override func stopLoading() {}
-
-    static func session() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [ASRRuntimeStubURLProtocol.self]
-        return URLSession(configuration: config)
-    }
-
-    static func reset(responseData: Data) {
-        Self.responseData = responseData
-        requestURL = nil
-        requestHeaders = [:]
-        requestBody = Data()
-    }
-
-    private static func readBodyStream(_ stream: InputStream?) -> Data {
-        guard let stream else { return Data() }
-        stream.open()
-        defer { stream.close() }
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
-        while stream.hasBytesAvailable {
-            let count = stream.read(&buffer, maxLength: buffer.count)
-            if count <= 0 { break }
-            data.append(buffer, count: count)
-        }
-        return data
-    }
-}
-
 private final class ASRCredentialStore: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String: String] = [:]
@@ -190,6 +139,54 @@ private final class LocalQwenDictationAdapter: @unchecked Sendable,
     }
 }
 
+@MainActor
+private final class DeterministicCloudDictationAdapter: SpeechCaptureService,
+    SpeechPartialTranscriptProviding
+{
+    private let result: String
+    private let level: Float
+    private let partial: String?
+    let captureCapability: SpeechCaptureCapability
+    private var isCapturing = false
+
+    private(set) var levels: AsyncStream<Float> = AsyncStream { $0.finish() }
+    private(set) var partialTranscripts: AsyncStream<String> = AsyncStream { $0.finish() }
+
+    init(
+        result: String,
+        level: Float,
+        partial: String?,
+        capability: SpeechCaptureCapability
+    ) {
+        self.result = result
+        self.level = level
+        self.partial = partial
+        self.captureCapability = capability
+    }
+
+    func start(locale _: CaptureLocale) throws {
+        isCapturing = true
+        levels = AsyncStream { continuation in
+            continuation.yield(level)
+            continuation.finish()
+        }
+        partialTranscripts = AsyncStream { continuation in
+            if let partial { continuation.yield(partial) }
+            continuation.finish()
+        }
+    }
+
+    func stop() async throws -> String {
+        guard isCapturing else { throw DeterministicCloudDictationError.stopBeforeStart }
+        isCapturing = false
+        return result
+    }
+}
+
+private enum DeterministicCloudDictationError: Error {
+    case stopBeforeStart
+}
+
 /// 猎虫① H11 (issue 322): the router never conformed to
 /// `SpeechPartialTranscriptProviding`, so the `as?` casts in
 /// QuickCaptureViewModel / VoiceAssistantViewModel always failed — live capsule
@@ -232,12 +229,125 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertTrue(received.isEmpty)
     }
 
-    func testQwenASRFlashUsesFinalOnlyTranscriptionWhileMiMoCanPublishPreview() {
-        XCTAssertFalse(
-            CloudQwenSpeechCaptureService.usesPostUploadStreamingPreview(
-                forProvider: "qwen-asr-flash"))
-        XCTAssertTrue(
-            CloudQwenSpeechCaptureService.usesPostUploadStreamingPreview(forProvider: "mimo"))
+    @MainActor
+    func testEveryCloudSelectionRunsItsAdapterThroughTheRouterInterface() async throws {
+        let cases: [(engine: ASREngine, result: String, level: Float,
+                     partial: String?, capability: SpeechCaptureCapability)] = [
+            (.cloudOpenAI, "openai final", 0.11, "openai partial",
+             .init(partialStyle: .postUploadSSE, needsEchoFilter: true)),
+            (.cloudMimo, "mimo final", 0.22, "mimo partial",
+             .init(partialStyle: .postUploadSSE, needsEchoFilter: true)),
+            (.cloudGemini, "gemini final", 0.33, "gemini partial",
+             .init(partialStyle: .postUploadSSE, needsEchoFilter: true)),
+            (.cloudQwenASRFlashRealtime, "qwen final", 0.44, nil,
+             .init(partialStyle: .none, needsEchoFilter: true)),
+            (.cloudVolcengineRealtime, "volcengine final", 0.55, nil,
+             .init(partialStyle: .none, needsEchoFilter: true)),
+            (.customOpenAI, "custom final", 0.66, "custom partial",
+             .init(partialStyle: .postUploadSSE, needsEchoFilter: true)),
+        ]
+
+        for testCase in cases {
+            defaults.set(testCase.engine.rawValue, forKey: ASREngine.defaultsKey)
+            let router = RoutedSpeechCaptureService(
+                defaults: defaults,
+                cloudIsReady: { _ in true },
+                appleAdapter: DeterministicCloudDictationAdapter(
+                    result: "apple fallback", level: 0.99, partial: nil,
+                    capability: .init()),
+                cloudAdapter: { route in Self.deterministicAdapter(for: route) })
+
+            try router.start(locale: .mixed)
+
+            var levels = [Float]()
+            for await level in router.levels { levels.append(level) }
+            var partials = [String]()
+            for await partial in router.partialTranscripts { partials.append(partial) }
+            XCTAssertEqual(router.captureCapability, testCase.capability, testCase.engine.rawValue)
+            let final = try await router.stop()
+
+            XCTAssertEqual(levels, [testCase.level], testCase.engine.rawValue)
+            XCTAssertEqual(partials, testCase.partial.map { [$0] } ?? [], testCase.engine.rawValue)
+            XCTAssertEqual(final, testCase.result, testCase.engine.rawValue)
+        }
+    }
+
+    @MainActor
+    func testUnreadyCloudSelectionUsesExplicitAppleFallbackWithoutChangingSelection() async throws {
+        defaults.set(ASREngine.cloudGemini.rawValue, forKey: ASREngine.defaultsKey)
+        let router = RoutedSpeechCaptureService(
+            defaults: defaults,
+            cloudIsReady: { _ in false },
+            appleAdapter: DeterministicCloudDictationAdapter(
+                result: "apple fallback", level: 0.77, partial: nil,
+                capability: .init()),
+            cloudAdapter: { route in Self.deterministicAdapter(for: route) })
+
+        try router.start(locale: .english)
+        var levels = [Float]()
+        for await level in router.levels { levels.append(level) }
+        let final = try await router.stop()
+
+        XCTAssertEqual(levels, [0.77])
+        XCTAssertEqual(final, "apple fallback")
+        XCTAssertEqual(defaults.string(forKey: ASREngine.defaultsKey), ASREngine.cloudGemini.rawValue)
+        XCTAssertEqual(ASREngine.selected(defaults: defaults), .cloudGemini)
+    }
+
+    @MainActor
+    func testCloudFinalResultUsesTheRouterFinalizationPipeline() async throws {
+        defaults.set(ASREngine.cloudOpenAI.rawValue, forKey: ASREngine.defaultsKey)
+        XCTAssertTrue(ContextHotwordSettings.addManual("代码仓", defaults: defaults))
+        let router = RoutedSpeechCaptureService(
+            defaults: defaults,
+            cloudIsReady: { _ in true },
+            appleAdapter: DeterministicCloudDictationAdapter(
+                result: "apple fallback", level: 0.77, partial: nil,
+                capability: .init()),
+            cloudAdapter: { _ in
+                DeterministicCloudDictationAdapter(
+                    result: "推到代码厂里", level: 0.11, partial: "推到代码",
+                    capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))
+            })
+
+        try router.start(locale: .mixed)
+
+        let final = try await router.stop()
+        XCTAssertEqual(final, "推到代码仓里")
+    }
+
+    @MainActor
+    private static func deterministicAdapter(
+        for route: ASRProviderRoute
+    ) -> DeterministicCloudDictationAdapter {
+        switch route {
+        case .openAI:
+            DeterministicCloudDictationAdapter(
+                result: "openai final", level: 0.11, partial: "openai partial",
+                capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))
+        case .mimo:
+            DeterministicCloudDictationAdapter(
+                result: "mimo final", level: 0.22, partial: "mimo partial",
+                capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))
+        case .gemini:
+            DeterministicCloudDictationAdapter(
+                result: "gemini final", level: 0.33, partial: "gemini partial",
+                capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))
+        case .qwenASRFlashRealtime:
+            DeterministicCloudDictationAdapter(
+                result: "qwen final", level: 0.44, partial: nil,
+                capability: .init(partialStyle: .none, needsEchoFilter: true))
+        case .volcengineRealtime:
+            DeterministicCloudDictationAdapter(
+                result: "volcengine final", level: 0.55, partial: nil,
+                capability: .init(partialStyle: .none, needsEchoFilter: true))
+        case .customOpenAI:
+            DeterministicCloudDictationAdapter(
+                result: "custom final", level: 0.66, partial: "custom partial",
+                capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))
+        case .apple, .sensevoiceLocal, .qwen3LocalASR, .fireRedASR2AEDLocal, .funAsrNanoLocal:
+            preconditionFailure("non-cloud route cannot build a cloud adapter")
+        }
     }
 
     @MainActor
@@ -386,77 +496,6 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
             qwenAudioRecorder: { adapter },
             qwenContextStore: contextStore,
             requireQwenMicPermission: {})
-    }
-
-    func testSettingsBackedOpenAIClientUsesCapabilityCardSlot() async throws {
-        defaults.set("openai", forKey: "byok.asr.provider")
-        defaults.set("https://asr.proxy.test/v1", forKey: "byok.asr.openai.baseURL")
-        defaults.set("gpt-4o-transcribe", forKey: "byok.asr.openai.model")
-        ASRRuntimeStubURLProtocol.reset(responseData: #"{"text":"ok"}"#.data(using: .utf8)!)
-
-        let client = ASRTranscriptionClientFactory.openAI(
-            defaults: defaults,
-            session: ASRRuntimeStubURLProtocol.session(),
-            keyReader: { $0 == "byok.openai" ? "settings-openai-key" : nil })
-
-        let result = try await client.transcribe(
-            audio: Data([0x01]),
-            mimeType: "audio/wav",
-            language: "en")
-
-        XCTAssertEqual(ASRRuntimeStubURLProtocol.requestURL?.absoluteString,
-                       "https://asr.proxy.test/v1/audio/transcriptions")
-        XCTAssertEqual(ASRRuntimeStubURLProtocol.requestHeaders["Authorization"],
-                       "Bearer settings-openai-key")
-        XCTAssertEqual(result.model, "gpt-4o-transcribe")
-    }
-
-    func testSettingsBackedMimoClientUsesCatalogProviderIdAndSlot() async throws {
-        defaults.set("mimo", forKey: "byok.asr.provider")
-        defaults.set("https://mimo.proxy.test/v1", forKey: "byok.asr.mimo.baseURL")
-        defaults.set("mimo-custom-asr", forKey: "byok.asr.mimo.model")
-        ASRRuntimeStubURLProtocol.reset(
-            responseData: #"{"choices":[{"message":{"content":"ok"}}]}"#.data(using: .utf8)!)
-
-        let client = ASRTranscriptionClientFactory.mimo(
-            defaults: defaults,
-            session: ASRRuntimeStubURLProtocol.session(),
-            keyReader: { $0 == CapabilityCredentialAccount.apiKeyAccount(
-                providerId: "mimo", capability: .asr, plan: .package) ? "settings-mimo-key" : nil })
-
-        let result = try await client.transcribe(
-            audio: Data([0x01]),
-            mimeType: "audio/wav",
-            language: "zh")
-
-        let body = String(decoding: ASRRuntimeStubURLProtocol.requestBody, as: UTF8.self)
-        XCTAssertEqual(ASRRuntimeStubURLProtocol.requestURL?.absoluteString,
-                       "https://mimo.proxy.test/v1/chat/completions")
-        XCTAssertEqual(ASRRuntimeStubURLProtocol.requestHeaders["api-key"],
-                       "settings-mimo-key")
-        XCTAssertNil(ASRRuntimeStubURLProtocol.requestHeaders["Authorization"])
-        XCTAssertTrue(body.contains("mimo-custom-asr"))
-        XCTAssertEqual(result.provider, "mimo")
-    }
-
-    func testSettingsBackedMimoClientDefaultsToTokenPlanEndpoint() async throws {
-        defaults.set("mimo", forKey: "byok.asr.provider")
-        ASRRuntimeStubURLProtocol.reset(
-            responseData: #"{"choices":[{"message":{"content":"ok"}}]}"#.data(using: .utf8)!)
-
-        let client = ASRTranscriptionClientFactory.mimo(
-            defaults: defaults,
-            session: ASRRuntimeStubURLProtocol.session(),
-            keyReader: { $0 == CapabilityCredentialAccount.apiKeyAccount(
-                providerId: "mimo", capability: .asr, plan: .package) ? "settings-mimo-key" : nil })
-
-        _ = try await client.transcribe(
-            audio: Data([0x01]),
-            mimeType: "audio/wav",
-            language: "zh")
-
-        XCTAssertEqual(ASRRuntimeStubURLProtocol.requestURL?.absoluteString,
-                       "https://token-plan-cn.xiaomimimo.com/v1/chat/completions")
     }
 
     /// The 千问 card dials the run-task socket. Without a Workspace ID it must keep using the

@@ -210,7 +210,7 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
     /// the capsule feel busy without improving the final insertion path, so the
     /// normal input-method route stays final-only. MiMo buffers and emits one
     /// cleaned transcript at done, so it keeps using its streaming API.
-    nonisolated static func usesPostUploadStreamingPreview(forProvider provider: String) -> Bool {
+    nonisolated private static func usesPostUploadStreamingPreview(forProvider provider: String) -> Bool {
         provider != "qwen-asr-flash"
     }
 

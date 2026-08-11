@@ -244,7 +244,8 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
         packageMachine.writeApiKey()
         packageMachine.persist()
 
-        let packageClient = ASRTranscriptionClientFactory.mimo(
+        let packageClient = ASRTranscriptionClientFactory.batchClient(
+            for: .mimo,
             defaults: defaults,
             session: EffectiveASRStubURLProtocol.session(),
             keyReader: { [credentials] in credentials?.read($0) })
@@ -281,7 +282,8 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
         XCTAssertEqual(effective.baseURL, "https://api.xiaomimimo.com/v1")
         XCTAssertEqual(effective.apiKey, "mimo-payg-key")
 
-        let paygClient = ASRTranscriptionClientFactory.mimo(
+        let paygClient = ASRTranscriptionClientFactory.batchClient(
+            for: .mimo,
             defaults: defaults,
             session: EffectiveASRStubURLProtocol.session(),
             keyReader: { [credentials] in credentials?.read($0) })
