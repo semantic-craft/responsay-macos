@@ -5,39 +5,23 @@ import ResponsaySpeech
 @MainActor
 final class RoutedSpeechCaptureService: SpeechCaptureService {
     private let defaults: UserDefaults
-    private let cloudIsReady: (ASREngine) -> Bool
-    private let apple: any SpeechCaptureService
-    /// Internal seam for the six cloud adapters. Callers and tests still use only the router's
-    /// `SpeechCaptureService` interface; production owns provider-specific construction here.
-    private let cloudAdapterForRoute: (ASRProviderRoute) -> any SpeechCaptureService
+    private let isReady: (ASREngine) -> Bool
+    /// Internal adapter seam for every dictation engine. Callers and tests still use only the
+    /// router's `SpeechCaptureService` interface; production owns engine construction here.
+    private let adapterForEngine: (ASREngine) -> any SpeechCaptureService
+    private let beginScreenTermHarvest: () -> Void
+    private let screenTerms: TransientScreenTerms
+    private let captureRequestEchoTerms: CaptureRequestEchoTerms
     private let hotwordCorrector: SettingsBackedHotwordCorrectionAPI
-    /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
-    private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
-        try SenseVoiceModel.loadRecognizer()
-    }
-    /// In-process offline ASR — Qwen3-ASR (multilingual + Chinese/dialect strong). The one offline
-    /// engine on the biasing flywheel: its model-config `hotwords` field is fed `weakPrompt` (#500
-    /// S1), read fresh at each recognizer build (the `makeRecognizer` closure runs per TTL rebuild),
-    /// so newly-learned terms reach it without an app restart.
-    private let qwen3LocalASR = OfflineSherpaCaptureService(spec: .qwen3ASR) {
-        try Qwen3ASRRecognizer(
-            modelDir: LocalModelSpec.qwen3ASR.storagePath,
-            hotwords: Qwen3ASRRecognizer.hotwordsString(from: ContextHotwordSettings.biasingSets().weakPrompt))
-    }
-    /// In-process offline ASR — FireRedASR2 AED (higher-quality Chinese/English + dialects).
-    private let fireRedASR2AEDLocal = OfflineSherpaCaptureService(spec: .fireRedASR2AED) {
-        try FireRedASR2AEDRecognizer(modelDir: LocalModelSpec.fireRedASR2AED.storagePath)
-    }
-    /// In-process offline ASR — Fun-ASR Nano (Alibaba, LLM-based, broad dialect coverage).
-    private let funAsrNanoLocal = OfflineSherpaCaptureService(spec: .funAsrNano) {
-        try FunASRNanoRecognizer(modelDir: LocalModelSpec.funAsrNano.storagePath)
-    }
     private var active: SpeechCaptureService?
     private var captureProfile: SpeechCaptureProfile = .dictation
 
     private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
 
-    convenience init(contextScopeProvider: @escaping @MainActor () -> String? = { nil }) {
+    convenience init(
+        contextScopeProvider: @escaping @MainActor () -> String? = { nil },
+        screenTermHarvester: @escaping (TransientScreenTerms) -> Void
+    ) {
         self.init(
             contextScopeProvider: contextScopeProvider,
             defaults: .standard,
@@ -47,23 +31,71 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
             qwenContextStore: .shared,
             requireQwenMicPermission: {
                 try MicrophonePermission.ensure(feature: "Qwen ASR realtime")
-            })
+            },
+            screenTermHarvester: screenTermHarvester)
     }
 
     init(
         contextScopeProvider: @escaping @MainActor () -> String?,
         defaults: UserDefaults,
-        keyReader: @escaping ASRTranscriptionClientFactory.KeyReader,
+        keyReader: @escaping ASRKeyReader,
         qwenRunTask: any QwenRunTaskTranscribing,
         qwenAudioRecorder: @escaping () -> any SpeechAudioRecording,
         qwenContextStore: RecentASRContextSessionStore,
-        requireQwenMicPermission: @escaping () throws -> Void
+        requireQwenMicPermission: @escaping () throws -> Void,
+        screenTermHarvester: ((TransientScreenTerms) -> Void)? = nil,
+        appleCaptureService: (any SpeechCaptureService)? = nil,
+        localModelInstalled: @escaping @Sendable (LocalModelSpec) -> Bool = { $0.isInstalled },
+        batchSession: URLSession = .shared,
+        batchWebSocketTask: (@Sendable (URLRequest) -> URLSessionWebSocketTask)? = nil,
+        batchAudioRecorder: @escaping () -> any SpeechAudioRecording = {
+            AVCaptureAudioRecorder()
+        },
+        requireBatchMicPermission: @escaping (ASREngine) throws -> Void = { engine in
+            let feature = engine == .cloudVolcengineRealtime
+                ? "Volcengine BigASR streaming"
+                : "cloud ASR"
+            try MicrophonePermission.ensure(feature: feature)
+        }
     ) {
         self.defaults = defaults
+        let screenTerms = TransientScreenTerms()
+        self.screenTerms = screenTerms
+        if let screenTermHarvester {
+            beginScreenTermHarvest = { screenTermHarvester(screenTerms) }
+        } else {
+            beginScreenTermHarvest = {
+                screenTerms.beginHarvest(isEnabled: false)
+            }
+        }
+        let requestEchoTerms = CaptureRequestEchoTerms()
+        let sendableDefaults = CaptureUserDefaults(defaults)
+        captureRequestEchoTerms = requestEchoTerms
         let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
         let readiness = ModelLaneReadinessResolver(dispatcher: dispatcher)
-        cloudIsReady = { readiness.asr(optionId: $0.rawValue).isReady }
-        apple = AppleSpeechCaptureService()
+        isReady = { readiness.asr(optionId: $0.rawValue).isReady }
+        let apple = appleCaptureService ?? AppleSpeechCaptureService()
+        let sensevoiceLocal = OfflineSherpaCaptureService(
+            spec: .senseVoiceSmall,
+            isModelInstalled: { localModelInstalled(.senseVoiceSmall) }) {
+            try SenseVoiceModel.loadRecognizer()
+        }
+        // Qwen3-ASR reads the weak-prompt hotwords on each recognizer rebuild, so newly learned
+        // terms reach the downloadable engine without an app restart.
+        let qwen3LocalASR = OfflineSherpaCaptureService(
+            spec: .qwen3ASR,
+            isModelInstalled: { localModelInstalled(.qwen3ASR) }) {
+            try Qwen3ASRRecognizer(
+                modelDir: LocalModelSpec.qwen3ASR.storagePath,
+                hotwords: Qwen3ASRRecognizer.hotwordsString(
+                    from: ContextHotwordSettings.biasingSets(
+                        defaults: sendableDefaults.value).weakPrompt))
+        }
+        let funAsrNanoLocal = OfflineSherpaCaptureService(
+            spec: .funAsrNano,
+            isModelInstalled: { localModelInstalled(.funAsrNano) }) {
+            try FunASRNanoRecognizer(modelDir: LocalModelSpec.funAsrNano.storagePath)
+        }
         hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
             isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
             resolveEndpoint: {
@@ -74,11 +106,21 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         let qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
             configProvider: {
                 let scope = contextScopeProvider()
-                return ASRTranscriptionClientFactory.qwenRunTaskConfig(
+                let resolution = QwenRunTaskCaptureConfiguration.resolve(
                     defaults: defaults,
                     context: qwenContextStore.context(for: scope),
                     contextScope: scope,
                     keyReader: keyReader)
+                return resolution.config
+            },
+            prepareConfig: { baseConfig in
+                let transient = await screenTerms.awaitCurrentHarvest()
+                try Task.checkCancellation()
+                let config = QwenRunTaskCaptureConfiguration.augment(
+                    baseConfig,
+                    transientTerms: transient)
+                requestEchoTerms.replace(config.effectiveEchoTerms)
+                return config
             },
             runTask: qwenRunTask,
             audioRecorder: qwenAudioRecorder,
@@ -86,58 +128,68 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                 qwenContextStore.record(text, scope: scope)
             },
             requireMicPermission: requireQwenMicPermission)
-        cloudAdapterForRoute = { route in
-            if route == .qwenASRFlashRealtime { return qwenASRFlashRealtime }
-
-            let provider: String
-            let permissionFeature: String
-            switch route {
-            case .openAI:
-                provider = "openai"
-                permissionFeature = "cloud ASR"
-            case .mimo:
-                provider = "mimo"
-                permissionFeature = "cloud ASR"
-            case .gemini:
-                provider = "gemini"
-                permissionFeature = "cloud ASR"
-            case .volcengineRealtime:
-                provider = "volcengine-realtime"
-                permissionFeature = "Volcengine BigASR streaming"
-            case .customOpenAI:
-                provider = "custom"
-                permissionFeature = "cloud ASR"
-            case .apple, .qwenASRFlashRealtime, .sensevoiceLocal, .qwen3LocalASR,
-                    .fireRedASR2AEDLocal, .funAsrNanoLocal:
-                preconditionFailure("ASR route \(route) does not use a batch cloud adapter")
+        adapterForEngine = { engine in
+            switch engine {
+            case .apple:
+                return apple
+            case .cloudQwenASRFlashRealtime:
+                return qwenASRFlashRealtime
+            case .cloudOpenAI, .cloudMimo, .cloudGemini, .cloudVolcengineRealtime,
+                    .customOpenAI:
+                guard let providerID = engine.associatedProviderId else {
+                    preconditionFailure("Cloud engine \(engine) has no provider ID")
+                }
+                let provider = engine == .cloudVolcengineRealtime
+                    ? "volcengine-realtime"
+                    : providerID
+                return CloudQwenSpeechCaptureService(
+                    provider: provider,
+                    requireMicPermission: {
+                        try requireBatchMicPermission(engine)
+                    },
+                    audioRecorder: batchAudioRecorder,
+                    clientBuilder: { profile in
+                        Self.batchTranscriptionClient(
+                            for: engine,
+                            defaults: defaults,
+                            session: batchSession,
+                            webSocketTaskProvider: batchWebSocketTask,
+                            profileProvider: profile,
+                            keyReader: keyReader,
+                            requestEchoTerms: requestEchoTerms,
+                            screenTerms: screenTerms)
+                    })
+            case .sensevoiceLocal:
+                return sensevoiceLocal
+            case .qwen3LocalASR:
+                return qwen3LocalASR
+            case .funAsrNanoLocal:
+                return funAsrNanoLocal
             }
-            return CloudQwenSpeechCaptureService(
-                provider: provider,
-                requireMicPermission: {
-                    try MicrophonePermission.ensure(feature: permissionFeature)
-                },
-                clientBuilder: { profile in
-                    ASRTranscriptionClientFactory.batchClient(
-                        for: route,
-                        defaults: defaults,
-                        profileProvider: profile,
-                        keyReader: keyReader)
-                })
         }
     }
 
     /// Deterministic internal seam for router-interface tests. Production callers use the
-    /// convenience initializer above and cannot supply or observe provider construction.
+    /// convenience initializer above and cannot supply or observe adapter construction.
     init(
         defaults: UserDefaults,
-        cloudIsReady: @escaping (ASREngine) -> Bool,
-        appleAdapter: any SpeechCaptureService,
-        cloudAdapterForRoute: @escaping (ASRProviderRoute) -> any SpeechCaptureService
+        isReady: @escaping (ASREngine) -> Bool,
+        adapterForEngine: @escaping (ASREngine) -> any SpeechCaptureService,
+        screenTermHarvester: ((TransientScreenTerms) -> Void)? = nil
     ) {
         self.defaults = defaults
-        self.cloudIsReady = cloudIsReady
-        self.apple = appleAdapter
-        self.cloudAdapterForRoute = cloudAdapterForRoute
+        self.isReady = isReady
+        self.adapterForEngine = adapterForEngine
+        let screenTerms = TransientScreenTerms()
+        self.screenTerms = screenTerms
+        if let screenTermHarvester {
+            beginScreenTermHarvest = { screenTermHarvester(screenTerms) }
+        } else {
+            beginScreenTermHarvest = {
+                screenTerms.beginHarvest(isEnabled: false)
+            }
+        }
+        captureRequestEchoTerms = CaptureRequestEchoTerms()
         let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
         hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
             isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
@@ -153,6 +205,9 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     }
 
     func start(locale: CaptureLocale) throws {
+        guard active == nil else {
+            throw CoachAPIError.message("已有语音采集正在进行。")
+        }
         let selected = ASREngine.selected(defaults: defaults)
         let service = resolveService(selected: selected)
 
@@ -160,9 +215,16 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
             .setCaptureProfile(captureProfile)
         Diag.asr(.info, "capture start",
                  fields: ["engine": selected.title, "locale": locale.rawValue])
+        // Establish a new per-router generation before the adapter starts. Qwen and Volc can wait
+        // for this generation's bounded harvest decision while audio buffers, but the actual AX
+        // read is not scheduled until the selected adapter has started successfully.
+        screenTerms.prepareCapture()
+        captureRequestEchoTerms.reset()
         do {
             try service.start(locale: locale)
         } catch {
+            screenTerms.finishCapture()
+            captureRequestEchoTerms.reset()
             Diag.asr(.error, "capture start failed",
                      fields: ["engine": selected.title], error: error.localizedDescription)
             throw error
@@ -171,17 +233,17 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         levels = service.levels
         // 517 — harvest visible-screen proper nouns as this capture's transient weak-prompt bias
         // (真·屏幕感知辅助识别). Synchronous return + detached task: the Fn→录音 hot path never
-        // waits on AX; gated inside on the 屏幕上下文 master switch.
-        TransientScreenTerms.beginHarvest()
+        // waits on AX; the production caller supplies both the target process and CaptureGate.
+        beginScreenTermHarvest()
     }
 
     /// Pick the concrete capture service from the user's explicit engine choice.
     ///
     /// Privacy posture (PRIV-CLOUD-001, 2026-06-14 decision — document, don't reroute): cloud
     /// vs local here is the user's *explicit* engine selection, never a silent escalation — a
-    /// local engine failure throws and never falls back to cloud. Truly sensitive surfaces
-    /// (password/secure-input fields, deny-listed apps/URLs) are blocked upstream by the
-    /// CaptureGate before any engine runs, so no routing change is made for sensitive content.
+    /// local engine failure throws and never falls back to cloud. CaptureGate separately blocks
+    /// screen-derived context and hotword harvesting for password/secure-input fields and
+    /// deny-listed apps/URLs; it does not change the user's explicit audio engine selection.
     ///
     /// Per-scenario auto-routing (087 item 1) was retired by decision (issue 293,
     /// 2026-06-11): the engine roster had just been collapsed to explicit,
@@ -189,37 +251,26 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     /// vary hotword behavior unpredictably. `CaptureProviderResolver` + tests
     /// deleted; recover from git history if the idea returns.
     private func resolveService(selected: ASREngine) -> SpeechCaptureService {
-        // Always-usable fallback (#389): if the selected engine isn't ready (cloud
-        // missing key / offline model not downloaded), transcribe via Apple for this
-        // capture without mutating the stored selection. Non-blocking — never throws.
-        let route = ASRProviderRoute.dictation(
-            selected: selected,
-            cloudHasKey: cloudIsReady)
-        if route != ASRProviderRoute.from(engine: selected) {
+        // Keep the explicit cloud readiness fallback from #81. Downloadable local engines remain
+        // selected even while missing so their adapter reports the model-install error; they never
+        // escape into an Apple recognizer that may itself use a server-side recognition path.
+        let resolved = selected.associatedProviderId != nil && !isReady(selected)
+            ? ASREngine.apple
+            : selected
+        if resolved != selected {
             Diag.asr(.info, "selected engine not ready — using Apple for this capture",
                      fields: ["selected": selected.title])
         }
-        switch route {
-
-        case .apple:
-            return apple
-        case .openAI, .mimo, .gemini, .qwenASRFlashRealtime, .volcengineRealtime,
-                .customOpenAI:
-            return cloudAdapterForRoute(route)
-        case .sensevoiceLocal:
-            return sensevoiceLocal
-        case .qwen3LocalASR:
-            return qwen3LocalASR
-        case .fireRedASR2AEDLocal:
-            return fireRedASR2AEDLocal
-        case .funAsrNanoLocal:
-            return funAsrNanoLocal
-        }
+        return adapterForEngine(resolved)
     }
 
     func stop() async throws -> String {
         guard let active else { return "" }
-        defer { self.active = nil }
+        defer {
+            self.active = nil
+            screenTerms.finishCapture()
+            captureRequestEchoTerms.reset()
+        }
         let transcript = try await active.stop()
         // Post-ASR pipeline (ADR-0011), the one seam every provider funnels through — now gated by the
         // active engine's declared capability. The biasing-list echo guard runs ONLY for engines that
@@ -229,7 +280,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         // 517: the echo check uses the SAME augmented list the request sent (dictionary + transient
         // screen terms), else an echo of the transient terms slips through (the 1.3.29 bug class).
         let sets = ContextHotwordSettings.biasingSets(defaults: defaults)
-        let weakTerms = sets.weakPrompt(augmentedWith: TransientScreenTerms.current)
+        let weakTerms = captureRequestEchoTerms.value ?? sets.weakPrompt
         guard let enforced = SpeechTranscriptFinalizer.enforce(
             transcript, capability: active.captureCapability, sets: sets, echoTerms: weakTerms) else {
             Diag.asr(.info, "transcript dropped: hotword biasing-list echo")
@@ -241,7 +292,90 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         return await hotwordCorrector.correct(enforced, userTerms: sets.hardMatchUser)
     }
 
-    /// #500 S3 — settings-gated, default-off LLM correction pass applied after the hard-match.
+    private static func batchTranscriptionClient(
+        for engine: ASREngine,
+        defaults: UserDefaults,
+        session: URLSession = .shared,
+        webSocketTaskProvider: (@Sendable (URLRequest) -> URLSessionWebSocketTask)?,
+        profileProvider: @escaping @Sendable () -> SpeechCaptureProfile,
+        keyReader: @escaping ASRKeyReader,
+        requestEchoTerms: CaptureRequestEchoTerms,
+        screenTerms: TransientScreenTerms
+    ) -> any TranscriptionAPI {
+        guard let providerID = engine.associatedProviderId else {
+            preconditionFailure("Batch cloud engine \(engine) has no provider ID")
+        }
+        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .resolve(.asr, providerId: providerID)
+        let baseURL = httpBaseURL(effective)
+        let sendableDefaults = CaptureUserDefaults(defaults)
+
+        switch engine {
+        case .cloudOpenAI, .customOpenAI:
+            return DirectOpenAITranscriptionAPI(
+                baseURL: baseURL,
+                session: session,
+                hotwordsProvider: {
+                    requestEchoTerms.freeze(
+                        ContextHotwordSettings.asrWeakPrompt(
+                            defaults: sendableDefaults.value,
+                            transientTerms: screenTerms.current))
+                },
+                profileProvider: profileProvider,
+                modelProvider: { effective.model },
+                apiKeyProvider: { effective.apiKey ?? "" })
+        case .cloudMimo:
+            requestEchoTerms.freeze([])
+            return DirectMimoTranscriptionAPI(
+                baseURL: baseURL,
+                session: session,
+                hotwordsProvider: { [] },
+                profileProvider: profileProvider,
+                modelProvider: { effective.model },
+                apiKeyProvider: { effective.apiKey ?? "" })
+        case .cloudGemini:
+            return DirectGeminiTranscriptionAPI(
+                baseURL: baseURL,
+                session: session,
+                hotwordsProvider: {
+                    requestEchoTerms.freeze(
+                        ContextHotwordSettings.asrWeakPrompt(
+                            defaults: sendableDefaults.value,
+                            transientTerms: screenTerms.current))
+                },
+                profileProvider: profileProvider,
+                modelProvider: { effective.model },
+                apiKeyProvider: { effective.apiKey ?? "" })
+        case .cloudVolcengineRealtime:
+            return VolcengineRealtimeTranscriptionAPI(
+                endpoint: VolcengineRealtimeEndpoint(apiKey: effective.apiKey ?? ""),
+                config: VolcengineRealtimeConfig(),
+                hotwordsProvider: {
+                    let transient = await screenTerms.awaitCurrentHarvest()
+                    return requestEchoTerms.freeze(
+                        ContextHotwordSettings.biasingSets(defaults: sendableDefaults.value)
+                            .weakPrompt(augmentedWith: transient))
+                },
+                session: session,
+                webSocketTaskProvider: webSocketTaskProvider)
+        case .apple, .cloudQwenASRFlashRealtime, .sensevoiceLocal, .qwen3LocalASR,
+                .funAsrNanoLocal:
+            preconditionFailure("Engine \(engine) does not use batch cloud transcription")
+        }
+    }
+
+    /// Invalid custom configuration fails closed to a local non-network URL. Normal readiness
+    /// prevents this client from being selected, while this guard keeps construction safe too.
+    private static func httpBaseURL(_ effective: ResolvedProviderConfig) -> URL {
+        guard let components = URLComponents(string: effective.baseURL),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              components.host != nil,
+              let url = components.url else {
+            return URL(fileURLWithPath: "/invalid-asr-endpoint")
+        }
+        return url
+    }
 }
 
 extension RoutedSpeechCaptureService: SpeechCaptureProfileConfigurable {

@@ -15,7 +15,7 @@ enum ModelRuntime: String, Codable, Sendable {
 
 /// Model family (drives which sherpa-onnx config is built).
 enum ModelFamily: String, Codable, Sendable {
-    case senseVoice, qwen3Asr, fireRedAsrAed, funAsrNano
+    case senseVoice, qwen3Asr, funAsrNano
     /// Kokoro offline TTS (multi-lang zh+en). Drives the `OfflineTts` Kokoro config.
     case kokoro
     /// CT-Transformer offline punctuation (zh+en). Drives the `OfflinePunctuation` config.

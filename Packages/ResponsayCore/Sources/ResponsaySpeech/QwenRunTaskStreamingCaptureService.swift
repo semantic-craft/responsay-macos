@@ -21,6 +21,7 @@ import ResponsayCore
 public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-runtask-capture")
     private let configProvider: () -> QwenRunTaskCaptureConfig
+    private let prepareConfig: @Sendable (QwenRunTaskCaptureConfig) async throws -> QwenRunTaskCaptureConfig
     private let contextRecorder: @MainActor @Sendable (String, String?) -> [String]
     private let runTask: any QwenRunTaskTranscribing
     private let audioRecorder: () -> any SpeechAudioRecording
@@ -40,12 +41,14 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
 
     public init(
         configProvider: @escaping () -> QwenRunTaskCaptureConfig,
+        prepareConfig: @escaping @Sendable (QwenRunTaskCaptureConfig) async throws -> QwenRunTaskCaptureConfig = { $0 },
         runTask: (any QwenRunTaskTranscribing)? = nil,
         audioRecorder: @escaping () -> any SpeechAudioRecording = { AVCaptureAudioRecorder() },
         contextRecorder: @escaping @MainActor @Sendable (String, String?) -> [String] = { _, _ in [] },
         requireMicPermission: @escaping () throws -> Void
     ) {
         self.configProvider = configProvider
+        self.prepareConfig = prepareConfig
         self.runTask = runTask ?? QwenRunTaskSession()
         self.audioRecorder = audioRecorder
         self.contextRecorder = contextRecorder
@@ -54,11 +57,11 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
 
     public func start(locale: CaptureLocale) throws {
         try requireMicPermission()
-        var config = configProvider()
-        guard !config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        var baseConfig = configProvider()
+        guard !baseConfig.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw CoachAPIError.message("未配置阿里云百炼 API Key。请在设置中配置。")
         }
-        config.captureLocale = locale
+        baseConfig.captureLocale = locale
 
         let (levelStream, levelCont) = AsyncStream.makeStream(of: Float.self)
         levels = levelStream
@@ -66,12 +69,15 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         let (audio, audioContinuation) = AsyncStream.makeStream(of: Data.self)
         self.audioContinuation = audioContinuation
 
-        let contextScope = config.contextScope
+        let contextScope = baseConfig.contextScope
         let contextRecorder = self.contextRecorder
+        let prepareConfig = self.prepareConfig
         let runTask = self.runTask
         let log = self.log
         transcriptionTask = Task.detached {
-            try await runTask.transcribe(
+            let config = try await prepareConfig(baseConfig)
+            try Task.checkCancellation()
+            return try await runTask.transcribe(
                 config: config,
                 audio: audio,
                 onFinalSentence: { text in await contextRecorder(text, contextScope) },
@@ -99,7 +105,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
             cleanupTaskState()
             throw error
         }
-        log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(config.model, privacy: .public), dedicated host \(config.endpoint.usesDedicatedHost, privacy: .public))")
+        log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(baseConfig.model, privacy: .public), dedicated host \(baseConfig.endpoint.usesDedicatedHost, privacy: .public))")
     }
 
     public func stop() async throws -> String {

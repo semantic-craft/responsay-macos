@@ -238,33 +238,6 @@ final class PersistentASRContextStoreTests: XCTestCase {
         XCTAssertEqual(session.context(for: "com.apple.Terminal"), ["Metis is the host"])
     }
 
-    func testRecoveredContextFeedsEffectiveQwenConfigWithoutChangingPrecompiledVocabularyLane() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
-        let binding = QwenPrecompiledVocabularySettings.save(
-            identifier: "vocab-context-a1b2c3",
-            model: QwenRunTaskEndpoint.defaultModel,
-            endpoint: QwenRunTaskEndpoint(region: .china),
-            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
-            defaults: defaults)
-        XCTAssertNotNil(binding)
-        XCTAssertTrue(PersistentASRContextSettings.setEnabled(
-            true, defaults: defaults, fileURL: fileURL))
-        makeSessionStore().record("raw recovered final", scope: "com.apple.Notes")
-        let recovered = makeSessionStore().context(for: "com.apple.Notes")
-
-        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
-            defaults: defaults,
-            context: recovered,
-            contextScope: "com.apple.Notes",
-            keyReader: { _ in "synthetic-test-key" })
-        XCTAssertEqual(config.contextScope, "com.apple.Notes")
-        XCTAssertEqual(config.context, ["raw recovered final"])
-        XCTAssertEqual(config.precompiledVocabularyID, "vocab-context-a1b2c3")
-        XCTAssertTrue(config.hotwords.isEmpty)
-        XCTAssertTrue(config.heartbeat)
-    }
-
     func testSerializedPayloadContainsOnlyBoundedContextFieldsAndNoRequestConfiguration() throws {
         PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
         makeSessionStore().record("raw final", scope: "com.apple.Notes")

@@ -10,7 +10,8 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
     #if os(macOS)
     // 蓝牙麦克风修复: AVCaptureSession binds a specific device up front (like getUserMedia), so the
     // BT default can't poison the input format. iOS keeps AVAudioEngine (no device override there).
-    private var recorder: AVCaptureAudioRecorder?
+    private var recorder: (any SpeechAudioRecording)?
+    private let audioRecorder: () -> any SpeechAudioRecording
     #else
     private let engine = AVAudioEngine()
     #endif
@@ -71,6 +72,21 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
     /// `profileProvider` could only ever be the `.dictation` default — the
     /// faithful-profile prompt silently never fired for the externally-built
     /// OpenAI/MiMo/custom clients (猎虫① H9).
+    #if os(macOS)
+    public init(
+        provider: String,
+        requireMicPermission: @escaping () throws -> Void,
+        audioRecorder: @escaping () -> any SpeechAudioRecording = { AVCaptureAudioRecorder() },
+        clientBuilder: @escaping (_ profile: @escaping @Sendable () -> SpeechCaptureProfile) -> any TranscriptionAPI
+    ) {
+        let store = SpeechCaptureProfileStore()
+        self.profileStore = store
+        self.providerName = provider
+        self.requireMicPermission = requireMicPermission
+        self.audioRecorder = audioRecorder
+        self.clientBuilder = clientBuilder
+    }
+    #else
     public init(
         provider: String,
         requireMicPermission: @escaping () throws -> Void,
@@ -82,6 +98,7 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
         self.requireMicPermission = requireMicPermission
         self.clientBuilder = clientBuilder
     }
+    #endif
 
     public func start(locale: CaptureLocale) throws {
         // Re-resolve the client from current settings so a provider/region/plan change since
@@ -109,7 +126,7 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
             levelContinuation: levelContinuation)
         levels = levelStream
         self.recording = recording
-        let recorder = AVCaptureAudioRecorder()
+        let recorder = audioRecorder()
         self.recorder = recorder
         do {
             try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in

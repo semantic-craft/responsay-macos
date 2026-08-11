@@ -96,7 +96,7 @@ struct ModelLaneReadinessResolver {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .invalidRoute)
         }
         if engine == .apple { return .localReady }
-        if let spec = ASRFallback.offlineSpec(for: engine) {
+        if let spec = engine.localModelSpec {
             return asrLocalInstalled(spec) ? .localReady : .localMissing
         }
         guard let providerId = engine.associatedProviderId else {

@@ -101,7 +101,6 @@ final class NamingCanonTests: XCTestCase {
     func testEngineTitlesCarryCanonForms() {
         XCTAssertEqual(ASREngine.cloudQwenASRFlashRealtime.title, "阿里云百炼 · 千问实时")
         XCTAssertEqual(ASREngine.cloudMimo.title, "小米Mimo")
-        XCTAssertEqual(ASREngine.fireRedASR2AEDLocal.title, "FireRedASR2 AED")
         XCTAssertEqual(TTSEngine.cloudMimo.title, "小米Mimo")
         XCTAssertEqual(TTSEngine.cloudQwen.title, "阿里云百炼")
         // 菜单栏 TTS 服务商名与设置页一致(menu==settings):火山引擎 = 火山引擎 · 豆包语音。

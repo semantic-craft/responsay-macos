@@ -167,8 +167,20 @@ final class CaptureController {
 
     init() {
         let tracker = targetTracker
+        let gateReader = CaptureGateContextReader()
+        gateContextReader = gateReader
+        let screenTermHarvester: (TransientScreenTerms) -> Void = { terms in
+            let target = tracker.target
+            let gate = CaptureGatePolicy.adr0014.evaluate(
+                gateReader.readCaptureContext(from: target))
+            terms.beginHarvest(
+                isEnabled: ScreenContextSettings.isEnabled,
+                gateDecision: gate,
+                targetProcessIdentifier: target?.processIdentifier)
+        }
         self.voiceAssistantVM = VoiceAssistantViewModel(speech: RoutedSpeechCaptureService(
-            contextScopeProvider: { tracker.target?.bundleIdentifier }))
+            contextScopeProvider: { tracker.target?.bundleIdentifier },
+            screenTermHarvester: screenTermHarvester))
         // 重新生成 from the answer card re-streams via a freshly-resolved endpoint — the same
         // 任意提问 chat path as stopAskAnythingSession (resolveChat, honoring the 思考 toggle), so
         // the card never has to hold an LLM client itself.
@@ -182,8 +194,6 @@ final class CaptureController {
 
         let reader = AccessibilityContextReader()
         contextReader = reader
-        let gateReader = CaptureGateContextReader()
-        gateContextReader = gateReader
         let autoLearn = HotwordAutoLearnController(snapshotReader: { reader.readFocusedFieldSnapshot(from: tracker.target) })
         autoLearnController = autoLearn
         let legalStore = try? SQLiteLegalProfileStore.defaultStore()
@@ -215,7 +225,8 @@ final class CaptureController {
         let intentReverter = IntentInsertionReverter(targetProvider: { tracker.target })
         vm = QuickCaptureViewModel(
             speech: RoutedSpeechCaptureService(
-                contextScopeProvider: { tracker.target?.bundleIdentifier }),
+                contextScopeProvider: { tracker.target?.bundleIdentifier },
+                screenTermHarvester: screenTermHarvester),
             coach: SettingsBackedCoachAPI(),
             store: Self.makeCaptureStore(),
             inserter: dictationInserter,
@@ -227,10 +238,13 @@ final class CaptureController {
             contextProvider: {
                 let base = reader.readContext(from: tracker.target)
                 // 屏幕上下文: full URL + visible on-screen text are both screen-derived → only
-                // attach them when 屏幕上下文 is enabled (508). OFF → no URL, no screen text.
-                guard ScreenContextSettings.isEnabled else { return base }
+                // attach them when 屏幕上下文 is enabled (508) and the same capture privacy gate
+                // permits the bound target. OFF/denied → no URL, no screen text, and no AX walk.
+                let gateContext = gateReader.readCaptureContext(from: tracker.target)
+                guard ScreenContextSettings.isEnabled,
+                      CaptureGatePolicy.adr0014.evaluate(gateContext).isAllowed else { return base }
                 return base
-                    .withBrowserURL(gateReader.readCaptureContext(from: tracker.target).url)
+                    .withBrowserURL(gateContext.url)
                     .withVisibleScreenText(VisibleTextCollector.collect(from: tracker.target))
             },
             screenContextEnabled: { ScreenContextSettings.isEnabled },

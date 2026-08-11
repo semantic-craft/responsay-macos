@@ -181,8 +181,11 @@ enum ContextHotwordSettings {
     /// Byte-identical to `biasingSets().weakPrompt` when the stash is empty (屏幕上下文 off /
     /// nothing harvested), so the OFF path sends exactly today's request. Read-only: never writes
     /// the dictionary or UserDefaults.
-    static func asrWeakPrompt(defaults: UserDefaults = .standard) -> [String] {
-        biasingSets(defaults: defaults).weakPrompt(augmentedWith: TransientScreenTerms.current)
+    static func asrWeakPrompt(
+        defaults: UserDefaults = .standard,
+        transientTerms: [String] = []
+    ) -> [String] {
+        biasingSets(defaults: defaults).weakPrompt(augmentedWith: transientTerms)
     }
 
     /// Stable local vocabulary used when binding a precompiled Qwen list. It intentionally excludes

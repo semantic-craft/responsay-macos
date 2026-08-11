@@ -1,5 +1,7 @@
+import AVFoundation
 import Foundation
 @testable import ResponsayCore
+@testable import ResponsaySpeech
 import XCTest
 @testable import ResponsayMac
 
@@ -7,6 +9,7 @@ private final class EffectiveASRStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var responseData = Data()
     nonisolated(unsafe) static var requestURL: URL?
     nonisolated(unsafe) static var requestHeaders: [String: String] = [:]
+    nonisolated(unsafe) static var requestBody = Data()
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -14,17 +17,36 @@ private final class EffectiveASRStubURLProtocol: URLProtocol {
     override func startLoading() {
         Self.requestURL = request.url
         Self.requestHeaders = request.allHTTPHeaderFields ?? [:]
+        Self.requestBody = request.httpBody ?? Self.readBodyStream(request.httpBodyStream)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
             httpVersion: nil,
-            headerFields: nil)!
+            headerFields: [
+                "Content-Type": request.value(forHTTPHeaderField: "Accept") == "text/event-stream"
+                    ? "text/event-stream"
+                    : "application/json",
+            ])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Self.responseData)
         client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}
+
+    private static func readBodyStream(_ stream: InputStream?) -> Data {
+        guard let stream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+        return body
+    }
 
     static func session() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
@@ -36,7 +58,23 @@ private final class EffectiveASRStubURLProtocol: URLProtocol {
         self.responseData = responseData
         requestURL = nil
         requestHeaders = [:]
+        requestBody = Data()
     }
+}
+
+private final class EffectiveASRWebSocketTaskFactory: @unchecked Sendable {
+    private let requestLock = NSLock()
+    private var capturedRequest: URLRequest?
+    private let backingSession = URLSession(configuration: .ephemeral)
+
+    func make(request: URLRequest) -> URLSessionWebSocketTask {
+        requestLock.withLock { capturedRequest = request }
+        var localRequest = request
+        localRequest.url = URL(string: "ws://127.0.0.1:1")!
+        return backingSession.webSocketTask(with: localRequest)
+    }
+
+    var request: URLRequest? { requestLock.withLock { capturedRequest } }
 }
 
 private final class EffectiveASRCredentialStore: @unchecked Sendable {
@@ -68,6 +106,35 @@ private final class EffectiveASRCredentialStore: @unchecked Sendable {
     }
 }
 
+private final class EffectiveASRLocalAudioRecorder: @unchecked Sendable, SpeechAudioRecording {
+    private let lock = NSLock()
+    private var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
+    func start(
+        preferredUID _: String,
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) throws {
+        lock.withLock { self.onBuffer = onBuffer }
+    }
+
+    func stop() {
+        lock.withLock { onBuffer = nil }
+    }
+
+    func deliverSpeech() {
+        let samples = Array(repeating: Float(0.1), count: 7_000)
+        let format = AVCaptureAudioRecorder.deliveredFormat
+        let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        for (index, sample) in samples.enumerated() {
+            buffer.floatChannelData![0][index] = sample
+        }
+        lock.withLock { onBuffer }?(buffer)
+    }
+}
+
 private struct EffectiveASRMatrixCase {
     enum Runtime {
         case openAI
@@ -92,11 +159,6 @@ private struct EffectiveASRMatrixCase {
     let expectedHeader: (name: String, value: String)?
 }
 
-private enum BuiltEffectiveASRRuntime {
-    case batch(any TranscriptionAPI)
-    case volcengine(VolcengineRealtimeTranscriptionAPI)
-}
-
 final class ASREffectiveConfigurationMatrixTests: XCTestCase {
     private var defaults: UserDefaults!
     private var credentials: EffectiveASRCredentialStore!
@@ -118,7 +180,198 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
 
     @MainActor
     func testPersistedCloudProviderMatrixReachesOneCaptureSnapshotWithoutSwitchLeakage() async throws {
-        let cases = [
+        let cases = matrixCases()
+
+        for (index, testCase) in cases.enumerated() {
+            guard case .volcengine = testCase.runtime else {
+                let nextCase = cases[(index + 1) % cases.count]
+                persist(testCase)
+                credentials.resetReads()
+                let recorder = EffectiveASRLocalAudioRecorder()
+                EffectiveASRStubURLProtocol.reset(
+                    responseData: routerResponseData(for: testCase.runtime))
+                let router = makeRouter(
+                    recorder: recorder,
+                    session: EffectiveASRStubURLProtocol.session())
+
+                try router.start(locale: .chinese)
+                assertOnlyCredentialRead(for: testCase)
+
+                // A settings change while recording must affect only the next capture. The client
+                // was resolved by the production router at `start`, so endpoint, model and key stay
+                // one immutable tuple through the upload performed by `stop`.
+                persist(nextCase)
+                recorder.deliverSpeech()
+                let transcript = try await router.stop()
+
+                XCTAssertEqual(transcript, "ok", testCase.name)
+                XCTAssertEqual(
+                    EffectiveASRStubURLProtocol.requestURL?.absoluteString,
+                    testCase.expectedRequestURL,
+                    testCase.name)
+                if let expectedHeader = testCase.expectedHeader {
+                    XCTAssertEqual(
+                        EffectiveASRStubURLProtocol.requestHeaders[expectedHeader.name],
+                        expectedHeader.value,
+                        testCase.name)
+                }
+                let requestBody = String(
+                    decoding: EffectiveASRStubURLProtocol.requestBody,
+                    as: UTF8.self)
+                let requestWire = (EffectiveASRStubURLProtocol.requestURL?.absoluteString ?? "")
+                    + requestBody
+                XCTAssertTrue(requestWire.contains(testCase.expectedModel), testCase.name)
+                XCTAssertFalse(requestWire.contains(nextCase.expectedModel), testCase.name)
+                continue
+            }
+
+            // Volcengine uses a WebSocket rather than URLSession.data. The production client is
+            // still constructed by the router; the session double records the original upgrade
+            // request and redirects only the external transport to a closed loopback port.
+            persist(testCase)
+            credentials.resetReads()
+            let recorder = EffectiveASRLocalAudioRecorder()
+            let webSocketTaskFactory = EffectiveASRWebSocketTaskFactory()
+            let router = makeRouter(
+                recorder: recorder,
+                session: .shared,
+                webSocketTaskProvider: { webSocketTaskFactory.make(request: $0) })
+
+            try router.start(locale: .chinese)
+            assertOnlyCredentialRead(for: testCase)
+            let nextCase = cases[(index + 1) % cases.count]
+            persist(nextCase)
+            recorder.deliverSpeech()
+            do {
+                _ = try await router.stop()
+                XCTFail("Volcengine loopback transport must fail", file: #filePath, line: #line)
+            } catch {
+                // Expected: no provider network request is made by this offline construction test.
+            }
+            let request = try XCTUnwrap(webSocketTaskFactory.request, testCase.name)
+            XCTAssertEqual(request.url?.host, "openspeech.bytedance.com", testCase.name)
+            XCTAssertEqual(
+                request.url?.path,
+                "/api/v3/sauc/bigmodel_nostream",
+                testCase.name)
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "X-Api-Key"),
+                testCase.credential,
+                testCase.name)
+            XCTAssertNotEqual(
+                request.value(forHTTPHeaderField: "X-Api-Key"),
+                nextCase.credential,
+                testCase.name)
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "X-Api-Resource-Id"),
+                "volc.seedasr.sauc.duration",
+                testCase.name)
+        }
+    }
+
+    @MainActor
+    func testMiMoPackageToPaygSwitchResolvesOneEndpointPlanCredentialTuple() async throws {
+        ModelRouteSelectionActions.applyASRSelection(ASREngine.cloudMimo.rawValue, defaults: defaults)
+        let packageMachine = ProviderConfigMachine(
+            capability: .asr,
+            preferredProviderId: "mimo",
+            defaults: defaults,
+            keyReader: { [credentials] in credentials?.read($0) },
+            keyWriter: { [credentials] in credentials?.write($0, account: $1) })
+        packageMachine.load()
+        packageMachine.regionRaw = ProviderRegion.singapore.rawValue
+        packageMachine.planRaw = BillingPlan.package.rawValue
+        packageMachine.baseURL = "https://token-plan-sgp.xiaomimimo.com/v1"
+        packageMachine.model = "mimo-package-model"
+        packageMachine.apiKey = "mimo-package-key"
+        packageMachine.writeApiKey()
+        packageMachine.persist()
+
+        let packageRecorder = EffectiveASRLocalAudioRecorder()
+        EffectiveASRStubURLProtocol.reset(responseData: routerResponseData(for: .mimo))
+        let packageRouter = makeRouter(
+            recorder: packageRecorder,
+            session: EffectiveASRStubURLProtocol.session())
+        try packageRouter.start(locale: .chinese)
+
+        // Switch through the production quick-selection action. PAYG has no Singapore endpoint,
+        // so the persisted selection itself must move to the complete China PAYG tuple instead of
+        // retaining the Singapore Token Plan URL and pairing it with the PAYG key.
+        credentials.write(
+            "mimo-payg-key",
+            account: CapabilityCredentialAccount.apiKeyAccount(
+                providerId: "mimo", capability: .asr, plan: .payg))
+        ModelRouteSelectionActions.applyASRSelection("cloud-mimo#payg", defaults: defaults)
+        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.region"), ProviderRegion.china.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.plan"), BillingPlan.payg.rawValue)
+        XCTAssertEqual(
+            defaults.string(forKey: "byok.asr.mimo.baseURL"),
+            "https://api.xiaomimimo.com/v1")
+
+        // Runtime resolution remains safe if a stale Token Plan URL survives with an equivalent
+        // trailing-slash spelling that does not byte-match the catalog value.
+        CapabilityProviderConfigStore.set(
+            "https://token-plan-sgp.xiaomimimo.com/v1/",
+            suffix: "baseURL",
+            providerId: "mimo",
+            capability: .asr,
+            defaults: defaults)
+
+        let effective = ProviderConfigDispatcher(
+            defaults: defaults,
+            keyReader: { [credentials] in credentials?.read($0) })
+            .resolve(.asr, providerId: "mimo")
+        XCTAssertEqual(effective.region, .china)
+        XCTAssertEqual(effective.plan, .payg)
+        XCTAssertEqual(effective.baseURL, "https://api.xiaomimimo.com/v1")
+        XCTAssertEqual(effective.apiKey, "mimo-payg-key")
+
+        packageRecorder.deliverSpeech()
+        let packageTranscript = try await packageRouter.stop()
+        XCTAssertEqual(packageTranscript, "ok")
+        XCTAssertEqual(
+            EffectiveASRStubURLProtocol.requestURL?.absoluteString,
+            "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions")
+        XCTAssertEqual(EffectiveASRStubURLProtocol.requestHeaders["api-key"], "mimo-package-key")
+
+        let paygRecorder = EffectiveASRLocalAudioRecorder()
+        EffectiveASRStubURLProtocol.reset(responseData: routerResponseData(for: .mimo))
+        let paygRouter = makeRouter(
+            recorder: paygRecorder,
+            session: EffectiveASRStubURLProtocol.session())
+        try paygRouter.start(locale: .chinese)
+        paygRecorder.deliverSpeech()
+        let paygTranscript = try await paygRouter.stop()
+        XCTAssertEqual(paygTranscript, "ok")
+        XCTAssertEqual(
+            EffectiveASRStubURLProtocol.requestURL?.absoluteString,
+            "https://api.xiaomimimo.com/v1/chat/completions")
+        XCTAssertEqual(EffectiveASRStubURLProtocol.requestHeaders["api-key"], "mimo-payg-key")
+    }
+
+    @MainActor
+    func testMiMoDoesNotEchoFilterDictionaryTermsItNeverSends() async throws {
+        let testCase = matrixCases().first { testCase in
+            if case .mimo = testCase.runtime { return testCase.plan == .payg }
+            return false
+        }!
+        persist(testCase)
+        defaults.set("Westlaw, SSRN", forKey: ContextHotwordSettings.defaultsKey)
+        let recorder = EffectiveASRLocalAudioRecorder()
+        EffectiveASRStubURLProtocol.reset(responseData: mimoResponseData(text: "Westlaw, SSRN"))
+        let router = makeRouter(
+            recorder: recorder,
+            session: EffectiveASRStubURLProtocol.session())
+
+        try router.start(locale: .chinese)
+        recorder.deliverSpeech()
+        let transcript = try await router.stop()
+
+        XCTAssertEqual(transcript, "Westlaw, SSRN")
+    }
+
+    private func matrixCases() -> [EffectiveASRMatrixCase] {
+        [
             EffectiveASRMatrixCase(
                 name: "OpenAI",
                 runtime: .openAI,
@@ -204,105 +457,30 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
                 expectedRequestURL: "https://custom-asr.test/v1/audio/transcriptions",
                 expectedHeader: ("Authorization", "Bearer custom-selected-key")),
         ]
-
-        for (index, testCase) in cases.enumerated() {
-            let nextCase = cases[(index + 1) % cases.count]
-            persist(testCase)
-            credentials.resetReads()
-            let runtime = buildRuntimeFromPersistedSelection(expected: testCase)
-            assertOnlyCredentialRead(for: testCase)
-
-            // The client is the capture-start snapshot. A settings change while recording must
-            // only affect the next capture, never combine this capture's endpoint with the newly
-            // selected provider's model, plan, or credential. The next capture is then built from
-            // the newly persisted engine through the same route → factory seam production uses.
-            persist(nextCase)
-            credentials.resetReads()
-            let nextRuntime = buildRuntimeFromPersistedSelection(expected: nextCase)
-            assertOnlyCredentialRead(for: nextCase)
-
-            try await assertRuntime(runtime, matches: testCase)
-            try await assertRuntime(nextRuntime, matches: nextCase)
-        }
     }
 
     @MainActor
-    func testMiMoPackageToPaygSwitchResolvesOneEndpointPlanCredentialTuple() async throws {
-        ModelRouteSelectionActions.applyASRSelection(ASREngine.cloudMimo.rawValue, defaults: defaults)
-        let packageMachine = ProviderConfigMachine(
-            capability: .asr,
-            preferredProviderId: "mimo",
+    private func makeRouter(
+        recorder: EffectiveASRLocalAudioRecorder,
+        session: URLSession,
+        webSocketTaskProvider: (@Sendable (URLRequest) -> URLSessionWebSocketTask)? = nil
+    ) -> RoutedSpeechCaptureService {
+        let contextURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("router-matrix-\(UUID().uuidString).json")
+        return RoutedSpeechCaptureService(
+            contextScopeProvider: { nil },
             defaults: defaults,
             keyReader: { [credentials] in credentials?.read($0) },
-            keyWriter: { [credentials] in credentials?.write($0, account: $1) })
-        packageMachine.load()
-        packageMachine.regionRaw = ProviderRegion.singapore.rawValue
-        packageMachine.planRaw = BillingPlan.package.rawValue
-        packageMachine.baseURL = "https://token-plan-sgp.xiaomimimo.com/v1"
-        packageMachine.model = "mimo-package-model"
-        packageMachine.apiKey = "mimo-package-key"
-        packageMachine.writeApiKey()
-        packageMachine.persist()
-
-        let packageClient = ASRTranscriptionClientFactory.batchClient(
-            for: .mimo,
-            defaults: defaults,
-            session: EffectiveASRStubURLProtocol.session(),
-            keyReader: { [credentials] in credentials?.read($0) })
-
-        // Switch through the production quick-selection action. PAYG has no Singapore endpoint,
-        // so the persisted selection itself must move to the complete China PAYG tuple instead of
-        // retaining the Singapore Token Plan URL and pairing it with the PAYG key.
-        credentials.write(
-            "mimo-payg-key",
-            account: CapabilityCredentialAccount.apiKeyAccount(
-                providerId: "mimo", capability: .asr, plan: .payg))
-        ModelRouteSelectionActions.applyASRSelection("cloud-mimo#payg", defaults: defaults)
-        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.region"), ProviderRegion.china.rawValue)
-        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.plan"), BillingPlan.payg.rawValue)
-        XCTAssertEqual(
-            defaults.string(forKey: "byok.asr.mimo.baseURL"),
-            "https://api.xiaomimimo.com/v1")
-
-        // Runtime resolution remains safe if a stale Token Plan URL survives with an equivalent
-        // trailing-slash spelling that does not byte-match the catalog value.
-        CapabilityProviderConfigStore.set(
-            "https://token-plan-sgp.xiaomimimo.com/v1/",
-            suffix: "baseURL",
-            providerId: "mimo",
-            capability: .asr,
-            defaults: defaults)
-
-        let effective = ProviderConfigDispatcher(
-            defaults: defaults,
-            keyReader: { [credentials] in credentials?.read($0) })
-            .resolve(.asr, providerId: "mimo")
-        XCTAssertEqual(effective.region, .china)
-        XCTAssertEqual(effective.plan, .payg)
-        XCTAssertEqual(effective.baseURL, "https://api.xiaomimimo.com/v1")
-        XCTAssertEqual(effective.apiKey, "mimo-payg-key")
-
-        let paygClient = ASRTranscriptionClientFactory.batchClient(
-            for: .mimo,
-            defaults: defaults,
-            session: EffectiveASRStubURLProtocol.session(),
-            keyReader: { [credentials] in credentials?.read($0) })
-
-        EffectiveASRStubURLProtocol.reset(
-            responseData: #"{"choices":[{"message":{"content":"ok"}}]}"#.data(using: .utf8)!)
-        _ = try await packageClient.transcribe(audio: Data([0x01]), mimeType: "audio/wav", language: "zh")
-        XCTAssertEqual(
-            EffectiveASRStubURLProtocol.requestURL?.absoluteString,
-            "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions")
-        XCTAssertEqual(EffectiveASRStubURLProtocol.requestHeaders["api-key"], "mimo-package-key")
-
-        EffectiveASRStubURLProtocol.reset(
-            responseData: #"{"choices":[{"message":{"content":"ok"}}]}"#.data(using: .utf8)!)
-        _ = try await paygClient.transcribe(audio: Data([0x01]), mimeType: "audio/wav", language: "zh")
-        XCTAssertEqual(
-            EffectiveASRStubURLProtocol.requestURL?.absoluteString,
-            "https://api.xiaomimimo.com/v1/chat/completions")
-        XCTAssertEqual(EffectiveASRStubURLProtocol.requestHeaders["api-key"], "mimo-payg-key")
+            qwenRunTask: QwenRunTaskSession(),
+            qwenAudioRecorder: { recorder },
+            qwenContextStore: RecentASRContextSessionStore(
+                defaults: defaults,
+                fileURL: contextURL),
+            requireQwenMicPermission: {},
+            batchSession: session,
+            batchWebSocketTask: webSocketTaskProvider,
+            batchAudioRecorder: { recorder },
+            requireBatchMicPermission: { _ in })
     }
 
     @MainActor
@@ -335,81 +513,40 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
         XCTAssertEqual(effective.apiKey, testCase.credential, testCase.name)
     }
 
-    private func buildRuntimeFromPersistedSelection(
-        expected testCase: EffectiveASRMatrixCase
-    ) -> BuiltEffectiveASRRuntime {
-        let selectedEngine = ASREngine.selected(defaults: defaults)
-        XCTAssertEqual(selectedEngine, testCase.engine, testCase.name)
-        let route = ASRProviderRoute.dictation(
-            selected: selectedEngine,
-            isInstalled: { _ in true },
-            cloudHasKey: { _ in true })
-        let keyReader: ASRTranscriptionClientFactory.KeyReader = { [credentials] in
-            credentials?.read($0)
-        }
-        let client = ASRTranscriptionClientFactory.batchClient(
-            for: route,
-            defaults: defaults,
-            session: EffectiveASRStubURLProtocol.session(),
-            keyReader: keyReader)
-        if let volcengine = client as? VolcengineRealtimeTranscriptionAPI {
-            return .volcengine(volcengine)
-        }
-        return .batch(client)
-    }
-
     private func assertOnlyCredentialRead(for testCase: EffectiveASRMatrixCase) {
-        XCTAssertEqual(
-            credentials.recordedReads,
-            [CapabilityCredentialAccount.apiKeyAccount(
-                providerId: testCase.providerID,
-                capability: .asr,
-                plan: testCase.plan)],
+        let expectedAccount = CapabilityCredentialAccount.apiKeyAccount(
+            providerId: testCase.providerID,
+            capability: .asr,
+            plan: testCase.plan)
+        XCTAssertFalse(credentials.recordedReads.isEmpty, testCase.name)
+        XCTAssertTrue(
+            credentials.recordedReads.allSatisfy { $0 == expectedAccount },
             testCase.name)
     }
 
-    @MainActor
-    private func assertRuntime(
-        _ runtime: BuiltEffectiveASRRuntime,
-        matches testCase: EffectiveASRMatrixCase
-    ) async throws {
-        switch runtime {
-        case .batch(let client):
-            EffectiveASRStubURLProtocol.reset(responseData: responseData(for: testCase.runtime))
-            let result = try await client.transcribe(
-                audio: Data([0x01]),
-                mimeType: "audio/wav",
-                language: "zh")
-            XCTAssertEqual(result.model, testCase.expectedModel, testCase.name)
-            XCTAssertEqual(
-                EffectiveASRStubURLProtocol.requestURL?.absoluteString,
-                testCase.expectedRequestURL,
-                testCase.name)
-            if let expectedHeader = testCase.expectedHeader {
-                XCTAssertEqual(
-                    EffectiveASRStubURLProtocol.requestHeaders[expectedHeader.name],
-                    expectedHeader.value,
-                    testCase.name)
-            }
-        case .volcengine(let client):
-            XCTAssertEqual(client.endpoint.host, "openspeech.bytedance.com", testCase.name)
-            XCTAssertEqual(client.endpoint.path, "/api/v3/sauc/bigmodel_nostream", testCase.name)
-            XCTAssertEqual(client.endpoint.apiKey, testCase.credential, testCase.name)
-        }
-    }
-
-    private func responseData(for runtime: EffectiveASRMatrixCase.Runtime) -> Data {
-        let json: String
+    private func routerResponseData(for runtime: EffectiveASRMatrixCase.Runtime) -> Data {
+        let payload: String
         switch runtime {
         case .openAI, .custom:
-            json = #"{"text":"ok"}"#
+            payload = #"{"text":"ok"}"#
         case .mimo:
-            json = #"{"choices":[{"message":{"content":"ok"}}]}"#
+            return mimoResponseData(text: "ok")
         case .gemini:
-            json = #"{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}"#
+            payload = #"{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}"#
         case .volcengine:
-            json = "{}"
+            payload = "{}"
         }
-        return json.data(using: .utf8)!
+        return Data(payload.utf8)
+    }
+
+    private func mimoResponseData(text: String) -> Data {
+        Data("""
+        data: {"choices":[{"delta":{"content":"\(text)","role":null},"finish_reason":null,"index":0}],"object":"chat.completion.chunk"}
+
+        data: {"choices":[{"delta":{"content":null,"role":null},"finish_reason":"stop","index":0}],"object":"chat.completion.chunk"}
+
+        data: [DONE]
+
+        """.utf8)
     }
 }

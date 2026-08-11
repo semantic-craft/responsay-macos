@@ -18,15 +18,6 @@ extension OfflineModelInfo {
     /// Returns nil for cloud engines (their metadata lives in the provider catalog).
     static func forEngineRawValue(_ raw: String) -> OfflineModelInfo? {
         switch raw {
-        case ASREngine.fireRedASR2AEDLocal.rawValue:
-            return OfflineModelInfo(
-                vendor: "小红书 FireRed 团队",
-                summary: "开源工业级中文 ASR，整段识别，方言强项。",
-                highlights: [
-                    "普通话 + 中文方言 + 英语",
-                    "FireRedASR2 较 v1 识别精度更高、方言与口音覆盖更广",
-                    "开源工业级模型",
-                ])
         case ASREngine.funAsrNanoLocal.rawValue:
             return OfflineModelInfo(
                 vendor: "阿里巴巴通义实验室 FunAudioLLM",

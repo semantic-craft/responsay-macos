@@ -144,6 +144,9 @@ public struct QwenRunTaskCaptureConfig: Sendable {
     public var apiKey: String
     public var model: String
     public var hotwords: [String]
+    /// Local-only mirror of the vocabulary the resolved request can actually bias with. It is never
+    /// serialized; the app finalizer uses it to avoid filtering terms the provider did not receive.
+    public var effectiveEchoTerms: [String]
     /// Already validated for the endpoint/model/workspace/dictionary snapshot. Never logged.
     public var precompiledVocabularyID: String?
     public var context: [String]
@@ -159,6 +162,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         apiKey: String,
         model: String = QwenRunTaskEndpoint.defaultModel,
         hotwords: [String] = [],
+        effectiveEchoTerms: [String] = [],
         precompiledVocabularyID: String? = nil,
         context: [String] = [],
         contextScope: String? = nil,
@@ -169,6 +173,7 @@ public struct QwenRunTaskCaptureConfig: Sendable {
         self.apiKey = apiKey
         self.model = model
         self.hotwords = hotwords
+        self.effectiveEchoTerms = effectiveEchoTerms
         self.precompiledVocabularyID = precompiledVocabularyID
         self.context = context
         self.contextScope = contextScope

@@ -31,9 +31,16 @@ enum VisibleTextCollector {
     /// nil when AX is untrusted or nothing readable was found; otherwise the visible text joined
     /// in tree order and head-truncated to `maxLength` by `VisibleTextComposer`.
     static func collect(from target: NSRunningApplication?) -> String? {
-        guard AXIsProcessTrusted(),
-              let app = target ?? NSWorkspace.shared.frontmostApplication else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        let processIdentifier = (target ?? NSWorkspace.shared.frontmostApplication)?.processIdentifier
+        return collect(processIdentifier: processIdentifier)
+    }
+
+    /// PID-bound variant for asynchronous capture work. The caller snapshots the frontmost app on
+    /// the capture path before dispatching; a delayed AX walk therefore cannot drift into whichever
+    /// app happens to become frontmost while the task is waiting to run.
+    static func collect(processIdentifier: pid_t?) -> String? {
+        guard AXIsProcessTrusted(), let processIdentifier else { return nil }
+        let axApp = AXUIElementCreateApplication(processIdentifier)
         let root = focusedWindow(in: axApp) ?? axApp
 
         var fragments: [(text: String, isBody: Bool)] = []

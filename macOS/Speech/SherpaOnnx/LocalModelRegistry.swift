@@ -4,10 +4,6 @@ import Foundation
 /// Every entry is downloadable in-app and has a runnable engine; catalog-preview
 /// placeholders without a recognizer (Paraformer, Whisper) were removed.
 enum LocalModelRegistry {
-    // FireRedASR2 (slow/large, no clear advantage over SenseVoice) and the streaming Zipformer
-    // (space-separated CJK output) are retired from the user-facing lists. Their specs + engines
-    // stay defined for raw-value compat / migration (see `ASREngine.selected`); they're just no
-    // longer offered for download or selection.
     static let all: [LocalModelSpec] = [
         .senseVoiceSmall, .qwen3ASR, .funAsrNano, .kokoroMultiLangV1_1, .ctTransformerPunctZhEn,
         .paddleOCRv6Small,
@@ -73,33 +69,6 @@ extension LocalModelSpec {
             sha256: "7305f7905bfcf77fa0b39388a313f3da35c68d971661a65475b56fb2162c8e63",
             byteSize: 165_783_878,
             requiredFiles: ["model.int8.onnx", "tokens.txt"]
-        )
-    )
-
-    /// FireRedASR2 AED int8 — higher-quality Chinese/English ASR with 20+
-    /// Chinese dialects/accents. Converted from the official FireRedASR2-AED
-    /// release by k2-fsa for the sherpa-onnx CPU path, so the app stays
-    /// native/in-process (no Python).
-    /// sha256 from `gh api .../releases/tags/asr-models`.
-    static let fireRedASR2AED = LocalModelSpec(
-        id: ASREngine.fireRedASR2AEDLocal.rawValue,
-        displayName: "FireRedASR2 AED（高质量·中/英·20+方言）",
-        capability: .asr,
-        runtime: .sherpaOnnx,
-        family: .fireRedAsrAed,
-        languages: ["zh", "en", "yue", "dialect"],
-        qualityTier: "chinese-sota-quality",
-        directoryName: "sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
-        expected: ExpectedMetrics(asrRealtimeFactor: 1.0, approxDiskBytes: 1_250_000_000),
-        download: DownloadSource(
-            urls: [
-                URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2")!,
-                URL(string: "https://gh-proxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2")!,
-                URL(string: "https://ghfast.top/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2")!,
-            ],
-            sha256: "43015b3f1643a5688b4821e8ed323473d38b798c4ec291471fe00df1bcfc4f1c",
-            byteSize: 838_589_068,
-            requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"]
         )
     )
 

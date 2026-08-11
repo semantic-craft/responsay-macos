@@ -18,7 +18,6 @@ final class ASRResidencyPrewarmTests: XCTestCase {
     func testResidencyIDMapsLocalEngines() {
         XCTAssertNotNil(ASRResidencyPrewarm.residencyID(for: "offline-sensevoice"))
         XCTAssertNotNil(ASRResidencyPrewarm.residencyID(for: "offline-qwen3-asr"))
-        XCTAssertNotNil(ASRResidencyPrewarm.residencyID(for: "offline-fireredasr2-aed"))
         XCTAssertNotNil(ASRResidencyPrewarm.residencyID(for: "offline-funasr-nano"))
     }
 
@@ -27,6 +26,7 @@ final class ASRResidencyPrewarmTests: XCTestCase {
         XCTAssertNil(ASRResidencyPrewarm.residencyID(for: "apple"))
         XCTAssertNil(ASRResidencyPrewarm.residencyID(for: "custom-openai"))
         XCTAssertNil(ASRResidencyPrewarm.residencyID(for: "offline-zipformer-streaming"))
+        XCTAssertNil(ASRResidencyPrewarm.residencyID(for: "offline-fireredasr2-aed"))
         XCTAssertNil(ASRResidencyPrewarm.residencyID(for: "offline-qwen-asr"))  // #386: backend-era entry deleted
     }
 

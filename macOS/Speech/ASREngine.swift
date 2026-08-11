@@ -10,8 +10,6 @@ enum ASREngine: String, CaseIterable {
     case sensevoiceLocal = "offline-sensevoice"
     /// In-process offline ASR via sherpa-onnx + Qwen3-ASR (multilingual, in-process).
     case qwen3LocalASR = "offline-qwen3-asr"
-    /// In-process offline ASR via sherpa-onnx + FireRedASR2 AED (quality tier).
-    case fireRedASR2AEDLocal = "offline-fireredasr2-aed"
     /// In-process offline ASR via sherpa-onnx + Fun-ASR Nano (Alibaba Tongyi, LLM-based, broad dialect coverage).
     case funAsrNanoLocal = "offline-funasr-nano"
     /// 阿里云百炼 实时语音识别 (Qwen-Audio-3.0-ASR-Flash-Streaming / Fun-ASR-Realtime) over the
@@ -55,18 +53,11 @@ enum ASREngine: String, CaseIterable {
 
     static func selected(defaults: UserDefaults) -> ASREngine {
         if let engine = fromStoredValue(defaults.string(forKey: defaultsKey)) {
-            switch engine {
-            // FireRedASR2 retired 2026-06-17 (no clear advantage over SenseVoice); a stored
-            // selection migrates to the comparable offline AED. Case/spec/recognizer stay for compat.
-            case .fireRedASR2AEDLocal:
-                return .sensevoiceLocal
-            default:
-                return engine
-            }
+            return engine
         }
         // Cold-start default = 千问实时 (run-task WSS; was the OmniRealtime socket until #588).
-        // When no Qwen key is configured, `ASRFallback` transcribes the capture via Apple without
-        // mutating this selection (#389), so fresh installs aren't broken.
+        // When no Qwen key is configured, the router transcribes via Apple without mutating this
+        // selection (#389), so fresh installs aren't broken.
         return .cloudQwenASRFlashRealtime
     }
 
@@ -89,7 +80,6 @@ enum ASREngine: String, CaseIterable {
         case .cloudVolcengineRealtime: "火山引擎 · 豆包流式"
         case .sensevoiceLocal: "SenseVoice"
         case .qwen3LocalASR: "Qwen3-ASR"
-        case .fireRedASR2AEDLocal: "FireRedASR2 AED"
         case .funAsrNanoLocal: "Fun-ASR Nano"
         case .customOpenAI: "自定义 OpenAI 兼容"
         }
@@ -100,7 +90,7 @@ enum ASREngine: String, CaseIterable {
     /// punctuate; cloud engines punctuate server-side — none of those should be re-punctuated.
     var lacksNativePunctuation: Bool {
         switch self {
-        case .sensevoiceLocal, .qwen3LocalASR, .fireRedASR2AEDLocal:
+        case .sensevoiceLocal, .qwen3LocalASR:
             return true
         default:
             return false
@@ -116,13 +106,20 @@ enum ASREngine: String, CaseIterable {
         case .cloudQwenASRFlashRealtime: return "qwen-asr-flash"
         case .cloudVolcengineRealtime: return "volcengine-flash"
         case .customOpenAI: return "custom"
-        case .apple, .sensevoiceLocal, .qwen3LocalASR,
-                .fireRedASR2AEDLocal, .funAsrNanoLocal:
+        case .apple, .sensevoiceLocal, .qwen3LocalASR, .funAsrNanoLocal:
             return nil
         }
     }
 
-    static func cloudEngine(forProviderId providerId: String) -> ASREngine? {
-        ASRProviderRoute.from(providerID: providerId)?.cloudEngine
+    /// Downloaded model required by this engine, or nil for Apple and cloud choices.
+    var localModelSpec: LocalModelSpec? {
+        switch self {
+        case .sensevoiceLocal: .senseVoiceSmall
+        case .qwen3LocalASR: .qwen3ASR
+        case .funAsrNanoLocal: .funAsrNano
+        case .apple, .cloudOpenAI, .cloudMimo, .cloudGemini,
+                .cloudQwenASRFlashRealtime, .cloudVolcengineRealtime, .customOpenAI:
+            nil
+        }
     }
 }

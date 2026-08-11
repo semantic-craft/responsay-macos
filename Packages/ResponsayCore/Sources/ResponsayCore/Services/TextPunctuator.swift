@@ -1,7 +1,7 @@
 import Foundation
 
 /// Best-effort, on-device punctuation restoration for an unpunctuated transcript — e.g. the raw
-/// output of an offline ASR model (SenseVoice / Qwen3-ASR / FireRedASR2) that emits no punctuation.
+/// output of an offline ASR model (SenseVoice / Qwen3-ASR) that emits no punctuation.
 ///
 /// Used by the 如实输入 (faithful / raw) path so verbatim dictation can still get punctuation
 /// WITHOUT sending the text through an LLM (no rewrite, no network). Distinct from `TextPolishAPI`,

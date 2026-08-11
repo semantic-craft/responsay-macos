@@ -48,7 +48,7 @@ final class ASREngineBiasingProfileTests: XCTestCase {
         XCTAssertEqual(ASREngineBiasingProfile.routes(for: .qwen3LocalASR), [.weakPrompt, .hardMatch])
     }
 
-    /// MiMo's factory wires a weak-prompt provider, but its API discards text parts. Pin the
+    /// MiMo's adapter wires a weak-prompt provider, but its API discards text parts. Pin the
     /// HONEST (effective) behavior so the profile can never be misread as actually biasing MiMo.
     func testMimoDoesNotEffectivelyCarryWeakPrompt() {
         XCTAssertFalse(ASREngineBiasingProfile.routes(for: .cloudMimo).contains(.weakPrompt))
@@ -68,8 +68,7 @@ final class ASREngineBiasingProfileTests: XCTestCase {
     /// hard-match only. Qwen3-local is excluded: it carries weakPrompt via its model-config
     /// `hotwords` field (see `testQwen3LocalCarriesWeakPromptViaModelHotwords`).
     func testLocalAndAppleEnginesAreHardMatchOnly() {
-        for engine in [ASREngine.apple, .sensevoiceLocal,
-                       .fireRedASR2AEDLocal, .funAsrNanoLocal] {
+        for engine in [ASREngine.apple, .sensevoiceLocal, .funAsrNanoLocal] {
             XCTAssertEqual(ASREngineBiasingProfile.routes(for: engine), [.hardMatch],
                            "\(engine.rawValue) should be hard-match only")
         }
