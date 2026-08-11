@@ -86,9 +86,18 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
     /// One instance belongs to one logical capture and survives its single reconnect attempt.
     private actor TaskCallbackState {
         private var forwardedFinalSentences = Set<FinalSentenceKey>()
+        private var latestContext: [String]?
 
         func shouldForward(id: Int, text: String) -> Bool {
             return forwardedFinalSentences.insert(.init(id: id, text: text)).inserted
+        }
+
+        func recordLatestContext(_ context: [String]) {
+            latestContext = context
+        }
+
+        func contextForNextAttempt(fallback: [String]) -> [String] {
+            latestContext ?? fallback
         }
     }
 
@@ -191,6 +200,13 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
         let nowNanos = self.nowNanos
         let responseTimeout = taskResponseTimeoutNanos
         let responseSleeper = taskResponseSleeper
+        let attemptContext = await callbackState.contextForNextAttempt(
+            fallback: config.context)
+        let attemptConfig: QwenRunTaskCaptureConfig = {
+            var resolved = config
+            resolved.context = attemptContext
+            return resolved
+        }()
         let attempt = Attempt(
             transport: lease.transport,
             taskID: taskIDProvider())
@@ -203,6 +219,7 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
                            await callbackState.shouldForward(id: id, text: text),
                            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             let updatedContext = await onFinalSentence(text)
+                            await callbackState.recordLatestContext(updatedContext)
                             try? await attempt.sendContinueTask(context: updatedContext)
                         }
                         guard let outcome = await attempt.handle(event) else { continue }
@@ -216,7 +233,7 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
                 }
                 group.addTask {
                     let runTaskSentAt = nowNanos()
-                    try await attempt.sendRunTask(.init(config: config))
+                    try await attempt.sendRunTask(.init(config: attemptConfig))
                     guard try await Self.awaitStarted(
                         attempt: attempt,
                         transport: lease.transport,
