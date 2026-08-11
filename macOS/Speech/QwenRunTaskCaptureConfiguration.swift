@@ -6,21 +6,13 @@ import ResponsaySpeech
 /// is called; the value keeps endpoint, model, credential, Context, and vocabulary from mixing with
 /// settings changes made during an active capture.
 enum QwenRunTaskCaptureConfiguration {
-    struct Resolution {
-        let config: QwenRunTaskCaptureConfig
-        /// Terms that the resolved wire configuration can actually bias with. The router reuses
-        /// this exact set for echo filtering after the capture; unsupported or rejected terms
-        /// must never be inferred from the user's unfiltered dictionary.
-        let effectiveEchoTerms: [String]
-    }
-
     static func resolve(
         defaults: UserDefaults = .standard,
         context: [String] = [],
         contextScope: String? = nil,
         requestHotwords: [String]? = nil,
         keyReader: @escaping ASRKeyReader = { BYOKKeychain.read($0) }
-    ) -> Resolution {
+    ) -> QwenRunTaskCaptureConfig {
         let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
             .resolve(.asr, providerId: QwenASRFlashRouting.providerId)
         let endpoint = QwenASRFlashRouting.endpoint(
@@ -49,7 +41,7 @@ enum QwenRunTaskCaptureConfiguration {
 
         let effectiveInstantHotwords = requestVocabulary.keys.sorted()
         let effectivePersistentHotwords = persistentVocabulary.keys.sorted()
-        let config = QwenRunTaskCaptureConfig(
+        return QwenRunTaskCaptureConfig(
             endpoint: endpoint,
             apiKey: effective.apiKey ?? "",
             model: effective.model,
@@ -65,7 +57,6 @@ enum QwenRunTaskCaptureConfiguration {
             context: context,
             contextScope: contextScope,
             heartbeat: true)
-        return Resolution(config: config, effectiveEchoTerms: config.effectiveEchoTerms)
     }
 
     /// Adds the bounded screen harvest to an already immutable endpoint/model/key/dictionary
