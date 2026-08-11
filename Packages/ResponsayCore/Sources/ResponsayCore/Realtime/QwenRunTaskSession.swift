@@ -28,13 +28,25 @@ public struct QwenRunTaskStartMetric: Sendable, Equatable {
     }
 }
 
+/// The deep run-task session interface used by live capture. Production uses
+/// `QwenRunTaskSession`; routing tests substitute only the remote exchange while keeping the
+/// shipped capture adapter and its audio/finalization flow intact.
+public protocol QwenRunTaskTranscribing: Sendable {
+    func transcribe(
+        config: QwenRunTaskCaptureConfig,
+        audio: AsyncStream<Data>,
+        onFinalSentence: @escaping @Sendable (String) async -> [String],
+        onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void
+    ) async throws -> String
+}
+
 /// Owns the transport lifetime separately from task lifetime. Official DashScope guidance permits
 /// another `run-task` only after `task-finished`, requires a fresh task ID, invalidates the socket
 /// after task failure, and closes an idle connection server-side after 60 seconds. We therefore
 /// retain only successfully completed sockets and expire them locally after 45 seconds.
-public actor QwenRunTaskSession {
-    public typealias TransportFactory = @Sendable (URLRequest) async throws -> any QwenRunTaskTransport
-    public typealias Sleeper = @Sendable (UInt64) async throws -> Void
+public actor QwenRunTaskSession: QwenRunTaskTranscribing {
+    typealias TransportFactory = @Sendable (URLRequest) async throws -> any QwenRunTaskTransport
+    typealias Sleeper = @Sendable (UInt64) async throws -> Void
 
     private struct ConnectionKey: Equatable, Sendable {
         var url: URL?
@@ -74,9 +86,18 @@ public actor QwenRunTaskSession {
     /// One instance belongs to one logical capture and survives its single reconnect attempt.
     private actor TaskCallbackState {
         private var forwardedFinalSentences = Set<FinalSentenceKey>()
+        private var latestContext: [String]?
 
         func shouldForward(id: Int, text: String) -> Bool {
             return forwardedFinalSentences.insert(.init(id: id, text: text)).inserted
+        }
+
+        func recordLatestContext(_ context: [String]) {
+            latestContext = context
+        }
+
+        func contextForNextAttempt(fallback: [String]) -> [String] {
+            latestContext ?? fallback
         }
     }
 
@@ -128,11 +149,13 @@ public actor QwenRunTaskSession {
 
     public func transcribe(
         config: QwenRunTaskCaptureConfig,
-        audio: QwenReplayableAudioBuffer,
+        audio: AsyncStream<Data>,
         onFinalSentence: @escaping @Sendable (String) async -> [String] = { _ in [] },
         onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void = { _ in }
     ) async throws -> String {
         let request = Self.request(for: config)
+        let replayableAudio = ReplayableAudio(source: audio)
+        defer { replayableAudio.cancel() }
         let callbackState = TaskCallbackState()
         var attempt = 0
         while true {
@@ -142,7 +165,7 @@ public actor QwenRunTaskSession {
                 let transcript = try await runAttempt(
                     lease: lease,
                     config: config,
-                    audio: audio,
+                    audio: replayableAudio,
                     callbackState: callbackState,
                     onFinalSentence: onFinalSentence,
                     onTaskStarted: onTaskStarted)
@@ -169,7 +192,7 @@ public actor QwenRunTaskSession {
     private func runAttempt(
         lease: Lease,
         config: QwenRunTaskCaptureConfig,
-        audio: QwenReplayableAudioBuffer,
+        audio: ReplayableAudio,
         callbackState: TaskCallbackState,
         onFinalSentence: @escaping @Sendable (String) async -> [String],
         onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void
@@ -177,24 +200,30 @@ public actor QwenRunTaskSession {
         let nowNanos = self.nowNanos
         let responseTimeout = taskResponseTimeoutNanos
         let responseSleeper = taskResponseSleeper
-        let client = QwenRunTaskASRClient(
+        let attemptContext = await callbackState.contextForNextAttempt(
+            fallback: config.context)
+        let attemptConfig: QwenRunTaskCaptureConfig = {
+            var resolved = config
+            resolved.context = attemptContext
+            return resolved
+        }()
+        let attempt = Attempt(
             transport: lease.transport,
             taskID: taskIDProvider())
         return try await withTaskCancellationHandler {
             try await withThrowingTaskGroup(of: AttemptResult.self) { group in
                 group.addTask {
                     while true {
-                        let event = try await client.receive()
+                        let event = try await attempt.receive()
                         if case let .sentence(id, text, true) = event,
                            await callbackState.shouldForward(id: id, text: text),
                            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             let updatedContext = await onFinalSentence(text)
-                            try? await client.sendContinueTask(context: updatedContext)
+                            await callbackState.recordLatestContext(updatedContext)
+                            try? await attempt.sendContinueTask(context: updatedContext)
                         }
-                        guard let update = await client.handleEvent(event) else { continue }
-                        switch update {
-                        case .partial:
-                            continue
+                        guard let outcome = await attempt.handle(event) else { continue }
+                        switch outcome {
                         case let .final(text):
                             return .transcript(text)
                         case let .failed(message):
@@ -204,16 +233,9 @@ public actor QwenRunTaskSession {
                 }
                 group.addTask {
                     let runTaskSentAt = nowNanos()
-                    try await client.sendRunTask(
-                        model: config.model,
-                        sampleRate: 16_000,
-                        hotwords: config.hotwords,
-                        precompiledVocabularyID: config.precompiledVocabularyID,
-                        languageHints: config.languageHints,
-                        context: config.context,
-                        heartbeat: config.heartbeat)
+                    try await attempt.sendRunTask(.init(config: attemptConfig))
                     guard try await Self.awaitStarted(
-                        client: client,
+                        attempt: attempt,
                         transport: lease.transport,
                         timeoutNanos: responseTimeout,
                         sleeper: responseSleeper) else {
@@ -227,10 +249,10 @@ public actor QwenRunTaskSession {
                             : 0))
                     for await pcm in audio.replayingStream() {
                         try Task.checkCancellation()
-                        try await client.sendAudio(pcm)
+                        try await attempt.sendAudio(pcm)
                     }
                     try Task.checkCancellation()
-                    try await client.finish()
+                    try await attempt.finish()
                     return .senderFinished
                 }
 
@@ -325,13 +347,13 @@ public actor QwenRunTaskSession {
     }
 
     private static func awaitStarted(
-        client: QwenRunTaskASRClient,
+        attempt: Attempt,
         transport: any QwenRunTaskTransport,
         timeoutNanos: UInt64,
         sleeper: @escaping Sleeper
     ) async throws -> Bool {
         try await withThrowingTaskGroup(of: Bool.self) { group in
-            group.addTask { await client.awaitStarted() }
+            group.addTask { await attempt.awaitStarted() }
             group.addTask {
                 try await sleeper(timeoutNanos)
                 await transport.close()
@@ -341,14 +363,4 @@ public actor QwenRunTaskSession {
             return try await group.next() ?? false
         }
     }
-}
-
-private extension QwenRunTaskCaptureConfig {
-    var languageHints: [String] {
-        QwenASRHotwords.languageHints(for: locale, model: model)
-    }
-
-    /// Locale is task state, not connection state. It is populated by the capture service before
-    /// dispatch and must never bleed from a prior task on a reused socket.
-    var locale: CaptureLocale { captureLocale ?? .automatic }
 }

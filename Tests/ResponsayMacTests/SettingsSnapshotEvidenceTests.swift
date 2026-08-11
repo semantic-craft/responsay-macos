@@ -21,11 +21,13 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
     /// `byok.*` routing keys up front and restore them verbatim afterwards —
     /// the suite must leave the developer's real BYOK selections untouched.
     private var byokBackup: [String: Any] = [:]
+    private var ttsEngineBackup: Any?
 
     override func setUp() {
         super.setUp()
         byokBackup = UserDefaults.standard.dictionaryRepresentation()
             .filter { $0.key.hasPrefix("byok.") }
+        ttsEngineBackup = UserDefaults.standard.object(forKey: TTSEngine.defaultsKey)
     }
 
     override func tearDown() {
@@ -34,6 +36,11 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
             d.removeObject(forKey: key)
         }
         for (k, v) in byokBackup { d.set(v, forKey: k) }
+        if let ttsEngineBackup {
+            d.set(ttsEngineBackup, forKey: TTSEngine.defaultsKey)
+        } else {
+            d.removeObject(forKey: TTSEngine.defaultsKey)
+        }
         super.tearDown()
     }
 
@@ -159,6 +166,26 @@ final class SettingsSnapshotEvidenceTests: XCTestCase {
                               size: NSSize(width: 660, height: 520),
                               named: "tts-card-default.png")
         print("SNAPSHOT tts-card -> \(tts.path)")
+    }
+
+    func testOpeningTTSCardDoesNotOverrideExplicitLocalRoute() throws {
+        let defaults = UserDefaults.standard
+        clearBYOK("tts")
+        defaults.set(
+            "qwen-audio-3.0-tts-flash",
+            forKey: "byok.tts.qwen.model")
+        defaults.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
+
+        _ = try capture(
+            CapabilityCardView(capability: .tts, keyReader: { _ in nil }),
+            size: NSSize(width: 660, height: 520),
+            named: "tts-card-local-route-regression.png")
+
+        XCTAssertNil(defaults.string(forKey: "byok.tts.provider"))
+        XCTAssertEqual(
+            defaults.string(forKey: TTSEngine.defaultsKey),
+            TTSEngine.sherpaKokoroLocal.rawValue)
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
     }
 
 }

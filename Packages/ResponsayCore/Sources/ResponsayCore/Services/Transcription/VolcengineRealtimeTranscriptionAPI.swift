@@ -16,19 +16,23 @@ import Foundation
 public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
     let endpoint: VolcengineRealtimeEndpoint
     let config: VolcengineRealtimeConfig
-    let session: URLSession
+    let hotwordsProvider: @Sendable () async -> [String]
+    let webSocketTaskProvider: @Sendable (URLRequest) -> URLSessionWebSocketTask
     /// ~1s of 16 kHz/16-bit/mono PCM per frame; a recorded clip is pumped as a burst.
     let frameBytes: Int
 
     public init(
         endpoint: VolcengineRealtimeEndpoint,
         config: VolcengineRealtimeConfig = VolcengineRealtimeConfig(),
+        hotwordsProvider: (@Sendable () async -> [String])? = nil,
         session: URLSession = .shared,
+        webSocketTaskProvider: (@Sendable (URLRequest) -> URLSessionWebSocketTask)? = nil,
         frameBytes: Int = 32_000
     ) {
         self.endpoint = endpoint
         self.config = config
-        self.session = session
+        self.hotwordsProvider = hotwordsProvider ?? { config.hotwords }
+        self.webSocketTaskProvider = webSocketTaskProvider ?? { session.webSocketTask(with: $0) }
         self.frameBytes = frameBytes
     }
 
@@ -36,11 +40,13 @@ public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
         guard !endpoint.apiKey.isEmpty else {
             throw CoachAPIError.message("未配置火山引擎 API Key。请在设置中配置。")
         }
-        let socket = session.webSocketTask(with: endpoint.makeRequest(connectID: UUID().uuidString))
+        let requestConfig = await resolvedRequestConfig()
+        try Task.checkCancellation()
+        let socket = webSocketTaskProvider(endpoint.makeRequest(connectID: UUID().uuidString))
         socket.resume()
         let client = VolcengineRealtimeClient(transport: socket)
         do {
-            try await client.sendFullClientRequest(config: config)
+            try await client.sendFullClientRequest(config: requestConfig)
             // ponytail: sequential send-then-drain is fine for short dictation clips; a
             // long clip may need concurrent send/receive to avoid socket backpressure.
             for frame in Self.pcmFrames(fromWAV: audio, frameBytes: frameBytes) {
@@ -55,6 +61,15 @@ public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
             socket.cancel(with: .abnormalClosure, reason: nil)
             throw error
         }
+    }
+
+    /// Resolves the one immutable full-client-request payload at transcription time. Capture can
+    /// finish harvesting screen terms while audio is recorded, without rebuilding the endpoint or
+    /// reading mutable settings after this point.
+    func resolvedRequestConfig() async -> VolcengineRealtimeConfig {
+        var requestConfig = config
+        requestConfig.hotwords = await hotwordsProvider()
+        return requestConfig
     }
 
     /// Read server frames until the terminal (`isLast`) transcript arrives.

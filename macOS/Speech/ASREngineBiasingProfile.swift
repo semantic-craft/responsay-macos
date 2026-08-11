@@ -18,16 +18,14 @@ enum ASRBiasingRoute: Sendable, Hashable {
 ///   `biasingSets().enforce()` to EVERY engine, so every engine carries it.
 /// - The shipping default engine `.cloudQwenASRFlashRealtime` carries `weakPrompt` since it moved
 ///   off the OmniRealtime socket onto the 非实时 HTTP endpoint's 即时热词 field (#588).
-/// - `.cloudMimo` is wired with a weak-prompt provider in `ASRTranscriptionClientFactory`, but the
+/// - `.cloudMimo` is wired with a weak-prompt provider in `RoutedSpeechCaptureService`, but the
 ///   MiMo API discards text content parts (`DirectMimoTranscriptionAPI`), so it carries **no**
 ///   effective `weakPrompt` — hard-match only. We pin the effective (honest) behavior, not the wiring.
-/// - `.cloudVolcengineFlash` carries only `hardMatch`: BigASR's boosting table is not wired (a
-///   missed capability, tracked separately).
 ///
 /// The `switch` is exhaustive on purpose: a new `ASREngine` case will not compile until its routes
 /// are declared here. When you change which biasing closure (`hotwordsProvider`) an engine's
-/// client receives in `ASRTranscriptionClientFactory` /
-/// `RoutedSpeechCaptureService`, update this map **and** `ASREngineBiasingProfileTests`.
+/// client receives in `RoutedSpeechCaptureService`, update this map and
+/// `ASREngineBiasingProfileTests`.
 enum ASREngineBiasingProfile {
     static func routes(for engine: ASREngine) -> Set<ASRBiasingRoute> {
         switch engine {
@@ -35,21 +33,17 @@ enum ASREngineBiasingProfile {
         case .cloudOpenAI, .cloudGemini, .customOpenAI:
             return [.weakPrompt, .hardMatch]
 
-        // weak-prompt provider is wired in the factory but the MiMo API discards text parts →
+        // weak-prompt provider is wired in the router adapter but the MiMo API discards text parts →
         // no effective request-side biasing.
         case .cloudMimo:
             return [.hardMatch]
 
         // 千问实时 (run-task WSS): the 词典 weak prompt is sent as 即时热词 `parameters.vocabulary` on
-        // the run-task frame (QwenRunTaskASRProtocol) → weakPrompt + the universal hard-match. Note
+        // the session's run-task frame → weakPrompt + the universal hard-match. Note
         // the field is documented for `qwen-audio-3.0-asr-flash-streaming` only, so picking the
         // Fun-ASR-Realtime model in the card drops this engine back to hard-match for that session.
         case .cloudQwenASRFlashRealtime:
             return [.weakPrompt, .hardMatch]
-
-        // BigASR boosting table not wired (missed capability) → hard-match only.
-        case .cloudVolcengineFlash:
-            return [.hardMatch]
 
         // 大模型流式: hotwords are sent via the request's `corpus.context` biasing channel
         // (VolcengineRealtimeTranscriptionAPI) → carries weakPrompt + the universal hard-match.
@@ -59,13 +53,13 @@ enum ASREngineBiasingProfile {
         // In-process Qwen3-ASR (LLM decoder) takes the documented model-config `hotwords` field
         // (sherpa-onnx ≥v1.12.35; we ship v1.13.2), fed weakPrompt at recognizer build — wired
         // 2026-06-20 (#500 S1) in `RoutedSpeechCaptureService`. So it carries weakPrompt (the ONE
-        // offline soft route) + the universal hard-match. SenseVoice (CTC) / FireRedASR2 / FunASR-Nano
+        // offline soft route) + the universal hard-match. SenseVoice (CTC) / FunASR-Nano
         // expose no effective request-side biasing here, so they stay hard-match only.
         case .qwen3LocalASR:
             return [.weakPrompt, .hardMatch]
 
         // No request-side biasing API is used; the universal post-ASR hard-match still applies.
-        case .apple, .sensevoiceLocal, .fireRedASR2AEDLocal, .funAsrNanoLocal:
+        case .apple, .sensevoiceLocal, .funAsrNanoLocal:
             return [.hardMatch]
         }
     }

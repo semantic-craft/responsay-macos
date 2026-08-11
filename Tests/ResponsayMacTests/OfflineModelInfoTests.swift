@@ -2,11 +2,11 @@ import XCTest
 @testable import ResponsayMac
 
 final class OfflineModelInfoTests: XCTestCase {
-    /// Every selectable OFFLINE ASR engine (the four downloadable models + Apple)
+    /// Every selectable offline ASR engine (the three downloadable models + Apple)
     /// exposes a non-empty summary / vendor / highlights triple (#388).
     func testEverySelectableOfflineEngineHasInfo() {
         let offline: [ASREngine] = [
-            .fireRedASR2AEDLocal, .funAsrNanoLocal, .qwen3LocalASR, .sensevoiceLocal, .apple,
+            .funAsrNanoLocal, .qwen3LocalASR, .sensevoiceLocal, .apple,
         ]
         for engine in offline {
             let info = try? XCTUnwrap(engine.offlineModelInfo, "\(engine.rawValue) missing offline info")
@@ -14,8 +14,7 @@ final class OfflineModelInfoTests: XCTestCase {
             XCTAssertFalse(info?.summary.isEmpty ?? true, "\(engine.rawValue) missing summary")
             XCTAssertFalse(info?.highlights.isEmpty ?? true, "\(engine.rawValue) missing highlights")
         }
-        // Sanity check the verified vendor mapping for the two non-Alibaba sources.
-        XCTAssertEqual(ASREngine.fireRedASR2AEDLocal.offlineModelInfo?.vendor, "小红书 FireRed 团队")
+        // Sanity check the system-engine vendor mapping.
         XCTAssertEqual(ASREngine.apple.offlineModelInfo?.vendor, "Apple")
     }
 
@@ -32,7 +31,6 @@ final class OfflineModelInfoTests: XCTestCase {
     /// The downloadable ASR specs resolve info via LocalModelSpec; the punctuation model now
     /// carries provenance too (surfaced in 设置›语音识别). Only TTS (Kokoro) has none.
     func testDownloadableASRSpecsResolveInfo() {
-        XCTAssertNotNil(LocalModelSpec.fireRedASR2AED.offlineModelInfo)
         XCTAssertNotNil(LocalModelSpec.funAsrNano.offlineModelInfo)
         XCTAssertNotNil(LocalModelSpec.qwen3ASR.offlineModelInfo)
         XCTAssertNotNil(LocalModelSpec.senseVoiceSmall.offlineModelInfo)

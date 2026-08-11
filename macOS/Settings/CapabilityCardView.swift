@@ -47,6 +47,25 @@ struct CapabilityCardView: View {
             })
     }
 
+    /// Loading a card projects persisted/default configuration into the machine. Only a Picker
+    /// setter represents user intent, so hydration must never switch the active ASR/TTS route.
+    private var providerSelection: Binding<String> {
+        Binding(
+            get: { machine.providerId },
+            set: { providerId in
+                guard providerId != machine.providerId else { return }
+                machine.providerId = providerId
+                machine.selectProvider()
+                guard capability == .tts,
+                      let engine = TTSEngine.selectableCases.first(where: {
+                          $0.providerID == providerId
+                      }) else { return }
+                ModelRouteSelectionActions.applyTTSSelection(
+                    engine.rawValue,
+                    defaults: machine.defaults)
+            })
+    }
+
     /// Persist only user edits. Loading the stored value into the machine must not silently refresh
     /// a stale model/region/workspace/dictionary binding.
     private var qwenVocabularyID: Binding<String> {
@@ -66,7 +85,7 @@ struct CapabilityCardView: View {
 
             LabeledRow(label: "配置档案") {
                 HStack(spacing: 8) {
-                    Picker("", selection: $machine.providerId) {
+                    Picker("", selection: providerSelection) {
                         ForEach(machine.presets) { Text($0.displayName(for: capability)).tag($0.id) }
                     }
                     .labelsHidden()
@@ -226,21 +245,8 @@ struct CapabilityCardView: View {
                 }
             }
         }
-        // 朗读 only: selecting a provider also selects its engine and restores its scoped runtime
-        // config; opening the card only backfills genuinely missing legacy state. ASR / LLM stay
-        // excluded because their route pickers own engine/provider synchronization separately.
         .onAppear {
             machine.load()
-            guard capability == .tts else { return }
-            TTSActiveProvider.adoptShownProviderIfUnset(
-                machine.providerId,
-                hasCredential: machine.hasStoredCredential,
-                defaults: machine.defaults)
-        }
-        .onChange(of: machine.providerId) { _, _ in
-            machine.selectProvider()
-            guard capability == .tts else { return }
-            TTSActiveProvider.adopt(machine.providerId, defaults: machine.defaults)
         }
         .onChange(of: machine.regionRaw) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.planRaw) { old, new in

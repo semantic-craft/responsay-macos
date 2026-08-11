@@ -63,7 +63,7 @@ enum SelfCheckError: Error, CustomStringConvertible {
 enum LocalModelSelfCheck {
     /// Families with an offline self-check (ASR recognizers + Kokoro TTS).
     static func supports(_ family: ModelFamily) -> Bool {
-        family == .senseVoice || family == .fireRedAsrAed || family == .qwen3Asr
+        family == .senseVoice || family == .qwen3Asr
             || family == .funAsrNano || family == .kokoro
     }
 
@@ -114,7 +114,6 @@ enum LocalModelSelfCheck {
     private static func makeRecognizer(for spec: LocalModelSpec) throws -> any OfflineSherpaRecognizer {
         switch spec.family {
         case .senseVoice: return try SenseVoiceRecognizer(modelDir: spec.storagePath)
-        case .fireRedAsrAed: return try FireRedASR2AEDRecognizer(modelDir: spec.storagePath)
         case .qwen3Asr: return try Qwen3ASRRecognizer(modelDir: spec.storagePath)
         case .funAsrNano: return try FunASRNanoRecognizer(modelDir: spec.storagePath)
         default: throw SelfCheckError.unsupportedFamily(spec.family)

@@ -9,7 +9,7 @@ import ResponsayCore
 /// Behaviour is identical to the pre-extraction view: same `CapabilityProviderConfigStore`
 /// keys, same `CapabilityCredentialAccount` keychain accounts (ADR-0023: BYOK keys are read
 /// on load / provider-switch and written on change, never stored in UserDefaults / plaintext),
-/// same `MiMoASRRouting` normalization and same fixed-endpoint forcing for the 豆包流式 ASR engine.
+/// same effective provider configuration consumed by the next ASR capture.
 ///
 /// `defaults` is injectable purely so tests can drive a fresh suite; production always uses
 /// `.standard`, so runtime behaviour is unchanged.
@@ -41,18 +41,21 @@ final class ProviderConfigMachine {
 
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
-    @ObservationIgnored private let keyReader: (String) -> String?
+    @ObservationIgnored let keyReader: (String) -> String?
+    @ObservationIgnored private let keyWriter: (String, String) -> Void
 
     init(
         capability: ModelCapability,
         preferredProviderId: String?,
         defaults: UserDefaults = .standard,
-        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) }
+        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) },
+        keyWriter: @escaping (String, String) -> Void = { BYOKKeychain.write($0, account: $1) }
     ) {
         self.capability = capability
         self.preferredProviderId = preferredProviderId
         self.defaults = defaults
         self.keyReader = keyReader
+        self.keyWriter = keyWriter
     }
 
     // MARK: Derived
@@ -134,88 +137,16 @@ final class ProviderConfigMachine {
         current.endpoints(for: capability).filter { !$0.baseURL.isEmpty || isQwenLLM }
     }
 
-    // MARK: Keys
-
-    func key(_ suffix: String) -> String { "byok.\(capability.rawValue).\(suffix)" }
-
     // MARK: Lifecycle
 
     func load() {
         guard !loaded else { return }
         loaded = true
-        let d = defaults
-        let storedProvider = d.string(forKey: key("provider"))
+        let storedProvider = defaults.string(forKey: CapabilityProviderConfigStore.providerKey(capability))
         var pid = preferredProviderId ?? storedProvider ?? defaultProviderId()
         if !presets.contains(where: { $0.id == pid }) { pid = defaultProviderId() }
-        let prov = presets.first { $0.id == pid } ?? presets.first ?? ProviderCatalog.custom
-        providerId = pid
-        let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
-        let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
-        regionRaw = scopedString("region", providerId: pid, activeProviderId: storedProvider) ?? defaultRegion
-        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
-            providerId: pid, capability: capability,
-            storedRaw: scopedString("plan", providerId: pid, activeProviderId: storedProvider),
-            fallbackRaw: defaultPlan)
-        let availablePlans = prov.plans(for: capability)
-        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
-        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
-        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
-        workspaceID = showsWorkspaceIDField
-            ? (scopedString("workspaceId", providerId: pid, activeProviderId: storedProvider) ?? "")
-            : ""
-        model = scopedString("model", providerId: pid, activeProviderId: storedProvider)
-            ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
-        skillModel = capability == .llm
-            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: pid, activeProviderId: storedProvider) ?? "")
-            : ""
-        let defaultVoice = prov.presetVoices.first?.id ?? ""
-        voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
-        resolveTTSVoice()
-        let r = ProviderRegion(rawValue: regionRaw) ?? .global
-        let pl = BillingPlan(rawValue: planRaw) ?? .payg
-        let catalogBaseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? ""
-        baseURL = requestedPlanIsUnavailable
-            ? catalogBaseURL
-            : MiMoASRRouting.normalizedBaseURL(
-                providerId: pid, capability: capability,
-                stored: scopedString("baseURL", providerId: pid, activeProviderId: storedProvider),
-                fallback: catalogBaseURL)
-        if let workspaceBaseURL = qwenWorkspaceBaseURL {
-            baseURL = workspaceBaseURL
-        }
-        if requestedPlanIsUnavailable {
-            setScoped(planRaw, suffix: "plan")
-            setScoped(baseURL, suffix: "baseURL")
-        }
-        let shouldPersist = MiMoASRRouting.shouldPersistNormalizedDefaults(providerId: pid, capability: capability)
-        if CapabilitySelectionSync.providerMatches(storedProvider, pid, capability: capability), shouldPersist {
-            setScoped(planRaw, suffix: "plan")
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(voice, suffix: "voice")
-        }
-        // Fixed WSS engine (豆包流式): force the true endpoint + model regardless of any stale
-        // stored batch config, and persist so ModelLaneDisplay shows the realtime values too.
-        if capability == .asr, pid == "volcengine-flash" {
-            baseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? baseURL
-            model = prov.defaultModel(for: capability, plan: pl) ?? model
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
-        }
-        // 千问实时 card: the socket is fully derived from 接入点 + Workspace ID, so the stored Base URL
-        // is display-only — always re-derive it, which also drops whatever the retired OmniRealtime
-        // engine left here. The model is a real user pick, so only a retired id is replaced.
-        if capability == .asr, pid == QwenASRFlashRouting.providerId {
-            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: workspaceID, region: r)
-            model = QwenASRFlashRouting.normalizedModel(
-                stored: model,
-                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
-        }
-        apiKey = readApiKey(providerId: pid, plan: plan)
-        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
-        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
-        boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
+        applyEffectiveConfiguration(providerId: pid)
+        boostingTableId = defaults.string(forKey: "byok.\(providerId).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
     }
 
@@ -225,67 +156,10 @@ final class ProviderConfigMachine {
     }
 
     func selectProvider() {
-        let prov = current
-        let activeProvider = defaults.string(forKey: key("provider"))
-        let defaultRegion = prov.regions(for: capability).first?.rawValue ?? ProviderRegion.global.rawValue
-        let defaultPlan = prov.plans(for: capability).first?.rawValue ?? BillingPlan.payg.rawValue
-        regionRaw = scopedString("region", providerId: prov.id, activeProviderId: activeProvider) ?? defaultRegion
-        let requestedPlanRaw = MiMoASRRouting.normalizedPlanRaw(
-            providerId: prov.id, capability: capability,
-            storedRaw: scopedString("plan", providerId: prov.id, activeProviderId: activeProvider),
-            fallbackRaw: defaultPlan)
-        let availablePlans = prov.plans(for: capability)
-        let requestedPlan = BillingPlan(rawValue: requestedPlanRaw) ?? .payg
-        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
-        planRaw = availablePlans.contains(requestedPlan) ? requestedPlan.rawValue : defaultPlan
-        workspaceID = showsWorkspaceIDField
-            ? (scopedString("workspaceId", providerId: prov.id, activeProviderId: activeProvider) ?? "")
-            : ""
-        model = scopedString("model", providerId: prov.id, activeProviderId: activeProvider)
-            ?? (prov.defaultModel(for: capability, plan: BillingPlan(rawValue: planRaw) ?? .payg) ?? "")
-        skillModel = capability == .llm
-            ? (scopedString(SkillPlatformModelSettings.suffix, providerId: prov.id, activeProviderId: activeProvider) ?? "")
-            : ""
-        let defaultVoice = prov.presetVoices.first?.id ?? ""
-        voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
-        resolveTTSVoice()
-        baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
-                                plan: BillingPlan(rawValue: planRaw) ?? .payg)?.baseURL ?? ""
-        if !requestedPlanIsUnavailable {
-            baseURL = MiMoASRRouting.normalizedBaseURL(
-                providerId: prov.id, capability: capability,
-                stored: scopedString("baseURL", providerId: prov.id, activeProviderId: activeProvider), fallback: baseURL)
-        }
-        if let workspaceBaseURL = qwenWorkspaceBaseURL {
-            baseURL = workspaceBaseURL
-        }
-        if requestedPlanIsUnavailable {
-            setScoped(planRaw, suffix: "plan")
-            setScoped(baseURL, suffix: "baseURL")
-        }
-        if capability == .asr, prov.id == "volcengine-flash" {
-            let pl = BillingPlan(rawValue: planRaw) ?? .payg
-            baseURL = prov.endpoint(for: capability,
-                                    region: ProviderRegion(rawValue: regionRaw) ?? .global, plan: pl)?.baseURL ?? baseURL
-            model = prov.defaultModel(for: capability, plan: pl) ?? model
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
-        }
-        // Same derive-and-persist as `load()` for the 千问 card (see there).
-        if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
-            let pl = BillingPlan(rawValue: planRaw) ?? .payg
-            baseURL = QwenASRFlashRouting.displayBaseURL(
-                workspaceID: workspaceID, region: ProviderRegion(rawValue: regionRaw) ?? .china)
-            model = QwenASRFlashRouting.normalizedModel(
-                stored: model,
-                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
-        }
-        apiKey = readApiKey(providerId: prov.id, plan: plan)
-        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
-        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
-        boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
+        ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .selectProvider(providerId, capability: capability)
+        applyEffectiveConfiguration(providerId: providerId)
+        boostingTableId = defaults.string(forKey: "byok.\(providerId).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
         status = ""
         fetchedModels = []
@@ -333,8 +207,10 @@ final class ProviderConfigMachine {
         setScoped(planRaw, suffix: "plan")
         setScoped(model, suffix: "model")
         if capability == .llm {
-            setScoped(skillModel.trimmingCharacters(in: .whitespacesAndNewlines),
-                      suffix: SkillPlatformModelSettings.suffix)
+            SkillPlatformModelSettings.setExplicitModel(
+                skillModel,
+                providerId: providerId,
+                defaults: defaults)
         }
         setScoped(voice, suffix: "voice")
         setScoped(baseURL, suffix: "baseURL")
@@ -344,34 +220,29 @@ final class ProviderConfigMachine {
         ModelConfigurationEvents.post()
     }
 
-    func scopedString(_ suffix: String, providerId pid: String, activeProviderId: String?) -> String? {
-        CapabilityProviderConfigStore.string(
-            suffix, providerId: pid, capability: capability, defaults: defaults, activeProviderId: activeProviderId)
-    }
-
     func setScoped(_ value: Any, suffix: String) {
         CapabilityProviderConfigStore.set(
             value, suffix: suffix, providerId: providerId, capability: capability,
-            defaults: defaults, activeProviderId: defaults.string(forKey: key("provider")))
+            defaults: defaults)
     }
 
     // MARK: Credential writers (keychain — ADR-0023, never stored in UserDefaults/plaintext)
 
     func writeApiKey() {
-        BYOKKeychain.write(
+        keyWriter(
             apiKey,
-            account: CapabilityCredentialAccount.apiKeyAccount(
+            CapabilityCredentialAccount.apiKeyAccount(
                 providerId: providerId, capability: capability, plan: plan))
     }
 
     func writeAppId() {
-        BYOKKeychain.write(appId, account: CapabilityCredentialAccount.appIdAccount(providerId: providerId))
+        keyWriter(appId, CapabilityCredentialAccount.appIdAccount(providerId: providerId))
     }
 
     func writeAccessToken() {
-        BYOKKeychain.write(
+        keyWriter(
             accessToken,
-            account: CapabilityCredentialAccount.accessTokenAccount(providerId: providerId))
+            CapabilityCredentialAccount.accessTokenAccount(providerId: providerId))
     }
 
     func writeBoostingTableId() {
@@ -385,4 +256,31 @@ final class ProviderConfigMachine {
             providerId: providerId, capability: capability, plan: plan)
         return keyReader(account) ?? ""
     }
+
+    private func applyEffectiveConfiguration(providerId requestedProviderId: String) {
+        let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+        if capability == .llm {
+            let lanes = dispatcher.resolveLLM(providerId: requestedProviderId)
+            apply(lanes.provider)
+            model = lanes.dictationEndpoint.model
+            skillModel = lanes.explicitSkillModel ?? ""
+        } else {
+            apply(dispatcher.resolve(capability, providerId: requestedProviderId))
+            skillModel = ""
+        }
+    }
+
+    private func apply(_ effective: ResolvedProviderConfig) {
+        providerId = effective.providerId
+        regionRaw = effective.region.rawValue
+        planRaw = effective.plan.rawValue
+        model = effective.model
+        voice = effective.voice ?? ""
+        baseURL = effective.baseURL
+        workspaceID = showsWorkspaceIDField ? (effective.workspaceID ?? "") : ""
+        apiKey = effective.apiKey ?? ""
+        appId = effective.appId ?? ""
+        accessToken = effective.accessToken ?? ""
+    }
+
 }

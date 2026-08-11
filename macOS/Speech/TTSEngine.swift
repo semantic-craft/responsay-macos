@@ -39,24 +39,9 @@ enum TTSEngine: String, CaseIterable {
     }
 
     static func selected(defaults: UserDefaults) -> TTSEngine {
-        if defaults.string(forKey: defaultsKey) == "cloud-doubao" {
-            return .cloudQwen
-        }
-        if let raw = defaults.string(forKey: defaultsKey),
-           let engine = TTSEngine(rawValue: raw) {
-            return engine
-        }
-        // No explicit engine pick yet → prefer a configured cloud 朗读 voice (the TTS card's active
-        // provider, `byok.tts.provider`) over offline Kokoro, matching the other capabilities' BYOK-
-        // first posture. Pure UserDefaults read — no Keychain here, keeping it off the settings-render
-        // freeze path (217); a missing key still degrades gracefully at synth time via the read-aloud
-        // fallback. Kokoro stays the default only when no cloud TTS provider is configured.
-        let provider = defaults.string(forKey: "byok.tts.provider") ?? ""
-        if !provider.isEmpty,
-           let cloudEngine = selectableCases.first(where: { $0.providerID == provider }) {
-            return cloudEngine
-        }
-        return .sherpaKokoroLocal
+        defaults.string(forKey: defaultsKey)
+            .flatMap(TTSEngine.init(rawValue:))
+            ?? .sherpaKokoroLocal
     }
 
     // Canonical naming (product decision 2026-06-12): the current route picker
@@ -102,28 +87,10 @@ enum TTSEngine: String, CaseIterable {
     }
 
     func selectedVoiceID(defaults: UserDefaults) -> String? {
-        guard let catalog else { return nil }
-
         guard let pid = providerID else { return nil }
-        let activeProvider = ttsSettingsProvider(defaults: defaults)
-        let stored = CapabilityProviderConfigStore.string(
-            "voice",
-            providerId: pid,
-            capability: .tts,
-            defaults: defaults,
-            activeProviderId: activeProvider)
-        return normalizedVoiceID(stored) ?? catalog.defaults.voiceID
-    }
-
-    /// Resolve a voice value the same way every TTS surface does. Providers with an open roster
-    /// accept any non-empty id; Qwen's closed roster replaces unsupported ids with its catalog default.
-    func normalizedVoiceID(_ voiceID: String?) -> String? {
-        guard let catalog else { return nil }
-        guard let voiceID = nonEmpty(voiceID) else { return catalog.defaults.voiceID }
-        if !hasClosedVoiceRoster || catalog.voices.contains(where: { $0.id == voiceID }) {
-            return voiceID
-        }
-        return catalog.defaults.voiceID
+        return ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .resolve(.tts, providerId: pid)
+            .voice
     }
 
     /// Persist a voice pick through the same provider-scoped store used by the TTS Settings card.
@@ -134,8 +101,7 @@ enum TTSEngine: String, CaseIterable {
             suffix: "voice",
             providerId: pid,
             capability: .tts,
-            defaults: defaults,
-            activeProviderId: ttsSettingsProvider(defaults: defaults))
+            defaults: defaults)
         ModelConfigurationEvents.post()
     }
 
@@ -193,160 +159,79 @@ enum TTSEngine: String, CaseIterable {
         return nil
     }
 
-    /// Keychain slot holding this engine's BYOK key (issue 195).
-    var credentialSlot: ProviderCredentialStore.Slot? {
-        switch self {
-        case .cloudOpenAI: .openai
-        case .cloudQwen: .dashscope
-        case .cloudVolcengine: .volcengine
-        case .cloudMimo: .mimo
-        case .cloudMiniMax: .minimax
-        case .cloudGemini: .gemini
-        case .sherpaKokoroLocal: nil
-        }
-    }
-
-    /// BYOK key for this cloud engine: prefer the 朗读 TTS settings card
-    /// (`byok.tts.<providerID>`). The shared `byok.<providerID>` / legacy slot
-    /// fallback is only for installs that have not written any TTS card provider yet.
-    private func resolvedCloudKey(
-        defaults: UserDefaults,
-        keyReader: (String) -> String?
-    ) -> String? {
-        guard let pid = providerID else { return nil }
-        // 按量付费 / Token Plan keep separate keys (sk- vs tp-). For a multi-plan provider the
-        // key is stored per plan, so read only that plan's slot — never fall back to the
-        // sibling plan's key (that would send the wrong key to the host → 401).
-        if ProviderCatalog.providerHasMultipleBillingPlans(pid, capability: .tts) {
-            let plan = BillingPlan(rawValue: nonEmpty(defaults.string(forKey: "byok.tts.plan")) ?? "") ?? .payg
-            return nonEmpty(keyReader(CapabilityCredentialAccount.apiKeyAccount(
-                providerId: pid, capability: .tts, plan: plan)))
-        }
-        if let key = nonEmpty(keyReader(TTSCredential.keychainAccount(for: pid))) {
-            return key
-        }
-        if ttsSettingsProvider(defaults: defaults) != nil {
-            return nil
-        }
-        if let key = nonEmpty(keyReader(TTSCredential.coachAccount(for: pid))) {
-            return key
-        }
-        if let slot = credentialSlot, let k = ProviderCredentialStore.read(slot), !k.isEmpty {
-            return k
-        }
-        return nil
-    }
-
     private func makeDirectCloudEngine(
         defaults: UserDefaults,
         session: URLSession,
-        keyReader: (String) -> String?
+        keyReader: @escaping (String) -> String?
     ) throws -> DirectCloudTTSEngine {
-        guard let catalog, credentialSlot != nil else {
+        guard let providerID else {
             throw TTSError.synthesisFailed("\(title) 暂不支持")
         }
-        guard let key = resolvedCloudKey(defaults: defaults, keyReader: keyReader) else {
+        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .resolve(.tts, providerId: providerID)
+        guard let key = effective.apiKey else {
             throw TTSError.missingAPIKey(provider: title)
+        }
+        guard let voice = effective.voice else {
+            throw TTSError.synthesisFailed("\(title) 缺少音色配置")
         }
         let adapter: any CloudTTSAdapter
         switch self {
         case .cloudOpenAI:
             var openAI = OpenAITTSAdapter()
-            if let baseURL = resolvedTTSBaseURL(defaults: defaults) { openAI.baseURL = baseURL }
+            if let baseURL = URL(string: effective.baseURL) { openAI.baseURL = baseURL }
             adapter = openAI
         case .cloudQwen:
             throw TTSError.synthesisFailed("阿里云百炼应使用实时语音合成引擎")
         case .cloudVolcengine:
             var volcengine = VolcengineTTSAdapter()
-            if let baseURL = resolvedTTSBaseURL(defaults: defaults) { volcengine.baseURL = baseURL }
+            if let baseURL = URL(string: effective.baseURL) { volcengine.baseURL = baseURL }
             adapter = volcengine
         case .cloudMimo:
             var mimo = MiMoTTSAdapter()
-            if let baseURL = resolvedTTSBaseURL(defaults: defaults) { mimo.baseURL = baseURL }
+            if let baseURL = URL(string: effective.baseURL) { mimo.baseURL = baseURL }
             adapter = mimo
         case .cloudMiniMax:
             var minimax = MiniMaxTTSAdapter()
-            if let baseURL = resolvedTTSBaseURL(defaults: defaults) { minimax.baseURL = baseURL }
+            if let baseURL = URL(string: effective.baseURL) { minimax.baseURL = baseURL }
             adapter = minimax
         case .cloudGemini:
             var gemini = GeminiTTSAdapter()
-            if let baseURL = resolvedTTSBaseURL(defaults: defaults) { gemini.baseURL = baseURL }
+            if let baseURL = URL(string: effective.baseURL) { gemini.baseURL = baseURL }
             adapter = gemini
         default: throw TTSError.synthesisFailed("\(title) 暂不支持")
         }
         return DirectCloudTTSEngine(
             adapter: adapter,
-            model: resolvedTTSModel(defaults: defaults) ?? catalog.defaults.modelID,
-            voice: selectedVoiceID(defaults: defaults) ?? catalog.defaults.voiceID,
+            model: effective.model,
+            voice: voice,
             key: key,
             session: session)
     }
 
     private func makeQwenEngine(
         defaults: UserDefaults,
-        keyReader: (String) -> String?
+        keyReader: @escaping (String) -> String?
     ) throws -> QwenStreamingTTSEngine {
-        guard let key = resolvedCloudKey(defaults: defaults, keyReader: keyReader) else {
+        guard let providerID else {
+            throw TTSError.synthesisFailed("\(title) 暂不支持")
+        }
+        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .resolve(.tts, providerId: providerID)
+        guard let key = effective.apiKey else {
             throw TTSError.missingAPIKey(provider: title)
+        }
+        guard let voice = effective.voice else {
+            throw TTSError.synthesisFailed("\(title) 缺少音色配置")
         }
         return QwenStreamingTTSEngine(
             key: key,
-            model: catalog?.defaults.modelID ?? "qwen-audio-3.0-tts-flash",
-            voice: selectedVoiceID(defaults: defaults)
-                ?? catalog?.defaults.voiceID
-                ?? "loongeva_v3.6",
-            region: resolvedQwenTTSRegion(defaults: defaults))
-    }
-
-    private func resolvedTTSModel(defaults: UserDefaults) -> String? {
-        guard let pid = providerID,
-              ttsSettingsProvider(defaults: defaults) == pid else {
-            return catalog?.defaults.modelID
-        }
-        return resolvedConfiguredTTSModel(defaults: defaults) ?? catalog?.defaults.modelID
-    }
-
-    private func resolvedConfiguredTTSModel(defaults: UserDefaults) -> String? {
-        guard let pid = providerID,
-              ttsSettingsProvider(defaults: defaults) == pid else {
-            return nil
-        }
-        return nonEmpty(defaults.string(forKey: "byok.tts.model"))
-    }
-
-    private func resolvedQwenTTSRegion(defaults: UserDefaults) -> QwenRunTaskRegion {
-        if ttsSettingsProvider(defaults: defaults) == "qwen",
-           let raw = nonEmpty(defaults.string(forKey: "byok.tts.region")) {
-            return raw == ProviderRegion.singapore.rawValue || raw == ProviderRegion.intl.rawValue
+            model: effective.model,
+            voice: voice,
+            region: effective.region == ProviderRegion.singapore
+                || effective.region == ProviderRegion.intl
                 ? .singapore
-                : .china
-        }
-        return QwenRunTaskRegion(rawValue: defaults.string(forKey: RealtimeQwenSettings.regionKey) ?? "") ?? .china
+                : .china)
     }
 
-    private func resolvedTTSBaseURL(defaults: UserDefaults) -> URL? {
-        guard let pid = providerID,
-              ttsSettingsProvider(defaults: defaults) == pid,
-              let raw = nonEmpty(defaults.string(forKey: "byok.tts.baseURL")) else {
-            return nil
-        }
-        return URL(string: raw)
-    }
-
-    /// Whether this engine's provider only accepts voices from its bundled roster. Qwen 语音合成
-    /// is a fixed surface (one model, versioned voice list, dispatcher forces the preset voice);
-    /// every other cloud provider takes free-form voice ids, so only Qwen validates.
-    private var hasClosedVoiceRoster: Bool { self == .cloudQwen }
-
-    private func ttsSettingsProvider(defaults: UserDefaults) -> String? {
-        nonEmpty(defaults.string(forKey: "byok.tts.provider"))
-    }
-
-    private func nonEmpty(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
-            return nil
-        }
-        return trimmed
-    }
 }

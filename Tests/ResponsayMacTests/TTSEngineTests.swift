@@ -10,17 +10,12 @@ final class TTSEngineTests: XCTestCase {
         super.tearDown()
     }
 
-    func testDefaultsToLocalKokoroWhenUnsetAndNoCloudProvider() {
-        UserDefaults.standard.removeObject(forKey: TTSEngine.defaultsKey)
-        UserDefaults.standard.removeObject(forKey: "byok.tts.provider")
-        XCTAssertEqual(TTSEngine.selected, .sherpaKokoroLocal)
-    }
-
-    /// 用户配了朗读云端语音(byok.tts.provider)但没手动选引擎 → 默认走该云端引擎,不再退回离线 Kokoro。
-    func testDefaultsToConfiguredCloudProviderWhenEnginePickUnset() {
-        let defaults = freshDefaults("cloud-default")
+    func testConfiguredProviderProfileAloneDoesNotSelectACloudRoute() {
+        let defaults = freshDefaults("provider-is-not-route")
         defaults.set("gemini", forKey: "byok.tts.provider")
-        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudGemini)
+        defaults.set("Kore", forKey: "byok.tts.gemini.voice")
+
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
     }
 
     /// 手动选过引擎就以它为准,即便 byok.tts.provider 指向别的云端 provider。
@@ -28,13 +23,6 @@ final class TTSEngineTests: XCTestCase {
         let defaults = freshDefaults("explicit-wins")
         defaults.set("gemini", forKey: "byok.tts.provider")
         defaults.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
-        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
-    }
-
-    /// byok.tts.provider 指向没有云端 TTS 引擎的 provider(或空)时仍回落 Kokoro。
-    func testUnknownOrEmptyCloudProviderFallsBackToKokoro() {
-        let defaults = freshDefaults("no-match")
-        defaults.set("deepseek", forKey: "byok.tts.provider")  // deepseek 无 TTS 引擎
         XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
     }
 
@@ -61,15 +49,6 @@ final class TTSEngineTests: XCTestCase {
         XCTAssertEqual(TTSEngine.cloudMiniMax.selectedVoiceID(defaults: freshDefaults("minimax")), "male-qn-qingse")
     }
 
-    func testWiredCloudEnginesMapToCredentialSlots() {
-        XCTAssertEqual(TTSEngine.cloudOpenAI.credentialSlot?.account, ProviderCredentialStore.Slot.openai.account)
-        XCTAssertEqual(TTSEngine.cloudQwen.credentialSlot?.account, ProviderCredentialStore.Slot.dashscope.account)
-        XCTAssertEqual(TTSEngine.cloudMimo.credentialSlot?.account, ProviderCredentialStore.Slot.mimo.account)
-        XCTAssertEqual(TTSEngine.cloudMiniMax.credentialSlot?.account, ProviderCredentialStore.Slot.minimax.account)
-        XCTAssertEqual(TTSEngine.cloudGemini.credentialSlot?.account, ProviderCredentialStore.Slot.gemini.account)
-        XCTAssertNil(TTSEngine.sherpaKokoroLocal.credentialSlot)
-    }
-
     func testGeminiIsWiredToCatalog() {
         XCTAssertEqual(TTSEngine.cloudGemini.providerID, "gemini")
         XCTAssertEqual(TTSEngine.cloudGemini.catalog?.providerID, "gemini")
@@ -77,11 +56,6 @@ final class TTSEngineTests: XCTestCase {
         // Single model — no 2.5 pro/flash.
         XCTAssertEqual(TTSEngine.cloudGemini.catalog?.models.map(\.id), ["gemini-3.1-flash-tts-preview"])
         XCTAssertEqual(TTSEngine.cloudGemini.selectedVoiceID(defaults: freshDefaults("gemini")), "Kore")
-    }
-
-    func testRetiredDoubaoSelectionFallsBackToQwenTTS() {
-        UserDefaults.standard.set("cloud-doubao", forKey: TTSEngine.defaultsKey)
-        XCTAssertEqual(TTSEngine.selected, .cloudQwen)
     }
 
     func testAllCasesHaveTitles() {
@@ -143,7 +117,6 @@ final class TTSEngineTests: XCTestCase {
 
         TTSEngine.cloudQwen.setSelectedVoiceID("longjielidou_v3.6", defaults: defaults)
 
-        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "longjielidou_v3.6")
         XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.voice"), "longjielidou_v3.6")
         XCTAssertEqual(TTSEngine.cloudQwen.selectedVoiceID(defaults: defaults), "longjielidou_v3.6")
     }

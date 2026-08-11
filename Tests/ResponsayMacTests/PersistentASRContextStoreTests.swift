@@ -238,49 +238,6 @@ final class PersistentASRContextStoreTests: XCTestCase {
         XCTAssertEqual(session.context(for: "com.apple.Terminal"), ["Metis is the host"])
     }
 
-    func testRecoveredContextFeedsOfficialQwenPayloadWithoutChangingPrecompiledVocabularyLane() throws {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
-        let binding = QwenPrecompiledVocabularySettings.save(
-            identifier: "vocab-context-a1b2c3",
-            model: QwenRunTaskEndpoint.defaultModel,
-            endpoint: QwenRunTaskEndpoint(region: .china),
-            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
-            defaults: defaults)
-        XCTAssertNotNil(binding)
-        XCTAssertTrue(PersistentASRContextSettings.setEnabled(
-            true, defaults: defaults, fileURL: fileURL))
-        makeSessionStore().record("raw recovered final", scope: "com.apple.Notes")
-        let recovered = makeSessionStore().context(for: "com.apple.Notes")
-
-        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
-            defaults: defaults,
-            context: recovered,
-            contextScope: "com.apple.Notes",
-            keyReader: { _ in "synthetic-test-key" })
-        let payload = QwenRunTaskASRProtocol.runTask(
-            taskID: "task-context-test",
-            model: config.model,
-            hotwords: config.hotwords,
-            precompiledVocabularyID: config.precompiledVocabularyID,
-            context: config.context)
-        let root = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: payload) as? [String: Any])
-        let wirePayload = try XCTUnwrap(root["payload"] as? [String: Any])
-        let input = try XCTUnwrap(wirePayload["input"] as? [String: Any])
-        let messages = try XCTUnwrap(input["context"] as? [[String: Any]])
-        let firstContent = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
-        let parameters = try XCTUnwrap(wirePayload["parameters"] as? [String: Any])
-
-        XCTAssertEqual(config.contextScope, "com.apple.Notes")
-        XCTAssertEqual(config.context, ["raw recovered final"])
-        XCTAssertEqual(messages.first?["role"] as? String, "user")
-        XCTAssertEqual(firstContent.first?["type"] as? String, "input_text")
-        XCTAssertEqual(firstContent.first?["text"] as? String, "raw recovered final")
-        XCTAssertEqual(parameters["vocabulary_id"] as? String, "vocab-context-a1b2c3")
-        XCTAssertNil(parameters["vocabulary"])
-    }
-
     func testSerializedPayloadContainsOnlyBoundedContextFieldsAndNoRequestConfiguration() throws {
         PersistentASRContextSettings.setEnabled(true, defaults: defaults, fileURL: fileURL)
         makeSessionStore().record("raw final", scope: "com.apple.Notes")

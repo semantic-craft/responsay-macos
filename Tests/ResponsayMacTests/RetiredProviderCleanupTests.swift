@@ -19,8 +19,8 @@ final class RetiredProviderCleanupTests: XCTestCase {
         super.tearDown()
     }
 
-    private func activeKey(_ suffix: String) -> String {
-        CapabilityProviderConfigStore.activeKey(suffix, capability: .llm)
+    private var providerKey: String {
+        CapabilityProviderConfigStore.providerKey(.llm)
     }
 
     private func scopedKey(_ suffix: String, _ providerId: String) -> String {
@@ -28,28 +28,30 @@ final class RetiredProviderCleanupTests: XCTestCase {
     }
 
     func testClearsActiveSelectionWhenRetiredProviderWasSelected() {
-        defaults.set("zhipu", forKey: activeKey("provider"))
-        defaults.set("glm-5-turbo", forKey: activeKey("model"))
-        defaults.set("https://open.bigmodel.cn/api/paas/v4", forKey: activeKey("baseURL"))
+        defaults.set("zhipu", forKey: providerKey)
+        defaults.set("glm-5-turbo", forKey: scopedKey("model", "zhipu"))
+        defaults.set(
+            "https://open.bigmodel.cn/api/paas/v4",
+            forKey: scopedKey("baseURL", "zhipu"))
 
         RetiredProviderCleanup.run(defaults: defaults, deleteCredential: { _ in true })
 
-        XCTAssertNil(defaults.string(forKey: activeKey("provider")))
-        XCTAssertNil(defaults.string(forKey: activeKey("model")))
-        XCTAssertNil(defaults.string(forKey: activeKey("baseURL")))
+        XCTAssertNil(defaults.string(forKey: providerKey))
+        XCTAssertNil(defaults.string(forKey: scopedKey("model", "zhipu")))
+        XCTAssertNil(defaults.string(forKey: scopedKey("baseURL", "zhipu")))
         XCTAssertTrue(defaults.bool(forKey: RetiredProviderCleanup.markerKey))
     }
 
-    /// 关键边界：用户当前用的是别家（qwen），清理只能动 zhipu 的作用域键，不许碰 active 配置。
+    /// 关键边界：用户当前用的是别家（qwen），清理只能动 zhipu 的作用域键。
     func testKeepsAnotherProvidersActiveConfigIntact() {
-        defaults.set("qwen", forKey: activeKey("provider"))
-        defaults.set("qwen3.7-flash", forKey: activeKey("model"))
+        defaults.set("qwen", forKey: providerKey)
+        defaults.set("qwen3.7-flash", forKey: scopedKey("model", "qwen"))
         defaults.set("glm-5-turbo", forKey: scopedKey("model", "zhipu"))
 
         RetiredProviderCleanup.run(defaults: defaults, deleteCredential: { _ in true })
 
-        XCTAssertEqual(defaults.string(forKey: activeKey("provider")), "qwen")
-        XCTAssertEqual(defaults.string(forKey: activeKey("model")), "qwen3.7-flash")
+        XCTAssertEqual(defaults.string(forKey: providerKey), "qwen")
+        XCTAssertEqual(defaults.string(forKey: scopedKey("model", "qwen")), "qwen3.7-flash")
         XCTAssertNil(defaults.string(forKey: scopedKey("model", "zhipu")))
     }
 
@@ -85,10 +87,10 @@ final class RetiredProviderCleanupTests: XCTestCase {
 
     func testIsIdempotentOnceMarked() {
         defaults.set(true, forKey: RetiredProviderCleanup.markerKey)
-        defaults.set("zhipu", forKey: activeKey("provider"))
+        defaults.set("zhipu", forKey: providerKey)
         var attempts = 0
         RetiredProviderCleanup.run(defaults: defaults, deleteCredential: { _ in attempts += 1; return true })
         XCTAssertEqual(attempts, 0)
-        XCTAssertEqual(defaults.string(forKey: activeKey("provider")), "zhipu")   // 标记后不再动
+        XCTAssertEqual(defaults.string(forKey: providerKey), "zhipu")   // 标记后不再动
     }
 }

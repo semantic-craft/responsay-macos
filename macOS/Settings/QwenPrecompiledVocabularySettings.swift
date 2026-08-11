@@ -17,9 +17,7 @@ enum QwenPrecompiledVocabularySettings {
             suffix,
             providerId: providerID,
             capability: .asr,
-            defaults: defaults,
-            activeProviderId: defaults.string(forKey: CapabilityProviderConfigStore.activeKey(
-                "provider", capability: .asr))),
+            defaults: defaults),
               let data = raw.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(QwenPrecompiledVocabularyBinding.self, from: data)
     }
@@ -61,19 +59,12 @@ enum QwenPrecompiledVocabularySettings {
             suffix: suffix,
             providerId: providerID,
             capability: .asr,
-            defaults: defaults,
-            activeProviderId: defaults.string(forKey: CapabilityProviderConfigStore.activeKey(
-                "provider", capability: .asr)))
+            defaults: defaults)
         return binding
     }
 
     static func clear(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: scopedDefaultsKey)
-        let activeProvider = defaults.string(forKey: CapabilityProviderConfigStore.activeKey(
-            "provider", capability: .asr))
-        if CapabilitySelectionSync.providerMatches(activeProvider, providerID, capability: .asr) {
-            defaults.removeObject(forKey: CapabilityProviderConfigStore.activeKey(suffix, capability: .asr))
-        }
     }
 
     static func fingerprint(terms: [String], model: String) -> String {

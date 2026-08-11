@@ -21,37 +21,27 @@ enum LLMEndpointResolver {
     /// cloud card (nil if unconfigured).
     static func resolveText(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> LLMEndpoint? {
-        resolve(dispatcher: dispatcher)
+        resolve(defaults: defaults, dispatcher: dispatcher, lane: \.dictationEndpoint)
     }
 
     /// Open CHAT (voice assistant / 任意提问). Same provider resolution as `resolveText`.
     static func resolveChat(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> LLMEndpoint? {
-        resolve(dispatcher: dispatcher)
+        resolve(defaults: defaults, dispatcher: dispatcher, lane: \.dictationEndpoint)
     }
 
     /// 技能平台 lane（`LegalSkillRuntime` 技能执行、技能 JSON 修复、无独立检索服务时的技能搜索）。
     /// 与听写 lane 共享同一提供商解析结果 —— provider / Base URL（含 Workspace 派生）/ 凭据完全一致，
-    /// 只有 model 可能不同：用户显式选了技能平台模型就覆盖；空 = 跟随听写模型（旧配置兼容路径）。
+    /// 只有 model 可能不同：用户显式选了技能平台模型就覆盖；空 = 跟随听写模型。
     static func resolveSkill(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> LLMEndpoint? {
-        guard let base = resolve(dispatcher: dispatcher) else { return nil }
-        guard let override = SkillPlatformModelSettings.explicitModel(
-            providerId: base.providerId, defaults: defaults),
-            override != base.model
-        else { return base }
-        return LLMEndpoint(
-            providerId: base.providerId,
-            baseURL: base.baseURL,
-            model: override,
-            apiKey: base.apiKey,
-            thinkingEnabled: base.thinkingEnabled)
+        resolve(defaults: defaults, dispatcher: dispatcher, lane: \.skillEndpoint)
     }
 
     /// 任意提问 联网搜索专属端点。Resolves the user's chosen (or 自动) search-capable provider
@@ -61,8 +51,9 @@ enum LLMEndpointResolver {
     /// search-capable provider with a key. `nil` = none configured → caller falls back to plain chat.
     static func resolveSearch(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> LLMEndpoint? {
+        let dispatcher = dispatcher ?? ProviderConfigDispatcher(defaults: defaults)
         var candidates = VoiceAssistantSearchModelSettings.orderedCandidates(defaults: defaults)
         // 自动:若当前主模型本就可联网,优先用它,省得另配密钥(且保持旧行为)。
         if VoiceAssistantSearchModelSettings.preferredProviderId(defaults: defaults) == nil {
@@ -85,16 +76,16 @@ enum LLMEndpointResolver {
         return nil
     }
 
-    /// Shared resolution for text + chat.
-    private static func resolve(dispatcher: ProviderConfigDispatcher) -> LLMEndpoint? {
-        let cfg = dispatcher.resolve(.llm)
-        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
-        let endpoint = LLMEndpoint(
-            providerId: cfg.providerId,
-            baseURL: cfg.baseURL,
-            model: cfg.model,
-            apiKey: cfg.apiKey,
-            thinkingEnabled: false)
+    /// Shared resolution for text, chat, and skill. Both lanes are projected from the same
+    /// effective provider snapshot; only the selected endpoint's model may differ.
+    private static func resolve(
+        defaults: UserDefaults,
+        dispatcher: ProviderConfigDispatcher?,
+        lane: KeyPath<ResolvedLLMLanes, LLMEndpoint>
+    ) -> LLMEndpoint? {
+        let lanes = (dispatcher ?? ProviderConfigDispatcher(defaults: defaults)).resolveLLM()
+        guard ModelLaneReadinessResolver.cloudState(for: lanes.provider).readiness.isReady else { return nil }
+        let endpoint = lanes[keyPath: lane]
         return endpoint.isConfigured ? endpoint : nil
     }
 
@@ -102,7 +93,7 @@ enum LLMEndpointResolver {
     /// text transforms pass through the raw input instead of erroring (#390, spec §6 — 纯听写降级).
     static func isConfigured(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> Bool {
         resolveText(defaults: defaults, dispatcher: dispatcher) != nil
     }
@@ -113,16 +104,8 @@ enum LLMEndpointResolver {
     /// stays unused.
     static func resolveCloud(
         defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher = ProviderConfigDispatcher()
+        dispatcher: ProviderConfigDispatcher? = nil
     ) -> LLMEndpoint? {
-        let cfg = dispatcher.resolve(.llm)
-        guard ModelLaneReadinessResolver.cloudState(for: cfg).readiness.isReady else { return nil }
-        let endpoint = LLMEndpoint(
-            providerId: cfg.providerId,
-            baseURL: cfg.baseURL,
-            model: cfg.model,
-            apiKey: cfg.apiKey,
-            thinkingEnabled: false)
-        return endpoint.isConfigured ? endpoint : nil
+        resolve(defaults: defaults, dispatcher: dispatcher, lane: \.dictationEndpoint)
     }
 }

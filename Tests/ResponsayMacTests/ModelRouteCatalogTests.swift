@@ -47,8 +47,8 @@ final class ModelRouteCatalogTests: XCTestCase {
 
         XCTAssertEqual(defaults.string(forKey: TTSEngine.defaultsKey), TTSEngine.cloudMimo.rawValue)
         XCTAssertEqual(defaults.string(forKey: "byok.tts.provider"), "mimo")
-        XCTAssertEqual(defaults.string(forKey: "byok.tts.model"), "custom-mimo-tts")
-        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "Mia")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.model"), "custom-mimo-tts")
+        XCTAssertEqual(defaults.string(forKey: "byok.tts.mimo.voice"), "Mia")
     }
 
     // MARK: - currentASRId

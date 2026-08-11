@@ -98,6 +98,20 @@ struct ProviderConfigMachineTests {
         #expect(m.voice == "longjielidou_v3.6")
     }
 
+    @Test func loadingTTSConfigDoesNotTurnItsDisplayedProviderIntoARouteSelection() {
+        let d = freshDefaults("load-tts-does-not-select-route")
+        d.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
+        d.set("qwen-audio-3.0-tts-flash", forKey: "byok.tts.qwen.model")
+        let m = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
+
+        m.load()
+
+        #expect(m.providerId == "qwen")
+        #expect(d.string(forKey: "byok.tts.provider") == nil)
+        #expect(TTSEngine.selected(defaults: d) == .sherpaKokoroLocal)
+    }
+
     @Test func loadReadsQwenWorkspaceIDAndDerivesDedicatedResponsesEndpoint() {
         let d = freshDefaults("load-qwen-workspace")
         d.set("qwen", forKey: "byok.llm.provider")
@@ -120,80 +134,6 @@ struct ProviderConfigMachineTests {
     }
 
     // MARK: - load(): fixed-endpoint 实时流式 ASR engines
-
-    /// 千问 moved off the OmniRealtime socket onto the run-task socket. Its model *is* selectable
-    /// (streaming vs Fun-ASR-Realtime), so unlike 豆包流式 it is not a fixed-endpoint card — but the
-    /// URL is still derived (接入点 + Workspace ID), which is why the card shows it read-only.
-    @Test func loadSeedsQwenRunTaskEndpointAndModel() {
-        let m = machine(.asr, preferred: "qwen-asr-flash", suffix: "load-qwen-runtask")
-        m.load()
-        #expect(!m.isFixedEndpoint)
-        #expect(m.showsWorkspaceIDField)
-        #expect(m.baseURL == "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
-        #expect(m.model == "qwen-audio-3.0-asr-flash-streaming")
-    }
-
-    @Test func qwenASRFlashWorkspaceIDDerivesDedicatedRecognitionEndpoint() {
-        let d = freshDefaults("qwen-asr-workspace")
-        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        d.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
-        let m = ProviderConfigMachine(
-            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        #expect(m.workspaceID == "ws-abc123")
-        #expect(m.usesQwenWorkspaceEndpoint)
-        #expect(m.baseURL == "wss://ws-abc123.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
-    }
-
-    /// An install carried over from the retired OmniRealtime engine has that endpoint + a
-    /// `qwen3-asr-flash-realtime-*` model under these keys; both must be replaced and persisted so
-    /// ModelLaneDisplay stops showing them.
-    @Test func loadDropsRetiredOmniRealtimeEndpointAndModel() {
-        let d = freshDefaults("qwen-asr-drop-realtime")
-        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        d.set("wss://dashscope.aliyuncs.com/api-ws/v1/realtime", forKey: "byok.asr.qwen-asr-flash.baseURL")
-        d.set("qwen3-asr-flash-realtime-2026-02-10", forKey: "byok.asr.qwen-asr-flash.model")
-        let m = ProviderConfigMachine(
-            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        #expect(m.baseURL == "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
-        #expect(m.model == "qwen-audio-3.0-asr-flash-streaming")
-        #expect(d.string(forKey: "byok.asr.qwen-asr-flash.baseURL")
-                == "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
-        #expect(d.string(forKey: "byok.asr.qwen-asr-flash.model") == "qwen-audio-3.0-asr-flash-streaming")
-    }
-
-    /// A model the user picked from the card's dropdown (Fun-ASR-Realtime) is NOT a retired
-    /// leftover, so it survives the migration.
-    @Test func loadKeepsUserPickedFunASRRealtimeModel() {
-        let d = freshDefaults("qwen-asr-keeps-fun")
-        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        d.set("fun-asr-realtime", forKey: "byok.asr.qwen-asr-flash.model")
-        let m = ProviderConfigMachine(
-            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        #expect(m.model == "fun-asr-realtime")
-    }
-
-    @Test func qwenVocabularyBindingPersistsCurrentModelRegionWorkspaceAndDictionary() {
-        let d = freshDefaults("qwen-vocabulary-binding")
-        d.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        ContextHotwordSettings.addManual("Westlaw", defaults: d)
-        let m = ProviderConfigMachine(
-            capability: .asr, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        m.workspaceID = "ws-abc123"
-        m.precompiledVocabularyID = "vocab-curated-a1b2c3"
-
-        m.writeQwenPrecompiledVocabulary()
-
-        let binding = QwenPrecompiledVocabularySettings.binding(defaults: d)
-        #expect(binding?.identifier == "vocab-curated-a1b2c3")
-        #expect(binding?.model == QwenRunTaskEndpoint.defaultModel)
-        #expect(binding?.region == .china)
-        #expect(binding?.workspaceID == "ws-abc123")
-        #expect(m.qwenVocabularyValidationMessage == nil)
-    }
 
     @Test func qwenVocabularyBindingBecomesStaleInsteadOfFollowingAWorkspaceChange() {
         let d = freshDefaults("qwen-vocabulary-stale")
@@ -219,7 +159,7 @@ struct ProviderConfigMachineTests {
         #expect(m.model == "bigmodel")
     }
 
-    @Test func loadForcesFixedEndpointEvenOverStaleStoredBatchConfig() {
+    @Test func loadResolvesFixedEndpointWithoutRewritingStoredProfile() {
         let d = freshDefaults("load-fixed-overrides-stale")
         d.set("volcengine-flash", forKey: "byok.asr.provider")
         // Stale batch config a user could have from before the realtime migration.
@@ -230,10 +170,9 @@ struct ProviderConfigMachineTests {
         m.load()
         #expect(m.baseURL == "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream")
         #expect(m.model == "bigmodel")
-        // …and the forced values are persisted back so ModelLaneDisplay reflects them.
         #expect(d.string(forKey: "byok.asr.volcengine-flash.baseURL")
-                == "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream")
-        #expect(d.string(forKey: "byok.asr.volcengine-flash.model") == "bigmodel")
+                == "https://stale.example.com/v1")
+        #expect(d.string(forKey: "byok.asr.volcengine-flash.model") == "stale-batch-model")
     }
 
     // MARK: - selectProvider(): re-seeds state for the newly picked provider
@@ -246,6 +185,7 @@ struct ProviderConfigMachineTests {
         m.providerId = "openai"
         m.selectProvider()
 
+        #expect(m.defaults.string(forKey: "byok.llm.provider") == "openai")
         #expect(m.region == .global)
         #expect(m.plan == .payg)
         #expect(m.model == "chat-latest")
@@ -365,16 +305,4 @@ struct ProviderConfigMachineTests {
             == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
     }
 
-    @Test func persistMirrorsToActiveKeyWhenProviderMatchesStored() {
-        let d = freshDefaults("persist-active-mirror")
-        d.set("qwen", forKey: "byok.llm.provider")
-        let m = ProviderConfigMachine(
-            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        m.model = "qwen3.6-plus"
-        m.persist()
-        // Active provider == the machine's provider → the plain active key is mirrored.
-        #expect(d.string(forKey: "byok.llm.model") == "qwen3.6-plus")
-        #expect(d.string(forKey: "byok.llm.qwen.model") == "qwen3.6-plus")
-    }
 }

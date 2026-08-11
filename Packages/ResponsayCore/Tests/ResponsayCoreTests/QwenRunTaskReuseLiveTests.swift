@@ -31,15 +31,15 @@ struct QwenRunTaskReuseLiveTests {
 
         do {
             for _ in 0..<2 {
-                let audio = QwenReplayableAudioBuffer()
+                let (audio, continuation) = AsyncStream.makeStream(of: Data.self)
                 let feeder = Task {
                     let frameSize = 3_200 // 100 ms at 16 kHz mono Int16.
                     for start in stride(from: 0, to: pcm.count, by: frameSize) {
                         let end = min(start + frameSize, pcm.count)
-                        audio.append(pcm.subdata(in: start ..< end))
+                        continuation.yield(pcm.subdata(in: start ..< end))
                         try await Task.sleep(nanoseconds: 100_000_000)
                     }
-                    audio.finish()
+                    continuation.finish()
                 }
                 do {
                     _ = try await session.transcribe(
@@ -49,7 +49,7 @@ struct QwenRunTaskReuseLiveTests {
                     try await feeder.value
                 } catch {
                     feeder.cancel()
-                    audio.finish()
+                    continuation.finish()
                     throw error
                 }
             }

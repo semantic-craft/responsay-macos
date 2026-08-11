@@ -224,9 +224,9 @@ final class CloudTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("openai", forKey: "byok.tts.provider")
-        defaults.set("https://tts-proxy.example/v1", forKey: "byok.tts.baseURL")
-        defaults.set("tts-model-from-settings", forKey: "byok.tts.model")
-        defaults.set("nova", forKey: "byok.tts.voice")
+        defaults.set("https://tts-proxy.example/v1", forKey: "byok.tts.openai.baseURL")
+        defaults.set("tts-model-from-settings", forKey: "byok.tts.openai.model")
+        defaults.set("nova", forKey: "byok.tts.openai.voice")
 
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.lastRequestBody = nil
@@ -272,21 +272,22 @@ final class CloudTTSTests: XCTestCase {
         }
     }
 
-    func testTTSEngineUsesSharedKeyOnlyWhenTTSProviderUnsetForMigration() throws {
-        let suite = "test.ttsEngineLegacySharedFallback"
+    func testTTSEngineDoesNotUseSharedKeyWhenTTSProviderPointerIsUnset() throws {
+        let suite = "test.ttsEngineNoLegacySharedFallback"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        let synth = try TTSEngine.cloudOpenAI.makeSynthesizer(
-            defaults: defaults,
-            session: StubURLProtocol.session(),
-            keyReader: { account in
-                account == TTSCredential.coachAccount(for: "openai") ? "legacy-secret" : nil
-            })
-
-        let engine = try XCTUnwrap(synth as? DirectCloudTTSEngine)
-        XCTAssertEqual(engine.key, "legacy-secret")
+        XCTAssertThrowsError(
+            try TTSEngine.cloudOpenAI.makeSynthesizer(
+                defaults: defaults,
+                session: StubURLProtocol.session(),
+                keyReader: { account in
+                    account == TTSCredential.coachAccount(for: "openai") ? "shared-secret" : nil
+                })
+        ) { error in
+            XCTAssertEqual(error as? TTSError, .missingAPIKey(provider: "OpenAI"))
+        }
     }
 
     func testTTSEngineUsesMiniMaxTTSSettingsConfigForDirectRequest() async throws {
@@ -295,11 +296,11 @@ final class CloudTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("minimax", forKey: "byok.tts.provider")
-        defaults.set("https://api.minimaxi.com/v1", forKey: "byok.tts.baseURL")
-        defaults.set("speech-2.8-turbo", forKey: "byok.tts.model")
+        defaults.set("https://api.minimaxi.com/v1", forKey: "byok.tts.minimax.baseURL")
+        defaults.set("speech-2.8-turbo", forKey: "byok.tts.minimax.model")
         // 音色取「可选」菜单里真实提供的一项：selectedVoiceID 会拿 catalog.voices 校验用户的选择,
         // 菜单有而 catalog 没有的音色会被静默丢回默认音色。
-        defaults.set("female-yujie", forKey: "byok.tts.voice")
+        defaults.set("female-yujie", forKey: "byok.tts.minimax.voice")
 
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.lastRequestBody = nil
@@ -336,9 +337,9 @@ final class CloudTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("volcengine-tts", forKey: "byok.tts.provider")
-        defaults.set("https://openspeech.bytedance.com/api/v3", forKey: "byok.tts.baseURL")
-        defaults.set("seed-tts-2.0", forKey: "byok.tts.model")
-        defaults.set("en_male_tim_uranus_bigtts", forKey: "byok.tts.voice")
+        defaults.set("https://openspeech.bytedance.com/api/v3", forKey: "byok.tts.volcengine-tts.baseURL")
+        defaults.set("seed-tts-2.0", forKey: "byok.tts.volcengine-tts.model")
+        defaults.set("en_male_tim_uranus_bigtts", forKey: "byok.tts.volcengine-tts.voice")
 
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.lastRequestBody = nil
@@ -371,8 +372,8 @@ final class CloudTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("gemini", forKey: "byok.tts.provider")
-        defaults.set("gemini-3.1-flash-tts-preview", forKey: "byok.tts.model")
-        defaults.set("Kore", forKey: "byok.tts.voice")
+        defaults.set("gemini-3.1-flash-tts-preview", forKey: "byok.tts.gemini.model")
+        defaults.set("Kore", forKey: "byok.tts.gemini.voice")
 
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.handler = { _ in

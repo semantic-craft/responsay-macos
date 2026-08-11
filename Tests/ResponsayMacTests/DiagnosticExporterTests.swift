@@ -8,10 +8,11 @@ final class DiagnosticExporterTests: XCTestCase {
         ASREngine.defaultsKey,
         TTSEngine.defaultsKey,
         "byok.asr.provider",
-        "byok.asr.region",
-        "byok.asr.plan",
-        "byok.asr.model",
-        "byok.asr.baseURL",
+        "byok.asr.mimo.region",
+        "byok.asr.mimo.plan",
+        "byok.asr.mimo.model",
+        "byok.asr.mimo.baseURL",
+        "byok.asr.openai.baseURL",
         "byok.tts.provider",
         "byok.llm.provider",
     ]
@@ -43,10 +44,10 @@ final class DiagnosticExporterTests: XCTestCase {
         let d = UserDefaults.standard
         d.set(ASREngine.cloudMimo.rawValue, forKey: ASREngine.defaultsKey)
         d.set("mimo", forKey: "byok.asr.provider")
-        d.set(ProviderRegion.china.rawValue, forKey: "byok.asr.region")
-        d.set(BillingPlan.package.rawValue, forKey: "byok.asr.plan")
-        d.set("mimo-v2.5-asr", forKey: "byok.asr.model")
-        d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.baseURL")
+        d.set(ProviderRegion.china.rawValue, forKey: "byok.asr.mimo.region")
+        d.set(BillingPlan.package.rawValue, forKey: "byok.asr.mimo.plan")
+        d.set("mimo-v2.5-asr", forKey: "byok.asr.mimo.model")
+        d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.mimo.baseURL")
 
         let payload = collectDiagnostics()
         let asr = payload["config_asr_active"] as? [String: Any]
@@ -62,10 +63,10 @@ final class DiagnosticExporterTests: XCTestCase {
         let d = UserDefaults.standard
         d.set(ASREngine.sensevoiceLocal.rawValue, forKey: ASREngine.defaultsKey)
         d.set("mimo", forKey: "byok.asr.provider")
-        d.set(ProviderRegion.china.rawValue, forKey: "byok.asr.region")
-        d.set(BillingPlan.package.rawValue, forKey: "byok.asr.plan")
-        d.set("mimo-v2.5-asr", forKey: "byok.asr.model")
-        d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.baseURL")
+        d.set(ProviderRegion.china.rawValue, forKey: "byok.asr.mimo.region")
+        d.set(BillingPlan.package.rawValue, forKey: "byok.asr.mimo.plan")
+        d.set("mimo-v2.5-asr", forKey: "byok.asr.mimo.model")
+        d.set("https://token-plan-cn.xiaomimimo.com/v1", forKey: "byok.asr.mimo.baseURL")
 
         let payload = collectDiagnostics()
         let active = payload["config_asr_active"] as? [String: Any]
@@ -83,7 +84,7 @@ final class DiagnosticExporterTests: XCTestCase {
         let d = UserDefaults.standard
         d.set(ASREngine.cloudMimo.rawValue, forKey: ASREngine.defaultsKey)
         d.set("openai", forKey: "byok.asr.provider")
-        d.set("https://api.openai.com/v1", forKey: "byok.asr.baseURL")
+        d.set("https://api.openai.com/v1", forKey: "byok.asr.openai.baseURL")
 
         let payload = collectDiagnostics()
         let active = payload["config_asr_active"] as? [String: Any]

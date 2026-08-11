@@ -16,6 +16,7 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     // 16 kHz format and then delivers zero buffers when the built-in mic is selected.
     private var recorder: AVCaptureAudioRecorder?
     private let spec: LocalModelSpec
+    private let isModelInstalled: @Sendable () -> Bool
     private let makeRecognizer: @Sendable () throws -> any OfflineSherpaRecognizer
     private var accumulator: PCMAccumulator?
     private var captureProfile: SpeechCaptureProfile = .dictation
@@ -29,14 +30,19 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
     private var levelContinuation: AsyncStream<Float>.Continuation?
 
-    init(spec: LocalModelSpec, makeRecognizer: @escaping @Sendable () throws -> any OfflineSherpaRecognizer) {
+    init(
+        spec: LocalModelSpec,
+        isModelInstalled: (@Sendable () -> Bool)? = nil,
+        makeRecognizer: @escaping @Sendable () throws -> any OfflineSherpaRecognizer
+    ) {
         self.spec = spec
+        self.isModelInstalled = isModelInstalled ?? { spec.isInstalled }
         self.makeRecognizer = makeRecognizer
         LocalEngineResidency.shared.register(self, id: spec.id)
     }
 
     func start(locale: CaptureLocale) throws {
-        guard spec.isInstalled else {
+        guard isModelInstalled() else {
             throw CoachAPIError.message(
                 "\(spec.displayName) 模型未安装。请到 设置 › 本地模型 下载后再使用。")
         }
@@ -118,7 +124,7 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     /// only for timed policies; under 即时释放 (0) it stays resident until the next
     /// capture or a manual unload, so the click isn't undone immediately.
     func preloadEngine() throws {
-        guard spec.isInstalled else {
+        guard isModelInstalled() else {
             throw CoachAPIError.message(
                 "\(spec.displayName) 模型未安装。请到 设置 › 本地模型 下载后再使用。")
         }
@@ -134,7 +140,7 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     /// Best-effort — a failure just leaves the lazy load to the first `start()`. No-op if
     /// already loaded, capturing, or the model isn't installed.
     func preloadEngineInBackground() {
-        guard spec.isInstalled, recognizer == nil, !isCapturing else { return }
+        guard isModelInstalled(), recognizer == nil, !isCapturing else { return }
         let make = makeRecognizer
         let id = spec.id
         Task.detached(priority: .utility) {

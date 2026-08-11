@@ -52,14 +52,6 @@ func sherpaOnnxOfflineMedAsrCtcModelConfig(
   )
 }
 
-func sherpaOnnxOfflineFireRedAsrCtcModelConfig(
-  model: String = ""
-) -> SherpaOnnxOfflineFireRedAsrCtcModelConfig {
-  return SherpaOnnxOfflineFireRedAsrCtcModelConfig(
-    model: toCPointer(model)
-  )
-}
-
 func sherpaOnnxOfflineNemoEncDecCtcModelConfig(
   model: String = ""
 ) -> SherpaOnnxOfflineNemoEncDecCtcModelConfig {
@@ -125,16 +117,6 @@ func sherpaOnnxOfflineCohereTranscribeModelConfig(
     language: toCPointer(language),
     use_punct: usePunct ? 1 : 0,
     use_itn: useInverseTextNormalization ? 1 : 0
-  )
-}
-
-func sherpaOnnxOfflineFireRedAsrModelConfig(
-  encoder: String = "",
-  decoder: String = ""
-) -> SherpaOnnxOfflineFireRedAsrModelConfig {
-  return SherpaOnnxOfflineFireRedAsrModelConfig(
-    encoder: toCPointer(encoder),
-    decoder: toCPointer(decoder)
   )
 }
 
@@ -261,7 +243,6 @@ func sherpaOnnxOfflineModelConfig(
   teleSpeechCtc: String = "",
   senseVoice: SherpaOnnxOfflineSenseVoiceModelConfig = sherpaOnnxOfflineSenseVoiceModelConfig(),
   moonshine: SherpaOnnxOfflineMoonshineModelConfig = sherpaOnnxOfflineMoonshineModelConfig(),
-  fireRedAsr: SherpaOnnxOfflineFireRedAsrModelConfig = sherpaOnnxOfflineFireRedAsrModelConfig(),
   dolphin: SherpaOnnxOfflineDolphinModelConfig = sherpaOnnxOfflineDolphinModelConfig(),
   zipformerCtc: SherpaOnnxOfflineZipformerCtcModelConfig =
     sherpaOnnxOfflineZipformerCtcModelConfig(),
@@ -274,8 +255,6 @@ func sherpaOnnxOfflineModelConfig(
     sherpaOnnxOfflineMedAsrCtcModelConfig(),
   funasrNano: SherpaOnnxOfflineFunASRNanoModelConfig =
     sherpaOnnxOfflineFunASRNanoModelConfig(),
-  fireRedAsrCtc: SherpaOnnxOfflineFireRedAsrCtcModelConfig =
-    sherpaOnnxOfflineFireRedAsrCtcModelConfig(),
   qwen3Asr: SherpaOnnxOfflineQwen3ASRModelConfig =
     sherpaOnnxOfflineQwen3ASRModelConfig(),
   cohereTranscribe: SherpaOnnxOfflineCohereTranscribeModelConfig =
@@ -297,7 +276,7 @@ func sherpaOnnxOfflineModelConfig(
     telespeech_ctc: toCPointer(teleSpeechCtc),
     sense_voice: senseVoice,
     moonshine: moonshine,
-    fire_red_asr: fireRedAsr,
+    fire_red_asr: SherpaOnnxOfflineFireRedAsrModelConfig(),
     dolphin: dolphin,
     zipformer_ctc: zipformerCtc,
     canary: canary,
@@ -305,7 +284,7 @@ func sherpaOnnxOfflineModelConfig(
     omnilingual: omnilingual,
     medasr: medasr,
     funasr_nano: funasrNano,
-    fire_red_asr_ctc: fireRedAsrCtc,
+    fire_red_asr_ctc: SherpaOnnxOfflineFireRedAsrCtcModelConfig(),
     qwen3_asr: qwen3Asr,
     cohere_transcribe: cohereTranscribe
   )
@@ -504,4 +483,3 @@ class SherpaOnnxOfflineStreamWrapper {
     SherpaOnnxAcceptWaveformOffline(stream, Int32(sampleRate), samples, Int32(samples.count))
   }
 }
-

@@ -14,25 +14,25 @@ import ResponsayCore
 /// here for latency: the audio is already recognised by the time the hotkey comes up, so
 /// release→text is far shorter than uploading a whole clip afterwards.
 ///
-/// HITL boundary: the mic tap, the socket drive, and the send/receive concurrency can only be
-/// verified on a real Mac (mic + network). The pieces around it are unit-tested:
-/// `QwenRunTaskASRProtocol` (codec), `QwenRunTaskASRClient` (fold + start gate),
-/// `QwenRunTaskSession` (reuse + reconnect), and `QwenRealtimePCM` (sample conversion).
+/// HITL boundary: the mic tap and production socket can only be verified on a real Mac
+/// (mic + network). Run-task sequencing, folding, replay, and reconnect are verified through
+/// `QwenRunTaskSession`; sample conversion is verified through `QwenRealtimePCM`.
 @MainActor
 public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-runtask-capture")
     private let configProvider: () -> QwenRunTaskCaptureConfig
+    private let prepareConfig: @Sendable (QwenRunTaskCaptureConfig) async throws -> QwenRunTaskCaptureConfig
     private let contextRecorder: @MainActor @Sendable (String, String?) -> [String]
-    private let runTaskSession: QwenRunTaskSession
+    private let runTask: any QwenRunTaskTranscribing
+    private let audioRecorder: () -> any SpeechAudioRecording
     private let requireMicPermission: () throws -> Void
 
-    private var recorder: AVCaptureAudioRecorder?
-    private var audioBuffer: QwenReplayableAudioBuffer?
+    private var recorder: (any SpeechAudioRecording)?
+    private var audioContinuation: AsyncStream<Data>.Continuation?
     private var transcriptionTask: Task<String, Error>?
     private var levelContinuation: AsyncStream<Float>.Continuation?
 
-    /// How long `stop()` waits for `task-finished` after `finish-task` before giving up
-    /// (returns "" rather than wedging the input method).
+    /// How long `stop()` waits for `task-finished` after `finish-task` before giving up.
     private let finalTimeoutNanos: UInt64 = 12_000_000_000
 
     public private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
@@ -41,38 +41,45 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
 
     public init(
         configProvider: @escaping () -> QwenRunTaskCaptureConfig,
-        session: URLSession = .shared,
+        prepareConfig: @escaping @Sendable (QwenRunTaskCaptureConfig) async throws -> QwenRunTaskCaptureConfig = { $0 },
+        runTask: (any QwenRunTaskTranscribing)? = nil,
+        audioRecorder: @escaping () -> any SpeechAudioRecording = { AVCaptureAudioRecorder() },
         contextRecorder: @escaping @MainActor @Sendable (String, String?) -> [String] = { _, _ in [] },
         requireMicPermission: @escaping () throws -> Void
     ) {
         self.configProvider = configProvider
-        runTaskSession = QwenRunTaskSession(session: session)
+        self.prepareConfig = prepareConfig
+        self.runTask = runTask ?? QwenRunTaskSession()
+        self.audioRecorder = audioRecorder
         self.contextRecorder = contextRecorder
         self.requireMicPermission = requireMicPermission
     }
 
     public func start(locale: CaptureLocale) throws {
         try requireMicPermission()
-        var config = configProvider()
-        guard !config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        var baseConfig = configProvider()
+        guard !baseConfig.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw CoachAPIError.message("未配置阿里云百炼 API Key。请在设置中配置。")
         }
-        config.captureLocale = locale
+        baseConfig.captureLocale = locale
 
         let (levelStream, levelCont) = AsyncStream.makeStream(of: Float.self)
         levels = levelStream
         levelContinuation = levelCont
-        let audioBuffer = QwenReplayableAudioBuffer()
-        self.audioBuffer = audioBuffer
+        let (audio, audioContinuation) = AsyncStream.makeStream(of: Data.self)
+        self.audioContinuation = audioContinuation
 
-        let contextScope = config.contextScope
+        let contextScope = baseConfig.contextScope
         let contextRecorder = self.contextRecorder
-        let runTaskSession = self.runTaskSession
+        let prepareConfig = self.prepareConfig
+        let runTask = self.runTask
         let log = self.log
         transcriptionTask = Task.detached {
-            try await runTaskSession.transcribe(
+            let config = try await prepareConfig(baseConfig)
+            try Task.checkCancellation()
+            return try await runTask.transcribe(
                 config: config,
-                audio: audioBuffer,
+                audio: audio,
                 onFinalSentence: { text in await contextRecorder(text, contextScope) },
                 onTaskStarted: { metric in
                     let milliseconds = Double(metric.runTaskToStartedNanos) / 1_000_000
@@ -80,7 +87,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 })
         }
 
-        let recorder = AVCaptureAudioRecorder()
+        let recorder = audioRecorder()
         self.recorder = recorder
         do {
             try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in
@@ -90,15 +97,15 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 var sumOfSquares: Float = 0
                 for value in floats { sumOfSquares += value * value }
                 levelCont.yield(min(1, (sumOfSquares / Float(count)).squareRoot() * 8))
-                audioBuffer.append(QwenRealtimePCM.int16LE(from: floats))
+                audioContinuation.yield(QwenRealtimePCM.int16LE(from: floats))
             }
         } catch {
-            audioBuffer.finish()
+            audioContinuation.finish()
             transcriptionTask?.cancel()
             cleanupTaskState()
             throw error
         }
-        log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(config.model, privacy: .public), dedicated host \(config.endpoint.usesDedicatedHost, privacy: .public))")
+        log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(baseConfig.model, privacy: .public), dedicated host \(baseConfig.endpoint.usesDedicatedHost, privacy: .public))")
     }
 
     public func stop() async throws -> String {
@@ -106,35 +113,47 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         recorder = nil
         levelContinuation?.finish()
         levelContinuation = nil
-        audioBuffer?.finish()
-        let text = await awaitFinal()
-        cleanupTaskState()
+        audioContinuation?.finish()
+        defer { cleanupTaskState() }
+        let text = try await awaitFinal()
         log.info("qwen run-task transcript length \(text.count, privacy: .public)")
         return text
     }
 
-    /// Await the terminal transcript, or "" on timeout/failure (never hang the input method).
-    private func awaitFinal() async -> String {
+    /// Await the terminal transcript while preserving timeout, task-failure and caller-cancellation
+    /// outcomes for the production router.
+    private func awaitFinal() async throws -> String {
         guard let transcriptionTask else { return "" }
         let timeout = finalTimeoutNanos
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask {
-                (try? await transcriptionTask.value) ?? ""
+        return try await withTaskCancellationHandler {
+            do {
+                return try await withThrowingTaskGroup(of: String.self) { group in
+                    group.addTask {
+                        try await transcriptionTask.value
+                    }
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: timeout)
+                        transcriptionTask.cancel()
+                        throw QwenRunTaskSessionError.taskResponseTimedOut
+                    }
+                    defer { group.cancelAll() }
+                    guard let first = try await group.next() else {
+                        throw QwenRunTaskSessionError.taskEndedWithoutFinal
+                    }
+                    return first
+                }
+            } catch {
+                transcriptionTask.cancel()
+                throw error
             }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: timeout)
-                return nil   // timeout sentinel
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            if first == nil { transcriptionTask.cancel() }
-            return (first ?? nil) ?? ""
+        } onCancel: {
+            transcriptionTask.cancel()
         }
     }
 
     private func cleanupTaskState() {
         transcriptionTask = nil
-        audioBuffer = nil
+        audioContinuation = nil
     }
 }
 

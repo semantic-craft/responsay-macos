@@ -10,12 +10,10 @@ extension ProviderConfigMachine {
     }
 
     func resolveTTSVoice() {
-        guard capability == .tts,
-              let engine = TTSEngine.selectableCases.first(where: { $0.providerID == providerId }) else {
-            return
-        }
-        voice = engine.selectedVoiceID(defaults: defaults)
-            ?? current.presetVoices.first?.id
-            ?? ""
+        guard capability == .tts else { return }
+        voice = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .resolve(.tts, providerId: providerId)
+            .voice ?? ""
     }
+
 }

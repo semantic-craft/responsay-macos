@@ -35,9 +35,12 @@ final class ASREngineMigrationTests: XCTestCase {
         XCTAssertNil(ASREngine(rawValue: "cloud-fun-asr-whole"))
         XCTAssertNil(ASREngine(rawValue: "cloud-qwen-asr-flash"))
         XCTAssertNil(ASREngine(rawValue: "cloud-zhipu"))
+        XCTAssertNil(ASREngine(rawValue: "offline-fireredasr2-aed"))
         UserDefaults.standard.set("offline-qwen-asr", forKey: key)
         XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
         UserDefaults.standard.set("cloud-zhipu", forKey: key)
+        XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
+        UserDefaults.standard.set("offline-fireredasr2-aed", forKey: key)
         XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
@@ -46,33 +49,10 @@ final class ASREngineMigrationTests: XCTestCase {
         XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
-    func testHTTPBatchEnginesMigrateToWSSStreamingSiblings() {
-        // 2026-07-04: 豆包标准版 2.0 (HTTP submit/query) was dropped from the picker
-        // in favor of its WSS streaming sibling.
+    func testDeletedVolcengineHTTPBatchEngineNoLongerResolves() {
+        XCTAssertNil(ASREngine(rawValue: "cloud-volcengine-flash"))
         UserDefaults.standard.set("cloud-volcengine-flash", forKey: key)
-        XCTAssertEqual(ASREngine.selected, .cloudVolcengineRealtime)
-        XCTAssertFalse(ASREngine.selectableCases.contains(.cloudVolcengineFlash))
-    }
-
-    func testLegacyMimoTokenPlanRawValueMigratesToCloudMimo() {
-        UserDefaults.standard.set("mimo-token-plan", forKey: key)
-        XCTAssertEqual(ASREngine.selected, .cloudMimo)
-        XCTAssertEqual(ASREngine.selected.rawValue, "cloud-mimo")
-    }
-
-    func testCloudProviderSelectionMapsToRuntimeEngine() {
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo"), .cloudMimo)
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo-token-plan"), .cloudMimo)
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "qwen-asr-flash"), .cloudQwenASRFlashRealtime)
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineFlash)
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen-fun-asr"))
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen-fun-asr-realtime"))
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen"))
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "zhipu"))
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineFlash)
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "volc-asr"))
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "custom"), .customOpenAI)
-        XCTAssertNil(ASREngine.cloudEngine(forProviderId: "apple"))
+        XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
     func testRetiredProviderPresetIsGone() {

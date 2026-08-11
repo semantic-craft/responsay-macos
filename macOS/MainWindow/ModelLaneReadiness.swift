@@ -96,7 +96,7 @@ struct ModelLaneReadinessResolver {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .invalidRoute)
         }
         if engine == .apple { return .localReady }
-        if let spec = ASRFallback.offlineSpec(for: engine) {
+        if let spec = engine.localModelSpec {
             return asrLocalInstalled(spec) ? .localReady : .localMissing
         }
         guard let providerId = engine.associatedProviderId else {
@@ -168,6 +168,10 @@ struct ModelLaneReadinessResolver {
             ?? dispatcher.resolve(capability, providerId: providerId)
     }
 
+    func resolvedLLM(providerId: String, plan: BillingPlan? = nil) -> ResolvedLLMLanes {
+        dispatcher.resolveLLM(providerId: providerId, plan: plan)
+    }
+
     static func cloudState(for config: ResolvedProviderConfig) -> ModelLaneState {
         guard !config.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .missingModel)
@@ -191,9 +195,7 @@ struct ModelLaneReadinessResolver {
         providerId: String,
         plan: BillingPlan? = nil
     ) -> ModelLaneState {
-        guard ProviderCatalog.presets(for: capability).contains(where: { preset in
-            CapabilitySelectionSync.providerMatches(preset.id, providerId, capability: capability)
-        }) else {
+        guard ProviderCatalog.presets(for: capability).contains(where: { $0.id == providerId }) else {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .invalidRoute)
         }
         return Self.cloudState(for: resolvedConfig(capability, providerId: providerId, plan: plan))

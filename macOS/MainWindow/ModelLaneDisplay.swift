@@ -98,21 +98,11 @@ struct ModelLaneDisplay {
             currentTitle: engine.title,
             providerId: config?.providerId ?? engine.rawValue,
             plan: meaningfulPlan(config),
-            modelId: config?.model ?? asrModelId(engine),
+            modelId: config?.model ?? engine.localModelSpec?.id ?? engine.rawValue,
             isLocal: engine.associatedProviderId == nil,
             readiness: state.readiness,
             readinessReason: state.reason,
             settingsSection: .asr)
-    }
-
-    private func asrModelId(_ engine: ASREngine) -> String {
-        switch engine {
-        case .sensevoiceLocal: return LocalModelSpec.senseVoiceSmall.id
-        case .qwen3LocalASR: return LocalModelSpec.qwen3ASR.id
-        case .fireRedASR2AEDLocal: return LocalModelSpec.fireRedASR2AED.id
-        case .funAsrNanoLocal: return LocalModelSpec.funAsrNano.id
-        default: return engine.rawValue
-        }
     }
 
     // MARK: - LLM
@@ -124,13 +114,13 @@ struct ModelLaneDisplay {
         // preset lookup and the model id falls back to the literal "默认模型".
         let (base, _) = ModelRouteOptionID.parse(id)
         let (_, plan) = ModelRouteOptionID.parse(id)
-        let config = readiness.resolvedConfig(.llm, providerId: base, plan: plan)
+        let lanes = readiness.resolvedLLM(providerId: base, plan: plan)
+        let config = lanes.provider
         let preset = ProviderCatalog.presets(for: .llm).first { $0.id == config.providerId }
         let state = readiness.llmState(optionId: id)
         // 技能平台模型显式分流时快照要能区分两个选择；跟随时保持单模型显示不变。
-        let skillModel = SkillPlatformModelSettings.explicitModel(
-            providerId: config.providerId, defaults: defaults)
-        let modelId = (skillModel == nil || skillModel == config.model)
+        let skillModel = lanes.explicitSkillModel
+        let modelId = (lanes.skillFollowsDictation || skillModel == config.model)
             ? config.model
             : "\(config.model) · 技能 \(skillModel!)"
         return ModelLaneInfo(

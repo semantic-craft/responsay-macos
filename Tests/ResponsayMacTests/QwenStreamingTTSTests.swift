@@ -132,7 +132,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let keyReader: (String) -> String? = { account in
-            account == TTSCredential.coachAccount(for: "qwen") ? "legacy-secret" : nil
+            account == TTSCredential.keychainAccount(for: "qwen") ? "tts-secret" : nil
         }
         let streaming = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,
@@ -147,7 +147,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         ] {
             XCTAssertEqual(engine.model, "qwen-audio-3.0-tts-flash")
             XCTAssertEqual(engine.voice, "loongeva_v3.6")
-            XCTAssertEqual(engine.key, "legacy-secret")
+            XCTAssertEqual(engine.key, "tts-secret")
         }
     }
 
@@ -157,9 +157,9 @@ final class QwenStreamingTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("qwen", forKey: "byok.tts.provider")
-        defaults.set("qwen3-tts-flash-realtime", forKey: "byok.tts.model")
-        defaults.set("loongjohn", forKey: "byok.tts.voice")
-        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.tts.region")
+        defaults.set("qwen3-tts-flash-realtime", forKey: "byok.tts.qwen.model")
+        defaults.set("loongjohn", forKey: "byok.tts.qwen.voice")
+        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.tts.qwen.region")
 
         let synth = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,
@@ -178,7 +178,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("qwen", forKey: "byok.tts.provider")
-        defaults.set("Cherry", forKey: "byok.tts.voice")
+        defaults.set("Cherry", forKey: "byok.tts.qwen.voice")
 
         let synth = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,

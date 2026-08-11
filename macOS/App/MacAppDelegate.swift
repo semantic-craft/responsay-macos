@@ -33,8 +33,6 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // register a second set of global hotkeys / mic engine.
         if !underTest, SingleInstanceGuard.terminateIfDuplicate() { return }
 
-        if !underTest { TTSActiveProvider.reconcileAtLaunch() }
-
         // 退役 provider（智谱）遗留的选择与钥匙串密钥一次性清理；带完成标记，正常只跑一次。
         if !underTest { RetiredProviderCleanup.run() }
 

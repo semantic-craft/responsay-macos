@@ -1,9 +1,9 @@
 import Foundation
 import ResponsayCore
 
-/// Endpoint/model resolution for the `qwen-asr-flash` ASR card, shared by the three readers of
-/// the stored BYOK selection (`ProviderConfigMachine`, `ProviderConfigDispatcher`,
-/// `ASRTranscriptionClientFactory`) so they cannot drift apart.
+/// Endpoint/model primitives for the `qwen-asr-flash` ASR card. `ProviderConfigDispatcher`
+/// combines them with persisted settings as the single effective-state reader; settings helpers
+/// reuse the same derivation for display and validation.
 ///
 /// Two jobs:
 /// 1. **Workspace derivation.** Filling in a Workspace ID switches the socket to that business
