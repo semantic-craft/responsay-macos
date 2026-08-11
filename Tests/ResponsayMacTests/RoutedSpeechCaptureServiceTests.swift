@@ -1,3 +1,4 @@
+import AVFoundation
 import ResponsayCore
 @testable import ResponsaySpeech
 import XCTest
@@ -85,6 +86,110 @@ private final class ASRCredentialStore: @unchecked Sendable {
     }
 }
 
+/// Local adapter for the two true external inputs in Qwen dictation: microphone audio and the
+/// remote run-task exchange. The router and shipped capture adapter remain real; only hardware and
+/// network are replaced.
+private final class LocalQwenDictationAdapter: @unchecked Sendable,
+    SpeechAudioRecording, QwenRunTaskTranscribing
+{
+    enum Completion: Sendable {
+        case transcript(String)
+        case timeout
+        case taskFailure(String)
+        case waitForCancellation
+    }
+
+    private let lock = NSLock()
+    private let completion: Completion
+    private var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    private var _started = false
+    private var _stopped = false
+    private var _waitingForCancellation = false
+    private var _wasCancelled = false
+    private var _config: QwenRunTaskCaptureConfig?
+    private var _audio = [Data]()
+    private var _callbackContext = [String]()
+
+    init(completion: Completion = .transcript("推到代码厂里")) {
+        self.completion = completion
+    }
+
+    var started: Bool { withLock { _started } }
+    var stopped: Bool { withLock { _stopped } }
+    var waitingForCancellation: Bool { withLock { _waitingForCancellation } }
+    var wasCancelled: Bool { withLock { _wasCancelled } }
+    var config: QwenRunTaskCaptureConfig? { withLock { _config } }
+    var audio: [Data] { withLock { _audio } }
+    var callbackContext: [String] { withLock { _callbackContext } }
+
+    func start(
+        preferredUID _: String,
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) throws {
+        withLock {
+            _started = true
+            self.onBuffer = onBuffer
+        }
+    }
+
+    func stop() {
+        withLock {
+            _stopped = true
+            onBuffer = nil
+        }
+    }
+
+    func deliver(_ samples: [Float]) {
+        let format = AVCaptureAudioRecorder.deliveredFormat
+        let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        for (index, sample) in samples.enumerated() {
+            buffer.floatChannelData![0][index] = sample
+        }
+        withLock { onBuffer }?(buffer)
+    }
+
+    func transcribe(
+        config: QwenRunTaskCaptureConfig,
+        audio: AsyncStream<Data>,
+        onFinalSentence: @escaping @Sendable (String) async -> [String],
+        onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void
+    ) async throws -> String {
+        withLock { _config = config }
+        await onTaskStarted(.init(reusedConnection: false, runTaskToStartedNanos: 1_000_000))
+        for await frame in audio {
+            withLock { _audio.append(frame) }
+        }
+        let updatedContext = await onFinalSentence("前一段原始转写")
+        withLock { _callbackContext = updatedContext }
+        switch completion {
+        case let .transcript(text):
+            return text
+        case .timeout:
+            throw QwenRunTaskSessionError.taskResponseTimedOut
+        case let .taskFailure(message):
+            throw QwenRunTaskSessionError.taskFailed(message)
+        case .waitForCancellation:
+            withLock { _waitingForCancellation = true }
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000_000)
+                throw QwenRunTaskSessionError.taskResponseTimedOut
+            } catch is CancellationError {
+                withLock { _wasCancelled = true }
+                throw CancellationError()
+            }
+        }
+    }
+
+    private func withLock<Value>(_ body: () -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
 /// 猎虫① H11 (issue 322): the router never conformed to
 /// `SpeechPartialTranscriptProviding`, so the `as?` casts in
 /// QuickCaptureViewModel / VoiceAssistantViewModel always failed — live capsule
@@ -133,6 +238,154 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
                 forProvider: "qwen-asr-flash"))
         XCTAssertTrue(
             CloudQwenSpeechCaptureService.usesPostUploadStreamingPreview(forProvider: "mimo"))
+    }
+
+    @MainActor
+    func testSelectedQwenCaptureRunsEndToEndThroughProductionRouter() async throws {
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudQwenASRFlashRealtime.rawValue,
+            defaults: defaults)
+        defaults.set(QwenASRFlashRouting.providerId, forKey: "byok.asr.provider")
+        defaults.set(
+            ProviderRegion.singapore.rawValue,
+            forKey: "byok.asr.qwen-asr-flash.region")
+        defaults.set(
+            "ws-localadapter",
+            forKey: "byok.asr.qwen-asr-flash.workspaceId")
+        defaults.set(
+            QwenASRFlashRouting.funASRRealtimeModel,
+            forKey: "byok.asr.qwen-asr-flash.model")
+        XCTAssertTrue(ContextHotwordSettings.addManual("代码仓", defaults: defaults))
+
+        let adapter = LocalQwenDictationAdapter()
+        let contextStore = RecentASRContextSessionStore(
+            defaults: defaults,
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("qwen-route-\(UUID().uuidString).json"))
+        let router = RoutedSpeechCaptureService(
+            contextScopeProvider: { "com.example.Editor" },
+            defaults: defaults,
+            keyReader: { account in
+                account == CapabilityCredentialAccount.apiKeyAccount(
+                    providerId: QwenASRFlashRouting.providerId,
+                    capability: .asr,
+                    plan: .payg)
+                    ? "synthetic-qwen-key"
+                    : nil
+            },
+            qwenRunTask: adapter,
+            qwenAudioRecorder: { adapter },
+            qwenContextStore: contextStore,
+            requireQwenMicPermission: {})
+
+        try router.start(locale: .mixed)
+        let level = Task { @MainActor in
+            for await value in router.levels { return value }
+            return -1
+        }
+        adapter.deliver([0, 1, -1])
+        let transcript = try await router.stop()
+        let observedLevel = await level.value
+
+        XCTAssertTrue(adapter.started)
+        XCTAssertTrue(adapter.stopped)
+        XCTAssertEqual(observedLevel, 1, accuracy: 0.001)
+        XCTAssertEqual(adapter.audio, [Data([0x00, 0x00, 0xff, 0x7f, 0x01, 0x80])])
+        XCTAssertEqual(adapter.config?.captureLocale, .mixed)
+        XCTAssertEqual(adapter.config?.apiKey, "synthetic-qwen-key")
+        XCTAssertEqual(adapter.config?.model, QwenASRFlashRouting.funASRRealtimeModel)
+        XCTAssertEqual(
+            adapter.config?.endpoint.url.absoluteString,
+            "wss://ws-localadapter.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(adapter.callbackContext, ["前一段原始转写"])
+        XCTAssertEqual(transcript, "推到代码仓里")
+    }
+
+    @MainActor
+    func testQwenTimeoutIsObservableAtProductionRouter() async throws {
+        let adapter = LocalQwenDictationAdapter(completion: .timeout)
+        let router = makeQwenRouter(adapter: adapter)
+
+        try router.start(locale: .mixed)
+        do {
+            _ = try await router.stop()
+            XCTFail("timeout must not be collapsed into an empty transcript")
+        } catch QwenRunTaskSessionError.taskResponseTimedOut {
+            XCTAssertTrue(adapter.stopped)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testQwenTaskFailureIsObservableAtProductionRouter() async throws {
+        let adapter = LocalQwenDictationAdapter(
+            completion: .taskFailure("synthetic run-task failure"))
+        let router = makeQwenRouter(adapter: adapter)
+
+        try router.start(locale: .mixed)
+        do {
+            _ = try await router.stop()
+            XCTFail("task failure must not be collapsed into an empty transcript")
+        } catch let QwenRunTaskSessionError.taskFailed(message) {
+            XCTAssertEqual(message, "synthetic run-task failure")
+            XCTAssertTrue(adapter.stopped)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testQwenCancellationIsObservableAtProductionRouter() async throws {
+        let adapter = LocalQwenDictationAdapter(completion: .waitForCancellation)
+        let router = makeQwenRouter(adapter: adapter)
+
+        try router.start(locale: .mixed)
+        let stopTask = Task { @MainActor in try await router.stop() }
+        for _ in 0 ..< 10_000 where !adapter.waitingForCancellation {
+            await Task.yield()
+        }
+        guard adapter.waitingForCancellation else {
+            stopTask.cancel()
+            return XCTFail("local run-task adapter never reached its cancellation wait")
+        }
+
+        stopTask.cancel()
+        do {
+            _ = try await stopTask.value
+            XCTFail("cancellation must not be collapsed into an empty transcript")
+        } catch is CancellationError {
+            XCTAssertTrue(adapter.wasCancelled)
+            XCTAssertTrue(adapter.stopped)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    @MainActor
+    private func makeQwenRouter(adapter: LocalQwenDictationAdapter) -> RoutedSpeechCaptureService {
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudQwenASRFlashRealtime.rawValue,
+            defaults: defaults)
+        let contextStore = RecentASRContextSessionStore(
+            defaults: defaults,
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("qwen-route-\(UUID().uuidString).json"))
+        return RoutedSpeechCaptureService(
+            contextScopeProvider: { "com.example.Editor" },
+            defaults: defaults,
+            keyReader: { account in
+                account == CapabilityCredentialAccount.apiKeyAccount(
+                    providerId: QwenASRFlashRouting.providerId,
+                    capability: .asr,
+                    plan: .payg)
+                    ? "synthetic-qwen-key"
+                    : nil
+            },
+            qwenRunTask: adapter,
+            qwenAudioRecorder: { adapter },
+            qwenContextStore: contextStore,
+            requireQwenMicPermission: {})
     }
 
     func testSettingsBackedOpenAIClientUsesCapabilityCardSlot() async throws {

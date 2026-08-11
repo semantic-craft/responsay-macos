@@ -28,11 +28,23 @@ public struct QwenRunTaskStartMetric: Sendable, Equatable {
     }
 }
 
+/// The deep run-task session interface used by live capture. Production uses
+/// `QwenRunTaskSession`; routing tests substitute only the remote exchange while keeping the
+/// shipped capture adapter and its audio/finalization flow intact.
+public protocol QwenRunTaskTranscribing: Sendable {
+    func transcribe(
+        config: QwenRunTaskCaptureConfig,
+        audio: AsyncStream<Data>,
+        onFinalSentence: @escaping @Sendable (String) async -> [String],
+        onTaskStarted: @escaping @Sendable (QwenRunTaskStartMetric) async -> Void
+    ) async throws -> String
+}
+
 /// Owns the transport lifetime separately from task lifetime. Official DashScope guidance permits
 /// another `run-task` only after `task-finished`, requires a fresh task ID, invalidates the socket
 /// after task failure, and closes an idle connection server-side after 60 seconds. We therefore
 /// retain only successfully completed sockets and expire them locally after 45 seconds.
-public actor QwenRunTaskSession {
+public actor QwenRunTaskSession: QwenRunTaskTranscribing {
     typealias TransportFactory = @Sendable (URLRequest) async throws -> any QwenRunTaskTransport
     typealias Sleeper = @Sendable (UInt64) async throws -> Void
 

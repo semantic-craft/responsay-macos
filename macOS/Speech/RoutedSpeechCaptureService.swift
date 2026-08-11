@@ -4,6 +4,8 @@ import ResponsaySpeech
 
 @MainActor
 final class RoutedSpeechCaptureService: SpeechCaptureService {
+    private let defaults: UserDefaults
+    private let readiness: ModelLaneReadinessResolver
     private let apple = AppleSpeechCaptureService()
     // 猎虫① H9: the batch clients are built through `clientBuilder` so the
     // hotword weak hint (ADR-0011 keeps it alongside hard-match) and the live
@@ -33,6 +35,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     /// takes the 词典 through 即时热词 `vocabulary`. Final-only on purpose — streaming is for latency,
     /// not for a live capsule preview.
     private let qwenASRFlashRealtime: QwenRunTaskStreamingCaptureService
+    private let hotwordCorrector: SettingsBackedHotwordCorrectionAPI
     /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
     private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
         try SenseVoiceModel.loadRecognizer()
@@ -63,18 +66,53 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
 
     private(set) var levels: AsyncStream<Float> = AsyncStream { _ in }
 
-    init(contextScopeProvider: @escaping @MainActor () -> String? = { nil }) {
-        let contextStore = RecentASRContextSessionStore.shared
+    convenience init(contextScopeProvider: @escaping @MainActor () -> String? = { nil }) {
+        self.init(
+            contextScopeProvider: contextScopeProvider,
+            defaults: .standard,
+            keyReader: { BYOKKeychain.read($0) },
+            qwenRunTask: QwenRunTaskSession(),
+            qwenAudioRecorder: { AVCaptureAudioRecorder() },
+            qwenContextStore: .shared,
+            requireQwenMicPermission: {
+                try MicrophonePermission.ensure(feature: "Qwen ASR realtime")
+            })
+    }
+
+    init(
+        contextScopeProvider: @escaping @MainActor () -> String?,
+        defaults: UserDefaults,
+        keyReader: @escaping ASRTranscriptionClientFactory.KeyReader,
+        qwenRunTask: any QwenRunTaskTranscribing,
+        qwenAudioRecorder: @escaping () -> any SpeechAudioRecording,
+        qwenContextStore: RecentASRContextSessionStore,
+        requireQwenMicPermission: @escaping () throws -> Void
+    ) {
+        self.defaults = defaults
+        let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+        readiness = ModelLaneReadinessResolver(dispatcher: dispatcher)
+        hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
+            isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
+            resolveEndpoint: {
+                LLMEndpointResolver.resolveText(
+                    defaults: defaults,
+                    dispatcher: dispatcher)
+            })
         qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
             configProvider: {
                 let scope = contextScopeProvider()
                 return ASRTranscriptionClientFactory.qwenRunTaskConfig(
-                    context: contextStore.context(for: scope), contextScope: scope)
+                    defaults: defaults,
+                    context: qwenContextStore.context(for: scope),
+                    contextScope: scope,
+                    keyReader: keyReader)
             },
+            runTask: qwenRunTask,
+            audioRecorder: qwenAudioRecorder,
             contextRecorder: { text, scope in
-                contextStore.record(text, scope: scope)
+                qwenContextStore.record(text, scope: scope)
             },
-            requireMicPermission: { try MicrophonePermission.ensure(feature: "Qwen ASR realtime") })
+            requireMicPermission: requireQwenMicPermission)
     }
 
     /// Delegates to the resolved engine so callers see the ACTIVE engine's real capability
@@ -84,17 +122,18 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     }
 
     func start(locale: CaptureLocale) throws {
-        let service = resolveService()
+        let selected = ASREngine.selected(defaults: defaults)
+        let service = resolveService(selected: selected)
 
         (service as? SpeechCaptureProfileConfigurable)?
             .setCaptureProfile(captureProfile)
         Diag.asr(.info, "capture start",
-                 fields: ["engine": ASREngine.selected.title, "locale": locale.rawValue])
+                 fields: ["engine": selected.title, "locale": locale.rawValue])
         do {
             try service.start(locale: locale)
         } catch {
             Diag.asr(.error, "capture start failed",
-                     fields: ["engine": ASREngine.selected.title], error: error.localizedDescription)
+                     fields: ["engine": selected.title], error: error.localizedDescription)
             throw error
         }
         active = service
@@ -118,12 +157,13 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     /// user-language choices, and auto-switching providers per scenario would
     /// vary hotword behavior unpredictably. `CaptureProviderResolver` + tests
     /// deleted; recover from git history if the idea returns.
-    private func resolveService() -> SpeechCaptureService {
+    private func resolveService(selected: ASREngine) -> SpeechCaptureService {
         // Always-usable fallback (#389): if the selected engine isn't ready (cloud
         // missing key / offline model not downloaded), transcribe via Apple for this
         // capture without mutating the stored selection. Non-blocking — never throws.
-        let selected = ASREngine.selected
-        let route = ASRProviderRoute.dictation(selected: selected)
+        let route = ASRProviderRoute.dictation(
+            selected: selected,
+            cloudHasKey: { readiness.asr(optionId: $0.rawValue).isReady })
         if route != ASRProviderRoute.from(engine: selected) {
             Diag.asr(.info, "selected engine not ready — using Apple for this capture",
                      fields: ["selected": selected.title])
@@ -166,7 +206,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         // decision lives in SpeechTranscriptFinalizer (unit-tested, no mic/network).
         // 517: the echo check uses the SAME augmented list the request sent (dictionary + transient
         // screen terms), else an echo of the transient terms slips through (the 1.3.29 bug class).
-        let sets = ContextHotwordSettings.biasingSets()
+        let sets = ContextHotwordSettings.biasingSets(defaults: defaults)
         let weakTerms = sets.weakPrompt(augmentedWith: TransientScreenTerms.current)
         guard let enforced = SpeechTranscriptFinalizer.enforce(
             transcript, capability: active.captureCapability, sets: sets, echoTerms: weakTerms) else {
@@ -180,7 +220,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     }
 
     /// #500 S3 — settings-gated, default-off LLM correction pass applied after the hard-match.
-    private let hotwordCorrector = SettingsBackedHotwordCorrectionAPI()
 }
 
 extension RoutedSpeechCaptureService: SpeechCaptureProfileConfigurable {

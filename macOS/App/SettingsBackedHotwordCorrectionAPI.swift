@@ -7,11 +7,12 @@ import ResponsayCore
 /// resolved cloud BYOK text model. An exact, zero-cost no-op when
 /// the tier is off, no usable model is configured, or nothing is near-miss — so the default dictation
 /// path is completely unchanged.
+@MainActor
 struct SettingsBackedHotwordCorrectionAPI {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "hotword-correction")
 
-    var isEnabled: @Sendable () -> Bool = { HotwordLLMCorrectionSettings.isEnabled() }
-    var resolveEndpoint: @Sendable () -> LLMEndpoint? = { LLMEndpointResolver.resolveText() }
+    var isEnabled: () -> Bool = { HotwordLLMCorrectionSettings.isEnabled() }
+    var resolveEndpoint: () -> LLMEndpoint? = { LLMEndpointResolver.resolveText() }
 
     /// Returns the transcript with near-miss hotword spellings sharpened, or the input unchanged.
     /// `userTerms` should be the user-provenance hard-match terms (#470) — seeds are not corrected.

@@ -4,6 +4,15 @@ import CoreMedia
 import OSLog
 import ResponsayCore
 
+/// Microphone seam shared by the production recorder and deterministic local capture adapters.
+public protocol SpeechAudioRecording: AnyObject {
+    func start(
+        preferredUID: String,
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) throws
+    func stop()
+}
+
 /// Microphone recorder built on `AVCaptureSession` (macOS).
 ///
 /// Unlike `AVAudioEngine.inputNode` — which realizes at the *system default* device and keeps
@@ -18,7 +27,7 @@ import ResponsayCore
 /// capture service keeps its own consumer (`append`) and level metering unchanged; only the audio
 /// *source* changes from the engine tap to this recorder's `onBuffer` callback (fired on a private
 /// serial queue, like the old tap).
-public final class AVCaptureAudioRecorder: NSObject, @unchecked Sendable {
+public final class AVCaptureAudioRecorder: NSObject, @unchecked Sendable, SpeechAudioRecording {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "avcapture-audio")
     private let session = AVCaptureSession()
     private let output = AVCaptureAudioDataOutput()
