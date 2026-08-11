@@ -9,7 +9,7 @@ enum ModelRouteSelectionActions {
         guard let providerId = ASREngine(rawValue: raw)?.associatedProviderId else { return }
         ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
             .selectProvider(providerId, capability: .asr)
-        if let plan { applyPlan(plan, providerId: providerId, capability: .asr, defaults: defaults) }
+        if let plan { applyASRPlan(plan, providerId: providerId, defaults: defaults) }
     }
 
     static func applyLLMSelection(_ id: String, defaults: UserDefaults = .standard) {
@@ -48,34 +48,29 @@ enum ModelRouteSelectionActions {
     /// Switch the active billing plan from the model picker: rewrite plan + Base URL + model so
     /// the next call hits the right host (the per-plan key is already stored separately, keyed by
     /// plan). Mirrors what the settings card's 接入点 dropdown does, so the two surfaces agree.
-    private static func applyPlan(
+    private static func applyASRPlan(
         _ plan: BillingPlan,
         providerId: String,
-        capability: ModelCapability,
         defaults: UserDefaults
     ) {
-        guard let preset = ProviderCatalog.presets(for: capability).first(where: { $0.id == providerId }) else { return }
+        guard let preset = ProviderCatalog.presets(for: .asr)
+            .first(where: { $0.id == providerId }) else { return }
         let storedRegion = CapabilityProviderConfigStore.string(
-            "region", providerId: providerId, capability: capability, defaults: defaults)
+            "region", providerId: providerId, capability: .asr, defaults: defaults)
         let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
-            ?? preset.regions(for: capability).first ?? .global
-        let endpoint: EndpointVariant?
-        if capability == .asr {
-            endpoint = preset.effectiveASREndpoint(
-                requestedRegion: requestedRegion,
-                plan: plan)
-        } else {
-            endpoint = preset.endpoint(for: capability, region: requestedRegion, plan: plan)
-        }
+            ?? preset.regions(for: .asr).first ?? .global
+        let endpoint = preset.effectiveASREndpoint(
+            requestedRegion: requestedRegion,
+            plan: plan)
         let region = endpoint?.region ?? requestedRegion
         let baseURL = endpoint?.baseURL ?? ""
-        let model = preset.defaultModel(for: capability, plan: plan) ?? ""
+        let model = preset.defaultModel(for: .asr, plan: plan) ?? ""
         func write(_ suffix: String, _ value: String) {
             CapabilityProviderConfigStore.set(
-                value, suffix: suffix, providerId: providerId, capability: capability,
+                value, suffix: suffix, providerId: providerId, capability: .asr,
                 defaults: defaults)
         }
-        if capability == .asr { write("region", region.rawValue) }
+        write("region", region.rawValue)
         write("plan", plan.rawValue)
         write("baseURL", baseURL)
         write("model", model)

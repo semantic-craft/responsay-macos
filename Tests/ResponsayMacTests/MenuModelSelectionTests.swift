@@ -206,7 +206,7 @@ final class MenuModelSelectionTests: XCTestCase {
         XCTAssertEqual(cfg.apiKey, "sk-user")
         XCTAssertTrue(cfg.hasKey)
 
-        let endpoint = LLMEndpointResolver.resolveCloud(defaults: defaults, dispatcher: dispatcher)
+        let endpoint = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher)
         XCTAssertNotNil(endpoint)
         XCTAssertEqual(endpoint?.baseURL, "https://my-host.example/v1")
         XCTAssertEqual(endpoint?.model, "my-private-model")
