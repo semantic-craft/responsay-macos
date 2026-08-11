@@ -255,7 +255,7 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
                 appleAdapter: DeterministicCloudDictationAdapter(
                     result: "apple fallback", level: 0.99, partial: nil,
                     capability: .init()),
-                cloudAdapter: { route in Self.deterministicAdapter(for: route) })
+                cloudAdapterForRoute: { route in Self.deterministicAdapter(for: route) })
 
             try router.start(locale: .mixed)
 
@@ -281,7 +281,7 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
             appleAdapter: DeterministicCloudDictationAdapter(
                 result: "apple fallback", level: 0.77, partial: nil,
                 capability: .init()),
-            cloudAdapter: { route in Self.deterministicAdapter(for: route) })
+            cloudAdapterForRoute: { route in Self.deterministicAdapter(for: route) })
 
         try router.start(locale: .english)
         var levels = [Float]()
@@ -304,7 +304,7 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
             appleAdapter: DeterministicCloudDictationAdapter(
                 result: "apple fallback", level: 0.77, partial: nil,
                 capability: .init()),
-            cloudAdapter: { _ in
+            cloudAdapterForRoute: { _ in
                 DeterministicCloudDictationAdapter(
                     result: "推到代码厂里", level: 0.11, partial: "推到代码",
                     capability: .init(partialStyle: .postUploadSSE, needsEchoFilter: true))

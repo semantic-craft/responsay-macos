@@ -9,7 +9,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     private let apple: any SpeechCaptureService
     /// Internal seam for the six cloud adapters. Callers and tests still use only the router's
     /// `SpeechCaptureService` interface; production owns provider-specific construction here.
-    private let cloudAdapter: (ASRProviderRoute) -> any SpeechCaptureService
+    private let cloudAdapterForRoute: (ASRProviderRoute) -> any SpeechCaptureService
     private let hotwordCorrector: SettingsBackedHotwordCorrectionAPI
     /// In-process offline ASR — runs SenseVoice locally, bypassing the backend.
     private let sensevoiceLocal = OfflineSherpaCaptureService(spec: .senseVoiceSmall) {
@@ -86,7 +86,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                 qwenContextStore.record(text, scope: scope)
             },
             requireMicPermission: requireQwenMicPermission)
-        cloudAdapter = { route in
+        cloudAdapterForRoute = { route in
             if route == .qwenASRFlashRealtime { return qwenASRFlashRealtime }
 
             let provider: String
@@ -132,12 +132,12 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         defaults: UserDefaults,
         cloudIsReady: @escaping (ASREngine) -> Bool,
         appleAdapter: any SpeechCaptureService,
-        cloudAdapter: @escaping (ASRProviderRoute) -> any SpeechCaptureService
+        cloudAdapterForRoute: @escaping (ASRProviderRoute) -> any SpeechCaptureService
     ) {
         self.defaults = defaults
         self.cloudIsReady = cloudIsReady
         self.apple = appleAdapter
-        self.cloudAdapter = cloudAdapter
+        self.cloudAdapterForRoute = cloudAdapterForRoute
         let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
         hotwordCorrector = SettingsBackedHotwordCorrectionAPI(
             isEnabled: { HotwordLLMCorrectionSettings.isEnabled(defaults: defaults) },
@@ -205,7 +205,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
             return apple
         case .openAI, .mimo, .gemini, .qwenASRFlashRealtime, .volcengineRealtime,
                 .customOpenAI:
-            return cloudAdapter(route)
+            return cloudAdapterForRoute(route)
         case .sensevoiceLocal:
             return sensevoiceLocal
         case .qwen3LocalASR:
