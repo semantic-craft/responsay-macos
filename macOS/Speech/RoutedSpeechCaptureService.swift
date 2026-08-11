@@ -106,12 +106,11 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         let qwenASRFlashRealtime = QwenRunTaskStreamingCaptureService(
             configProvider: {
                 let scope = contextScopeProvider()
-                let resolution = QwenRunTaskCaptureConfiguration.resolve(
+                return QwenRunTaskCaptureConfiguration.resolve(
                     defaults: defaults,
                     context: qwenContextStore.context(for: scope),
                     contextScope: scope,
                     keyReader: keyReader)
-                return resolution.config
             },
             prepareConfig: { baseConfig in
                 let transient = await screenTerms.awaitCurrentHarvest()

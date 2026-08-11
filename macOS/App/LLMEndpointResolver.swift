@@ -98,14 +98,4 @@ enum LLMEndpointResolver {
         resolveText(defaults: defaults, dispatcher: dispatcher) != nil
     }
 
-    /// Cloud-only. The BYOK card, or `nil` when not configured → backend fallback.
-    /// ponytail: no production caller since the autolearn 云端智能 tier was cut; kept because it
-    /// has its own unit tests and is a reusable cloud-class primitive. Delete with its tests if it
-    /// stays unused.
-    static func resolveCloud(
-        defaults: UserDefaults = .standard,
-        dispatcher: ProviderConfigDispatcher? = nil
-    ) -> LLMEndpoint? {
-        resolve(defaults: defaults, dispatcher: dispatcher, lane: \.dictationEndpoint)
-    }
 }
