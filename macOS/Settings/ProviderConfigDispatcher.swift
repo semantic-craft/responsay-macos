@@ -1,4 +1,5 @@
 import Foundation
+import ResponsayCore
 
 /// 233 — the BYOK consumer `ModelsKeysPane` was missing.
 ///
@@ -17,6 +18,7 @@ struct ResolvedProviderConfig: Equatable, Sendable {
     let plan: BillingPlan
     let baseURL: String
     let model: String
+    let workspaceID: String?
     let apiKey: String?
     let appId: String?
     let accessToken: String?
@@ -80,8 +82,10 @@ struct ProviderConfigDispatcher {
             "workspaceId", providerId: providerId, capability: capability,
             defaults: defaults, activeProviderId: storedProviderId)
 
-        let region = ProviderRegion(rawValue: storedRegion ?? "")
-            ?? preset.regions(for: capability).first ?? .global
+        let availableRegions = preset.regions(for: capability)
+        let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
+        let region = requestedRegion.flatMap { availableRegions.contains($0) ? $0 : nil }
+            ?? availableRegions.first ?? .global
         let requestedPlan = planOverride ?? MiMoASRRouting.normalizedPlan(
             providerId: providerId,
             capability: capability,
@@ -115,32 +119,57 @@ struct ProviderConfigDispatcher {
         let selectedBaseURL = fixedProviderSurface || requestedPlanIsUnavailable
             ? catalogBaseURL
             : normalizedBaseURL
+        let workspaceID: String?
+        if isQwenASRFlash {
+            workspaceID = QwenRunTaskEndpoint.normalizedWorkspaceID(storedWorkspaceID)
+        } else if capability == .llm && providerId == "qwen" {
+            workspaceID = nonEmpty(storedWorkspaceID).flatMap(QwenWorkspaceEndpoint.normalizedWorkspaceID)
+        } else {
+            workspaceID = nonEmpty(storedWorkspaceID)
+        }
         let baseURL: String
         if isQwenASRFlash {
             // Fully derived from 接入点 + Workspace ID — the run-task path is fixed, so a stored
             // value (including anything the retired OmniRealtime engine left) contributes nothing.
-            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: storedWorkspaceID, region: region)
+            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: workspaceID, region: region)
         } else if capability == .llm && providerId == "qwen" {
             baseURL = QwenWorkspaceEndpoint.baseURL(
-                workspaceID: storedWorkspaceID ?? "", region: region) ?? selectedBaseURL
+                workspaceID: workspaceID ?? "", region: region) ?? selectedBaseURL
         } else {
             baseURL = selectedBaseURL
         }
-        // Local engines have no key; never surface one even if a stale Keychain item exists.
-        let apiKey = preset.isLocal ? nil : apiKeyForProvider(
-            providerId: providerId,
-            capability: capability,
-            plan: plan)
-        let appId = preset.isLocal
-            ? nil
-            : nonEmpty(keyReader(CapabilityCredentialAccount.appIdAccount(providerId: providerId)))
-        let accessToken = preset.isLocal
-            ? nil
-            : nonEmpty(keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: providerId)))
+        // Read only the credential shape this preset accepts. Besides avoiding irrelevant
+        // Keychain work on latency-sensitive request paths, this prevents stale secret slots from
+        // making a provider appear configured through a credential form its UI does not expose.
+        let apiKey: String?
+        let appId: String?
+        let accessToken: String?
+        if preset.isLocal {
+            apiKey = nil
+            appId = nil
+            accessToken = nil
+        } else {
+            switch preset.credentialShape {
+            case .apiKey:
+                apiKey = apiKeyForProvider(
+                    providerId: providerId,
+                    capability: capability,
+                    plan: plan)
+                appId = nil
+                accessToken = nil
+            case .appIdAndToken:
+                apiKey = nil
+                appId = nonEmpty(keyReader(
+                    CapabilityCredentialAccount.appIdAccount(providerId: providerId)))
+                accessToken = nonEmpty(keyReader(
+                    CapabilityCredentialAccount.accessTokenAccount(providerId: providerId)))
+            }
+        }
 
         return ResolvedProviderConfig(
             capability: capability, providerId: providerId, region: region, plan: plan,
-            baseURL: baseURL, model: model, apiKey: apiKey, appId: appId, accessToken: accessToken)
+            baseURL: baseURL, model: model, workspaceID: workspaceID,
+            apiKey: apiKey, appId: appId, accessToken: accessToken)
     }
 
     private func nonEmpty(_ value: String?) -> String? {

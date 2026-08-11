@@ -1,10 +1,33 @@
 import SwiftUI
 import ResponsayCore
 
+/// Settings-only projection of the same scoped provider state used by the runtime dispatcher.
+/// The locale picker observes configuration events instead of reading the lossy active-key mirror.
+enum SettingsASRModelState {
+    static func effectiveModel(
+        providerId: String?,
+        defaults: UserDefaults = .standard
+    ) -> String? {
+        guard let providerId else { return nil }
+        return ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .resolve(.asr, providerId: providerId)
+            .model
+    }
+
+    static func supportsMixedLanguageHints(
+        providerId: String?,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard providerId == QwenASRFlashRouting.providerId,
+              let model = effectiveModel(providerId: providerId, defaults: defaults)
+        else { return false }
+        return QwenASRHotwords.languageHints(for: .mixed, model: model).count > 1
+    }
+}
+
 struct SettingsASRPane: View {
     @Environment(AppearanceStore.self) private var appearanceStore
-    @AppStorage("byok.asr.model")
-    private var selectedASRModel = QwenASRFlashRouting.defaultModel
+    @State private var modelConfigurationRevision = 0
 
     @Binding var asrEngineRaw: String
     @Binding var localeRaw: String
@@ -121,7 +144,8 @@ struct SettingsASRPane: View {
         .onChange(of: currentCloudProviderId) { _, _ in
             normalizeProviderSpecificLocale()
         }
-        .onChange(of: selectedASRModel) { _, _ in
+        .onReceive(NotificationCenter.default.publisher(for: .modelConfigurationDidChange)) { _ in
+            modelConfigurationRevision &+= 1
             normalizeProviderSpecificLocale()
         }
     }
@@ -131,8 +155,9 @@ struct SettingsASRPane: View {
     }
 
     private var supportsMixedLanguageHints: Bool {
-        currentCloudProviderId == QwenASRFlashRouting.providerId
-            && QwenASRHotwords.languageHints(for: .mixed, model: selectedASRModel).count > 1
+        _ = modelConfigurationRevision
+        return SettingsASRModelState.supportsMixedLanguageHints(
+            providerId: currentCloudProviderId)
     }
 
     private func normalizeProviderSpecificLocale() {

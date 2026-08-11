@@ -53,6 +53,37 @@ private final class ASRRuntimeStubURLProtocol: URLProtocol {
     }
 }
 
+private final class ASRCredentialStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: String] = [:]
+    private var reads: [String] = []
+
+    func read(_ account: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        reads.append(account)
+        return values[account]
+    }
+
+    func write(_ value: String, account: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        values[account] = value
+    }
+
+    func resetReads() {
+        lock.lock()
+        defer { lock.unlock() }
+        reads = []
+    }
+
+    var recordedReads: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return reads
+    }
+}
+
 /// 猎虫① H11 (issue 322): the router never conformed to
 /// `SpeechPartialTranscriptProviding`, so the `as?` casts in
 /// QuickCaptureViewModel / VoiceAssistantViewModel always failed — live capsule
@@ -182,21 +213,138 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
     }
 
-    func testQwenRunTaskUsesFreshPrecompiledVocabularyBinding() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
-        QwenPrecompiledVocabularySettings.save(
-            identifier: "vocab-curated-a1b2c3",
-            model: QwenRunTaskEndpoint.defaultModel,
-            endpoint: QwenRunTaskEndpoint(region: .china),
-            vocabularyTerms: ContextHotwordSettings.qwenPersistentHotwords(defaults: defaults),
+    @MainActor
+    func testQwenSettingsSurviveQuickProviderReselectionInNextCapture() {
+        defaults.set(QwenASRFlashRouting.providerId, forKey: "byok.asr.provider")
+        let credentials = ASRCredentialStore()
+        let machine = ProviderConfigMachine(
+            capability: .asr,
+            preferredProviderId: QwenASRFlashRouting.providerId,
+            defaults: defaults,
+            keyReader: { credentials.read($0) },
+            keyWriter: { credentials.write($0, account: $1) })
+        machine.load()
+        machine.regionRaw = ProviderRegion.singapore.rawValue
+        machine.workspaceID = "ws-abc123"
+        machine.model = QwenASRFlashRouting.funASRRealtimeModel
+        machine.apiKey = "settings-qwen-key"
+        machine.writeApiKey()
+        machine.refreshBaseURLForSelection()
+        machine.persist()
+
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudOpenAI.rawValue,
             defaults: defaults)
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudQwenASRFlashRealtime.rawValue,
+            defaults: defaults)
+        XCTAssertEqual(
+            SettingsASRModelState.effectiveModel(
+                providerId: QwenASRFlashRouting.providerId,
+                defaults: defaults),
+            QwenASRFlashRouting.funASRRealtimeModel)
+        XCTAssertFalse(
+            SettingsASRModelState.supportsMixedLanguageHints(
+                providerId: QwenASRFlashRouting.providerId,
+                defaults: defaults))
 
+        credentials.resetReads()
         let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
-            defaults: defaults, keyReader: { _ in "k" })
+            defaults: defaults,
+            keyReader: { credentials.read($0) })
 
-        XCTAssertEqual(config.precompiledVocabularyID, "vocab-curated-a1b2c3")
-        XCTAssertTrue(config.hotwords.isEmpty)
+        XCTAssertEqual(
+            config.endpoint.url.absoluteString,
+            "wss://ws-abc123.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(config.model, "fun-asr-realtime")
+        XCTAssertEqual(config.apiKey, "settings-qwen-key")
+        XCTAssertEqual(
+            credentials.recordedReads,
+            [CapabilityCredentialAccount.apiKeyAccount(
+                providerId: QwenASRFlashRouting.providerId,
+                capability: .asr,
+                plan: .payg)])
+    }
+
+    @MainActor
+    func testQwenSettingsAndNextCaptureShareNormalizedEffectiveState() {
+        defaults.set(QwenASRFlashRouting.providerId, forKey: "byok.asr.provider")
+        defaults.set(
+            ProviderRegion.unitedStates.rawValue,
+            forKey: "byok.asr.qwen-asr-flash.region")
+        defaults.set(
+            "ws-abc123.evil.example",
+            forKey: "byok.asr.qwen-asr-flash.workspaceId")
+        defaults.set(
+            "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+            forKey: "byok.asr.qwen-asr-flash.baseURL")
+        defaults.set(
+            "qwen3-asr-flash-realtime-2026-02-10",
+            forKey: "byok.asr.qwen-asr-flash.model")
+        let machine = ProviderConfigMachine(
+            capability: .asr,
+            preferredProviderId: QwenASRFlashRouting.providerId,
+            defaults: defaults,
+            keyReader: { _ in "settings-qwen-key" })
+
+        machine.load()
+        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults,
+            keyReader: { _ in "settings-qwen-key" })
+
+        let expected = [
+            ProviderRegion.china.rawValue,
+            "",
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+            "qwen-audio-3.0-asr-flash-streaming",
+        ]
+        XCTAssertEqual(
+            [machine.regionRaw, machine.workspaceID, machine.baseURL, machine.model],
+            expected)
+        XCTAssertEqual(
+            [
+                config.endpoint.region.rawValue,
+                config.endpoint.workspaceID ?? "",
+                config.endpoint.url.absoluteString,
+                config.model,
+            ],
+            expected)
+    }
+
+    @MainActor
+    func testQwenVocabularySettingReachesEachNextCaptureWithoutRestart() {
+        defaults.set(QwenASRFlashRouting.providerId, forKey: "byok.asr.provider")
+        XCTAssertTrue(ContextHotwordSettings.addManual("Westlaw", defaults: defaults))
+        let machine = ProviderConfigMachine(
+            capability: .asr,
+            preferredProviderId: QwenASRFlashRouting.providerId,
+            defaults: defaults,
+            keyReader: { _ in "settings-qwen-key" })
+        machine.load()
+        machine.workspaceID = "ws-first"
+        machine.refreshBaseURLForSelection()
+        machine.persist()
+        machine.precompiledVocabularyID = "vocab-curated-a1b2c3"
+        machine.writeQwenPrecompiledVocabulary()
+
+        let synchronized = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults,
+            keyReader: { _ in "settings-qwen-key" })
+
+        machine.workspaceID = "ws-second"
+        machine.refreshBaseURLForSelection()
+        machine.persist()
+        let changed = ASRTranscriptionClientFactory.qwenRunTaskConfig(
+            defaults: defaults,
+            keyReader: { _ in "settings-qwen-key" })
+
+        XCTAssertEqual(synchronized.precompiledVocabularyID, "vocab-curated-a1b2c3")
+        XCTAssertTrue(synchronized.hotwords.isEmpty)
+        XCTAssertNil(changed.precompiledVocabularyID)
+        XCTAssertEqual(changed.hotwords, ["Westlaw"])
+        XCTAssertEqual(
+            changed.endpoint.url.absoluteString,
+            "wss://ws-second.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
     }
 
     func testQwenRunTaskFallsBackToFullInstantVocabularyAfterLearningMixedTerm() {
@@ -257,60 +405,4 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertTrue(config.heartbeat)
     }
 
-    /// Filling in a Workspace ID switches the socket onto that business space's dedicated host.
-    func testQwenRunTaskWorkspaceIDDerivesDedicatedHost() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
-
-        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
-            defaults: defaults,
-            keyReader: { $0 == "byok.qwen-asr-flash" ? "settings-qwen-key" : nil })
-
-        XCTAssertTrue(config.endpoint.usesDedicatedHost)
-        XCTAssertEqual(config.endpoint.url.absoluteString,
-                       "wss://ws-abc123.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference")
-    }
-
-    /// 新加坡 switches both the generic and the dedicated host.
-    func testQwenRunTaskSingaporeRegionSwitchesHost() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        defaults.set("singapore", forKey: "byok.asr.region")
-
-        XCTAssertEqual(
-            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" })
-                .endpoint.url.absoluteString,
-            "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference")
-
-        defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
-        XCTAssertEqual(
-            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" })
-                .endpoint.url.absoluteString,
-            "wss://ws-abc123.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/inference")
-    }
-
-    /// An install carried over from the retired OmniRealtime engine still has that endpoint and a
-    /// `qwen3-asr-flash-realtime-*` model under these keys — a different protocol on a sibling path,
-    /// and the one Qwen realtime model with no hotword support. Neither may reach the socket.
-    func testQwenRunTaskDropsRetiredOmniRealtimeEndpointAndModel() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        defaults.set("wss://dashscope.aliyuncs.com/api-ws/v1/realtime", forKey: "byok.asr.baseURL")
-        defaults.set("qwen3-asr-flash-realtime-2026-02-10", forKey: "byok.asr.model")
-
-        let config = ASRTranscriptionClientFactory.qwenRunTaskConfig(
-            defaults: defaults, keyReader: { _ in "settings-qwen-key" })
-
-        XCTAssertEqual(config.endpoint.url.absoluteString,
-                       "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
-        XCTAssertEqual(config.model, "qwen-audio-3.0-asr-flash-streaming")
-    }
-
-    /// A model the user picked from the card's dropdown must survive.
-    func testQwenRunTaskKeepsUserPickedFunASRRealtimeModel() {
-        defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        defaults.set("fun-asr-realtime", forKey: "byok.asr.model")
-
-        XCTAssertEqual(
-            ASRTranscriptionClientFactory.qwenRunTaskConfig(defaults: defaults, keyReader: { _ in "k" }).model,
-            "fun-asr-realtime")
-    }
 }

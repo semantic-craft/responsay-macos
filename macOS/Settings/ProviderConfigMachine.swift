@@ -42,17 +42,20 @@ final class ProviderConfigMachine {
     @ObservationIgnored private var loaded = false
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored private let keyReader: (String) -> String?
+    @ObservationIgnored private let keyWriter: (String, String) -> Void
 
     init(
         capability: ModelCapability,
         preferredProviderId: String?,
         defaults: UserDefaults = .standard,
-        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) }
+        keyReader: @escaping (String) -> String? = { BYOKKeychain.read($0) },
+        keyWriter: @escaping (String, String) -> Void = { BYOKKeychain.write($0, account: $1) }
     ) {
         self.capability = capability
         self.preferredProviderId = preferredProviderId
         self.defaults = defaults
         self.keyReader = keyReader
+        self.keyWriter = keyWriter
     }
 
     // MARK: Derived
@@ -201,18 +204,11 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        // 千问实时 card: the socket is fully derived from 接入点 + Workspace ID, so the stored Base URL
-        // is display-only — always re-derive it, which also drops whatever the retired OmniRealtime
-        // engine left here. The model is a real user pick, so only a retired id is replaced.
         if capability == .asr, pid == QwenASRFlashRouting.providerId {
-            baseURL = QwenASRFlashRouting.displayBaseURL(workspaceID: workspaceID, region: r)
-            model = QwenASRFlashRouting.normalizedModel(
-                stored: model,
-                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
+            applyEffectiveQwenASRConfiguration()
+        } else {
+            apiKey = readApiKey(providerId: pid, plan: plan)
         }
-        apiKey = readApiKey(providerId: pid, plan: plan)
         appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
         accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
@@ -271,18 +267,11 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        // Same derive-and-persist as `load()` for the 千问 card (see there).
         if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
-            let pl = BillingPlan(rawValue: planRaw) ?? .payg
-            baseURL = QwenASRFlashRouting.displayBaseURL(
-                workspaceID: workspaceID, region: ProviderRegion(rawValue: regionRaw) ?? .china)
-            model = QwenASRFlashRouting.normalizedModel(
-                stored: model,
-                fallback: prov.defaultModel(for: capability, plan: pl) ?? QwenASRFlashRouting.defaultModel)
-            setScoped(baseURL, suffix: "baseURL")
-            setScoped(model, suffix: "model")
+            applyEffectiveQwenASRConfiguration()
+        } else {
+            apiKey = readApiKey(providerId: prov.id, plan: plan)
         }
-        apiKey = readApiKey(providerId: prov.id, plan: plan)
         appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
         accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
@@ -358,20 +347,20 @@ final class ProviderConfigMachine {
     // MARK: Credential writers (keychain — ADR-0023, never stored in UserDefaults/plaintext)
 
     func writeApiKey() {
-        BYOKKeychain.write(
+        keyWriter(
             apiKey,
-            account: CapabilityCredentialAccount.apiKeyAccount(
+            CapabilityCredentialAccount.apiKeyAccount(
                 providerId: providerId, capability: capability, plan: plan))
     }
 
     func writeAppId() {
-        BYOKKeychain.write(appId, account: CapabilityCredentialAccount.appIdAccount(providerId: providerId))
+        keyWriter(appId, CapabilityCredentialAccount.appIdAccount(providerId: providerId))
     }
 
     func writeAccessToken() {
-        BYOKKeychain.write(
+        keyWriter(
             accessToken,
-            account: CapabilityCredentialAccount.accessTokenAccount(providerId: providerId))
+            CapabilityCredentialAccount.accessTokenAccount(providerId: providerId))
     }
 
     func writeBoostingTableId() {
@@ -384,5 +373,19 @@ final class ProviderConfigMachine {
         let account = CapabilityCredentialAccount.apiKeyAccount(
             providerId: providerId, capability: capability, plan: plan)
         return keyReader(account) ?? ""
+    }
+
+    /// Bring the Qwen settings surface onto the same effective state the next capture consumes.
+    /// This is read-only with respect to persisted choices; obsolete or invalid raw values remain
+    /// inert inputs until the user explicitly saves the normalized settings surface.
+    private func applyEffectiveQwenASRConfiguration() {
+        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .resolve(.asr, providerId: QwenASRFlashRouting.providerId)
+        regionRaw = effective.region.rawValue
+        planRaw = effective.plan.rawValue
+        workspaceID = effective.workspaceID ?? ""
+        baseURL = effective.baseURL
+        model = effective.model
+        apiKey = effective.apiKey ?? ""
     }
 }
