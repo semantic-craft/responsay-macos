@@ -95,30 +95,19 @@ enum TTSActiveProvider {
     }
 
     private static func restoreActiveConfig(_ providerId: String, defaults: UserDefaults) {
-        guard let preset = ProviderCatalog.presets(for: .tts).first(where: { $0.id == providerId }) else {
-            return
-        }
-        let scopedRegion = scopedString("region", providerId: providerId, defaults: defaults)
-        let region = ProviderRegion(rawValue: scopedRegion ?? "") ?? preset.regions(for: .tts).first ?? .global
-        let scopedPlan = scopedString("plan", providerId: providerId, defaults: defaults)
-        let plan = BillingPlan(rawValue: scopedPlan ?? "") ?? preset.plans(for: .tts).first ?? .payg
-        let fallbacks: [String: String] = [
-            "region": region.rawValue,
-            "plan": plan.rawValue,
-            "model": preset.defaultModel(for: .tts, plan: plan) ?? "",
-            "voice": preset.presetVoices.first?.id ?? "",
-            "baseURL": preset.endpoint(for: .tts, region: region, plan: plan)?.baseURL ?? "",
+        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .resolve(.tts, providerId: providerId)
+        let values: [String: String] = [
+            "region": effective.region.rawValue,
+            "plan": effective.plan.rawValue,
+            "model": effective.model,
+            "voice": effective.voice ?? "",
+            "baseURL": effective.baseURL,
         ]
 
         for suffix in configSuffixes {
-            let scopedKey = CapabilityProviderConfigStore.scopedKey(
-                suffix, providerId: providerId, capability: .tts)
             let activeKey = CapabilityProviderConfigStore.activeKey(suffix, capability: .tts)
-            if let stored = defaults.object(forKey: scopedKey) {
-                defaults.set(stored, forKey: activeKey)
-            } else if let fallback = fallbacks[suffix] {
-                defaults.set(fallback, forKey: activeKey)
-            }
+            defaults.set(values[suffix] ?? "", forKey: activeKey)
         }
     }
 

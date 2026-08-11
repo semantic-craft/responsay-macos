@@ -61,15 +61,6 @@ final class TTSEngineTests: XCTestCase {
         XCTAssertEqual(TTSEngine.cloudMiniMax.selectedVoiceID(defaults: freshDefaults("minimax")), "male-qn-qingse")
     }
 
-    func testWiredCloudEnginesMapToCredentialSlots() {
-        XCTAssertEqual(TTSEngine.cloudOpenAI.credentialSlot?.account, ProviderCredentialStore.Slot.openai.account)
-        XCTAssertEqual(TTSEngine.cloudQwen.credentialSlot?.account, ProviderCredentialStore.Slot.dashscope.account)
-        XCTAssertEqual(TTSEngine.cloudMimo.credentialSlot?.account, ProviderCredentialStore.Slot.mimo.account)
-        XCTAssertEqual(TTSEngine.cloudMiniMax.credentialSlot?.account, ProviderCredentialStore.Slot.minimax.account)
-        XCTAssertEqual(TTSEngine.cloudGemini.credentialSlot?.account, ProviderCredentialStore.Slot.gemini.account)
-        XCTAssertNil(TTSEngine.sherpaKokoroLocal.credentialSlot)
-    }
-
     func testGeminiIsWiredToCatalog() {
         XCTAssertEqual(TTSEngine.cloudGemini.providerID, "gemini")
         XCTAssertEqual(TTSEngine.cloudGemini.catalog?.providerID, "gemini")

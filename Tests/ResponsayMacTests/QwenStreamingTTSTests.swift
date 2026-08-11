@@ -132,7 +132,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let keyReader: (String) -> String? = { account in
-            account == TTSCredential.coachAccount(for: "qwen") ? "legacy-secret" : nil
+            account == TTSCredential.keychainAccount(for: "qwen") ? "tts-secret" : nil
         }
         let streaming = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,
@@ -147,7 +147,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         ] {
             XCTAssertEqual(engine.model, "qwen-audio-3.0-tts-flash")
             XCTAssertEqual(engine.voice, "loongeva_v3.6")
-            XCTAssertEqual(engine.key, "legacy-secret")
+            XCTAssertEqual(engine.key, "tts-secret")
         }
     }
 

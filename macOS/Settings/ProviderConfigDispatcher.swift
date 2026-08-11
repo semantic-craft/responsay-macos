@@ -4,7 +4,7 @@ import ResponsayCore
 /// 233 — the BYOK consumer `ModelsKeysPane` was missing.
 ///
 /// The capability cards persist a per-capability selection (`byok.<cap>.provider/region/
-/// plan/model/baseURL` in `UserDefaults`, key in `BYOKKeychain` under the account
+/// plan/model/voice/baseURL` in `UserDefaults`, key in `BYOKKeychain` under the account
 /// selected by `CapabilityCredentialAccount`)
 /// but nothing read it back, so a key typed there never reached the backend (the orphan-keys
 /// gap in issue 222). `ProviderConfigDispatcher` resolves that selection into one concrete
@@ -18,6 +18,7 @@ struct ResolvedProviderConfig: Equatable, Sendable {
     let plan: BillingPlan
     let baseURL: String
     let model: String
+    let voice: String?
     let workspaceID: String?
     let apiKey: String?
     let appId: String?
@@ -52,7 +53,7 @@ struct ProviderConfigDispatcher {
     }
 
     /// Resolve the user's selection for one capability into a concrete config. Reads the same
-    /// `byok.<cap>.<field>` keys `ModelsKeysPane.persist()` writes; any unset field falls back
+    /// `byok.<cap>.<field>` keys the settings machine persists; any unset field falls back
     /// to the catalog default for the resolved provider (the same precedence the pane uses on
     /// first load).
     func resolve(_ capability: ModelCapability) -> ResolvedProviderConfig {
@@ -115,6 +116,8 @@ struct ProviderConfigDispatcher {
             "plan", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
         let storedModel = CapabilityProviderConfigStore.string(
             "model", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+        let storedVoice = CapabilityProviderConfigStore.string(
+            "voice", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
         let storedBaseURL = CapabilityProviderConfigStore.string(
             "baseURL", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
         let storedWorkspaceID = CapabilityProviderConfigStore.string(
@@ -163,6 +166,11 @@ struct ProviderConfigDispatcher {
         } else {
             model = nonEmpty(storedModel) ?? catalogModel
         }
+        let voice = resolvedVoice(
+            capability: capability,
+            providerId: providerId,
+            preset: preset,
+            storedVoice: storedVoice)
         let catalogBaseURL = selectedVariant?.baseURL
             ?? preset.endpoint(for: capability, region: region, plan: plan)?.baseURL
             ?? ""
@@ -225,7 +233,7 @@ struct ProviderConfigDispatcher {
 
         return ResolvedProviderConfig(
             capability: capability, providerId: providerId, region: region, plan: plan,
-            baseURL: baseURL, model: model, workspaceID: workspaceID,
+            baseURL: baseURL, model: model, voice: voice, workspaceID: workspaceID,
             apiKey: apiKey, appId: appId, accessToken: accessToken)
     }
 
@@ -252,6 +260,23 @@ struct ProviderConfigDispatcher {
             model: model,
             apiKey: provider.apiKey,
             thinkingEnabled: false)
+    }
+
+    /// TTS voice policy belongs to the effective configuration, not to individual UI/runtime
+    /// callers. Qwen exposes a closed versioned roster, so retired values fall back; other
+    /// providers deliberately accept non-empty custom/clone voice identifiers.
+    private func resolvedVoice(
+        capability: ModelCapability,
+        providerId: String,
+        preset: ProviderPreset,
+        storedVoice: String?
+    ) -> String? {
+        guard capability == .tts else { return nil }
+        let catalog = TTSProviderCatalogPresets.catalog(for: providerId)
+        let fallback = catalog?.defaults.voiceID ?? preset.presetVoices.first?.id
+        guard let voice = nonEmpty(storedVoice) else { return fallback }
+        guard providerId == "qwen" else { return voice }
+        return catalog?.voices.contains(where: { $0.id == voice }) == true ? voice : fallback
     }
 
     private static func defaultProviderId(_ presets: [ProviderPreset]) -> String {

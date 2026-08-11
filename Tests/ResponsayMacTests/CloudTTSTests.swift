@@ -272,21 +272,22 @@ final class CloudTTSTests: XCTestCase {
         }
     }
 
-    func testTTSEngineUsesSharedKeyOnlyWhenTTSProviderUnsetForMigration() throws {
-        let suite = "test.ttsEngineLegacySharedFallback"
+    func testTTSEngineDoesNotUseSharedKeyWhenTTSProviderPointerIsUnset() throws {
+        let suite = "test.ttsEngineNoLegacySharedFallback"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        let synth = try TTSEngine.cloudOpenAI.makeSynthesizer(
-            defaults: defaults,
-            session: StubURLProtocol.session(),
-            keyReader: { account in
-                account == TTSCredential.coachAccount(for: "openai") ? "legacy-secret" : nil
-            })
-
-        let engine = try XCTUnwrap(synth as? DirectCloudTTSEngine)
-        XCTAssertEqual(engine.key, "legacy-secret")
+        XCTAssertThrowsError(
+            try TTSEngine.cloudOpenAI.makeSynthesizer(
+                defaults: defaults,
+                session: StubURLProtocol.session(),
+                keyReader: { account in
+                    account == TTSCredential.coachAccount(for: "openai") ? "shared-secret" : nil
+                })
+        ) { error in
+            XCTAssertEqual(error as? TTSError, .missingAPIKey(provider: "OpenAI"))
+        }
     }
 
     func testTTSEngineUsesMiniMaxTTSSettingsConfigForDirectRequest() async throws {

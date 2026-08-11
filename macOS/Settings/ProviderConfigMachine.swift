@@ -173,7 +173,6 @@ final class ProviderConfigMachine {
             : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: pid, activeProviderId: storedProvider) ?? defaultVoice
-        resolveTTSVoice()
         let r = ProviderRegion(rawValue: regionRaw) ?? .global
         let pl = BillingPlan(rawValue: planRaw) ?? .payg
         let catalogBaseURL = prov.endpoint(for: capability, region: r, plan: pl)?.baseURL ?? ""
@@ -208,6 +207,8 @@ final class ProviderConfigMachine {
             applyEffectiveLLMConfiguration(providerId: pid)
         } else if capability == .asr, pid == QwenASRFlashRouting.providerId {
             applyEffectiveQwenASRConfiguration()
+        } else if capability == .tts {
+            applyEffectiveTTSConfiguration()
         } else {
             apiKey = readApiKey(providerId: pid, plan: plan)
         }
@@ -246,7 +247,6 @@ final class ProviderConfigMachine {
             : ""
         let defaultVoice = prov.presetVoices.first?.id ?? ""
         voice = scopedString("voice", providerId: prov.id, activeProviderId: activeProvider) ?? defaultVoice
-        resolveTTSVoice()
         baseURL = prov.endpoint(for: capability, region: ProviderRegion(rawValue: regionRaw) ?? .global,
                                 plan: BillingPlan(rawValue: planRaw) ?? .payg)?.baseURL ?? ""
         if !requestedPlanIsUnavailable {
@@ -273,6 +273,8 @@ final class ProviderConfigMachine {
             applyEffectiveLLMConfiguration(providerId: prov.id)
         } else if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
             applyEffectiveQwenASRConfiguration()
+        } else if capability == .tts {
+            applyEffectiveTTSConfiguration()
         } else {
             apiKey = readApiKey(providerId: prov.id, plan: plan)
         }
@@ -394,4 +396,5 @@ final class ProviderConfigMachine {
         model = effective.model
         apiKey = effective.apiKey ?? ""
     }
+
 }
