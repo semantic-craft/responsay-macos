@@ -195,9 +195,7 @@ struct ModelLaneReadinessResolver {
         providerId: String,
         plan: BillingPlan? = nil
     ) -> ModelLaneState {
-        guard ProviderCatalog.presets(for: capability).contains(where: { preset in
-            CapabilitySelectionSync.providerMatches(preset.id, providerId, capability: capability)
-        }) else {
+        guard ProviderCatalog.presets(for: capability).contains(where: { $0.id == providerId }) else {
             return ModelLaneState(readiness: .cloudUnconfigured, reason: .invalidRoute)
         }
         return Self.cloudState(for: resolvedConfig(capability, providerId: providerId, plan: plan))

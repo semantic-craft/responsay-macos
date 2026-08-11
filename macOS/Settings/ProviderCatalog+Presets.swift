@@ -245,7 +245,7 @@ extension ProviderCatalog {
         // :generateContent (audio inline / responseModalities:["AUDIO"]), not the
         // OpenAI-compat surface. ASR auth is in DirectGeminiTranscriptionAPI; TTS in
         // GeminiTTSAdapter. The native-host override keeps the settings card from
-        // prefilling /v1beta/openai/ into byok.tts.baseURL (which would 404).
+        // prefilling /v1beta/openai/ into the scoped TTS Base URL (which would 404).
         capabilityEndpoints: [
             .asr: [.init(.global, .payg, "https://generativelanguage.googleapis.com/v1beta/")],
             .tts: [.init(.global, .payg, "https://generativelanguage.googleapis.com/v1beta/")],

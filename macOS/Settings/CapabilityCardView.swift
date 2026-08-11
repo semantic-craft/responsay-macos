@@ -226,21 +226,18 @@ struct CapabilityCardView: View {
                 }
             }
         }
-        // 朗读 only: selecting a provider also selects its engine and restores its scoped runtime
-        // config; opening the card only backfills genuinely missing legacy state. ASR / LLM stay
-        // excluded because their route pickers own engine/provider synchronization separately.
         .onAppear {
             machine.load()
-            guard capability == .tts else { return }
-            TTSActiveProvider.adoptShownProviderIfUnset(
-                machine.providerId,
-                hasCredential: machine.hasStoredCredential,
-                defaults: machine.defaults)
         }
         .onChange(of: machine.providerId) { _, _ in
             machine.selectProvider()
-            guard capability == .tts else { return }
-            TTSActiveProvider.adopt(machine.providerId, defaults: machine.defaults)
+            guard capability == .tts,
+                  let engine = TTSEngine.selectableCases.first(where: {
+                      $0.providerID == machine.providerId
+                  }) else { return }
+            ModelRouteSelectionActions.applyTTSSelection(
+                engine.rawValue,
+                defaults: machine.defaults)
         }
         .onChange(of: machine.regionRaw) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.planRaw) { old, new in

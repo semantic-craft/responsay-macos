@@ -22,15 +22,9 @@ enum RetiredProviderCleanup {
     ) {
         guard !defaults.bool(forKey: markerKey) else { return }
 
-        // 仅当「当前选中的就是退役 provider」才清 active 键：否则会把用户正在用的其它 provider
-        // 的配置一起抹掉。
-        let activeProviderKey = CapabilityProviderConfigStore.activeKey("provider", capability: .llm)
+        let activeProviderKey = CapabilityProviderConfigStore.providerKey(.llm)
         if defaults.string(forKey: activeProviderKey) == providerId {
             defaults.removeObject(forKey: activeProviderKey)
-            for suffix in configSuffixes {
-                defaults.removeObject(
-                    forKey: CapabilityProviderConfigStore.activeKey(suffix, capability: .llm))
-            }
         }
 
         // per-provider 作用域的值无条件清理——它们只属于这个 provider。

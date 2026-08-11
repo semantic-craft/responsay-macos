@@ -145,7 +145,7 @@ struct ProviderConfigMachineTests {
         #expect(m.model == "bigmodel")
     }
 
-    @Test func loadForcesFixedEndpointEvenOverStaleStoredBatchConfig() {
+    @Test func loadResolvesFixedEndpointWithoutRewritingStoredProfile() {
         let d = freshDefaults("load-fixed-overrides-stale")
         d.set("volcengine-flash", forKey: "byok.asr.provider")
         // Stale batch config a user could have from before the realtime migration.
@@ -156,10 +156,9 @@ struct ProviderConfigMachineTests {
         m.load()
         #expect(m.baseURL == "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream")
         #expect(m.model == "bigmodel")
-        // …and the forced values are persisted back so ModelLaneDisplay reflects them.
         #expect(d.string(forKey: "byok.asr.volcengine-flash.baseURL")
-                == "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream")
-        #expect(d.string(forKey: "byok.asr.volcengine-flash.model") == "bigmodel")
+                == "https://stale.example.com/v1")
+        #expect(d.string(forKey: "byok.asr.volcengine-flash.model") == "stale-batch-model")
     }
 
     // MARK: - selectProvider(): re-seeds state for the newly picked provider
@@ -172,6 +171,7 @@ struct ProviderConfigMachineTests {
         m.providerId = "openai"
         m.selectProvider()
 
+        #expect(m.defaults.string(forKey: "byok.llm.provider") == "openai")
         #expect(m.region == .global)
         #expect(m.plan == .payg)
         #expect(m.model == "chat-latest")
@@ -291,16 +291,4 @@ struct ProviderConfigMachineTests {
             == "https://ws-abc123.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
     }
 
-    @Test func persistMirrorsToActiveKeyWhenProviderMatchesStored() {
-        let d = freshDefaults("persist-active-mirror")
-        d.set("qwen", forKey: "byok.llm.provider")
-        let m = ProviderConfigMachine(
-            capability: .llm, preferredProviderId: nil, defaults: d, keyReader: { _ in nil })
-        m.load()
-        m.model = "qwen3.6-plus"
-        m.persist()
-        // Active provider == the machine's provider → the plain active key is mirrored.
-        #expect(d.string(forKey: "byok.llm.model") == "qwen3.6-plus")
-        #expect(d.string(forKey: "byok.llm.qwen.model") == "qwen3.6-plus")
-    }
 }

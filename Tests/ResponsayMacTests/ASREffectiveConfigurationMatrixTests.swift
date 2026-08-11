@@ -257,9 +257,11 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
             account: CapabilityCredentialAccount.apiKeyAccount(
                 providerId: "mimo", capability: .asr, plan: .payg))
         ModelRouteSelectionActions.applyASRSelection("cloud-mimo#payg", defaults: defaults)
-        XCTAssertEqual(defaults.string(forKey: "byok.asr.region"), ProviderRegion.china.rawValue)
-        XCTAssertEqual(defaults.string(forKey: "byok.asr.plan"), BillingPlan.payg.rawValue)
-        XCTAssertEqual(defaults.string(forKey: "byok.asr.baseURL"), "https://api.xiaomimimo.com/v1")
+        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.region"), ProviderRegion.china.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "byok.asr.mimo.plan"), BillingPlan.payg.rawValue)
+        XCTAssertEqual(
+            defaults.string(forKey: "byok.asr.mimo.baseURL"),
+            "https://api.xiaomimimo.com/v1")
 
         // Runtime resolution remains safe if a stale Token Plan URL survives with an equivalent
         // trailing-slash spelling that does not byte-match the catalog value.
@@ -268,8 +270,7 @@ final class ASREffectiveConfigurationMatrixTests: XCTestCase {
             suffix: "baseURL",
             providerId: "mimo",
             capability: .asr,
-            defaults: defaults,
-            activeProviderId: "mimo")
+            defaults: defaults)
 
         let effective = ProviderConfigDispatcher(
             defaults: defaults,

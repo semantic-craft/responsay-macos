@@ -39,9 +39,6 @@ enum TTSEngine: String, CaseIterable {
     }
 
     static func selected(defaults: UserDefaults) -> TTSEngine {
-        if defaults.string(forKey: defaultsKey) == "cloud-doubao" {
-            return .cloudQwen
-        }
         if let raw = defaults.string(forKey: defaultsKey),
            let engine = TTSEngine(rawValue: raw) {
             return engine
@@ -116,8 +113,7 @@ enum TTSEngine: String, CaseIterable {
             suffix: "voice",
             providerId: pid,
             capability: .tts,
-            defaults: defaults,
-            activeProviderId: ttsSettingsProvider(defaults: defaults))
+            defaults: defaults)
         ModelConfigurationEvents.post()
     }
 
@@ -248,15 +244,6 @@ enum TTSEngine: String, CaseIterable {
                 || effective.region == ProviderRegion.intl
                 ? .singapore
                 : .china)
-    }
-
-    private func ttsSettingsProvider(defaults: UserDefaults) -> String? {
-        guard let provider = defaults.string(forKey: "byok.tts.provider")?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !provider.isEmpty else {
-            return nil
-        }
-        return provider
     }
 
 }

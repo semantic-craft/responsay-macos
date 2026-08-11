@@ -70,11 +70,6 @@ final class TTSEngineTests: XCTestCase {
         XCTAssertEqual(TTSEngine.cloudGemini.selectedVoiceID(defaults: freshDefaults("gemini")), "Kore")
     }
 
-    func testRetiredDoubaoSelectionFallsBackToQwenTTS() {
-        UserDefaults.standard.set("cloud-doubao", forKey: TTSEngine.defaultsKey)
-        XCTAssertEqual(TTSEngine.selected, .cloudQwen)
-    }
-
     func testAllCasesHaveTitles() {
         for engine in TTSEngine.allCases {
             XCTAssertFalse(engine.title.isEmpty)
@@ -134,7 +129,6 @@ final class TTSEngineTests: XCTestCase {
 
         TTSEngine.cloudQwen.setSelectedVoiceID("longjielidou_v3.6", defaults: defaults)
 
-        XCTAssertEqual(defaults.string(forKey: "byok.tts.voice"), "longjielidou_v3.6")
         XCTAssertEqual(defaults.string(forKey: "byok.tts.qwen.voice"), "longjielidou_v3.6")
         XCTAssertEqual(TTSEngine.cloudQwen.selectedVoiceID(defaults: defaults), "longjielidou_v3.6")
     }

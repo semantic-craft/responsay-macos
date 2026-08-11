@@ -53,8 +53,7 @@ enum ASRProviderRoute: Equatable {
     }
 
     static func from(providerID: String?) -> ASRProviderRoute? {
-        guard let id = ASRModelSelection.canonicalProviderId(providerID) else { return nil }
-        switch id {
+        switch providerID {
         case "qwen-asr-flash":
             return .qwenASRFlashRealtime
         case "volcengine-flash":

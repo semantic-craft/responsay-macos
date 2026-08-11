@@ -1,4 +1,5 @@
 import ResponsayCore
+@testable import ResponsaySpeech
 import XCTest
 @testable import ResponsayMac
 
@@ -126,10 +127,18 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertTrue(received.isEmpty)
     }
 
+    func testQwenASRFlashUsesFinalOnlyTranscriptionWhileMiMoCanPublishPreview() {
+        XCTAssertFalse(
+            CloudQwenSpeechCaptureService.usesPostUploadStreamingPreview(
+                forProvider: "qwen-asr-flash"))
+        XCTAssertTrue(
+            CloudQwenSpeechCaptureService.usesPostUploadStreamingPreview(forProvider: "mimo"))
+    }
+
     func testSettingsBackedOpenAIClientUsesCapabilityCardSlot() async throws {
         defaults.set("openai", forKey: "byok.asr.provider")
-        defaults.set("https://asr.proxy.test/v1", forKey: "byok.asr.baseURL")
-        defaults.set("gpt-4o-transcribe", forKey: "byok.asr.model")
+        defaults.set("https://asr.proxy.test/v1", forKey: "byok.asr.openai.baseURL")
+        defaults.set("gpt-4o-transcribe", forKey: "byok.asr.openai.model")
         ASRRuntimeStubURLProtocol.reset(responseData: #"{"text":"ok"}"#.data(using: .utf8)!)
 
         let client = ASRTranscriptionClientFactory.openAI(
@@ -151,8 +160,8 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
 
     func testSettingsBackedMimoClientUsesCatalogProviderIdAndSlot() async throws {
         defaults.set("mimo", forKey: "byok.asr.provider")
-        defaults.set("https://mimo.proxy.test/v1", forKey: "byok.asr.baseURL")
-        defaults.set("mimo-custom-asr", forKey: "byok.asr.model")
+        defaults.set("https://mimo.proxy.test/v1", forKey: "byok.asr.mimo.baseURL")
+        defaults.set("mimo-custom-asr", forKey: "byok.asr.mimo.model")
         ASRRuntimeStubURLProtocol.reset(
             responseData: #"{"choices":[{"message":{"content":"ok"}}]}"#.data(using: .utf8)!)
 
@@ -379,7 +388,7 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
 
     func testQwenRunTaskSingaporeWorkspaceOmitsAllUnsupportedVocabulary() {
         defaults.set("qwen-asr-flash", forKey: "byok.asr.provider")
-        defaults.set("singapore", forKey: "byok.asr.region")
+        defaults.set("singapore", forKey: "byok.asr.qwen-asr-flash.region")
         defaults.set("ws-abc123", forKey: "byok.asr.qwen-asr-flash.workspaceId")
         XCTAssertTrue(ContextHotwordSettings.addManual("法研 Metis", defaults: defaults))
         XCTAssertNil(QwenPrecompiledVocabularySettings.save(

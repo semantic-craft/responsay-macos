@@ -31,7 +31,6 @@ enum ASREngine: String, CaseIterable {
     case customOpenAI = "custom-openai"
 
     static let defaultsKey = "asrEngine"
-    private static let legacyMimoTokenPlanRawValue = "mimo-token-plan"
 
     /// Engines offered in Settings. Fast final-only cloud paths stay grouped
     /// first, followed by other cloud providers and local/offline engines.
@@ -71,14 +70,11 @@ enum ASREngine: String, CaseIterable {
         return .cloudQwenASRFlashRealtime
     }
 
-    /// Resolves persisted raw values, including the surviving MiMo plan alias.
+    /// Resolves a persisted supported engine identifier.
     static func fromStoredValue(_ raw: String?) -> ASREngine? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else {
             return nil
-        }
-        if trimmed == legacyMimoTokenPlanRawValue {
-            return .cloudMimo
         }
         return ASREngine(rawValue: trimmed)
     }

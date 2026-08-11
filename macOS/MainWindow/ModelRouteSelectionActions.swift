@@ -7,7 +7,8 @@ enum ModelRouteSelectionActions {
         let (raw, plan) = ModelRouteOptionID.parse(id)
         defaults.set(raw, forKey: ASREngine.defaultsKey)
         guard let providerId = ASREngine(rawValue: raw)?.associatedProviderId else { return }
-        CapabilitySelectionSync.selectProvider(providerId, capability: .asr, defaults: defaults)
+        ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+            .selectProvider(providerId, capability: .asr)
         if let plan { applyPlan(plan, providerId: providerId, capability: .asr, defaults: defaults) }
     }
 
@@ -22,7 +23,7 @@ enum ModelRouteSelectionActions {
         let previous = dispatcher.resolveLLM(providerId: base).provider
         let selected = plan.map { dispatcher.resolveLLM(providerId: base, plan: $0).provider }
             ?? previous
-        CapabilitySelectionSync.selectProvider(base, capability: .llm, defaults: defaults)
+        dispatcher.selectProvider(base, capability: .llm)
         persistLLMSelection(
             selected,
             previous: previous,
@@ -32,10 +33,10 @@ enum ModelRouteSelectionActions {
 
     static func applyTTSSelection(_ id: String, defaults: UserDefaults = .standard) {
         defer { ModelConfigurationEvents.post() }
+        defaults.set(id, forKey: TTSEngine.defaultsKey)
         if let providerId = TTSEngine(rawValue: id)?.providerID {
-            TTSActiveProvider.adopt(providerId, defaults: defaults)
-        } else {
-            defaults.set(id, forKey: TTSEngine.defaultsKey)
+            ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
+                .selectProvider(providerId, capability: .tts)
         }
     }
 
@@ -55,7 +56,7 @@ enum ModelRouteSelectionActions {
     ) {
         guard let preset = ProviderCatalog.presets(for: capability).first(where: { $0.id == providerId }) else { return }
         let storedRegion = CapabilityProviderConfigStore.string(
-            "region", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: providerId)
+            "region", providerId: providerId, capability: capability, defaults: defaults)
         let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
             ?? preset.regions(for: capability).first ?? .global
         let endpoint: EndpointVariant?
@@ -72,7 +73,7 @@ enum ModelRouteSelectionActions {
         func write(_ suffix: String, _ value: String) {
             CapabilityProviderConfigStore.set(
                 value, suffix: suffix, providerId: providerId, capability: capability,
-                defaults: defaults, activeProviderId: providerId)
+                defaults: defaults)
         }
         if capability == .asr { write("region", region.rawValue) }
         write("plan", plan.rawValue)
@@ -101,8 +102,7 @@ enum ModelRouteSelectionActions {
                 suffix: suffix,
                 providerId: selected.providerId,
                 capability: .llm,
-                defaults: defaults,
-                activeProviderId: selected.providerId)
+                defaults: defaults)
         }
         write("region", selected.region.rawValue)
         write("plan", selected.plan.rawValue)

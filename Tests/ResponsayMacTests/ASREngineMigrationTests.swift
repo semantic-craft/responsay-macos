@@ -52,15 +52,8 @@ final class ASREngineMigrationTests: XCTestCase {
         XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
-    func testLegacyMimoTokenPlanRawValueMigratesToCloudMimo() {
-        UserDefaults.standard.set("mimo-token-plan", forKey: key)
-        XCTAssertEqual(ASREngine.selected, .cloudMimo)
-        XCTAssertEqual(ASREngine.selected.rawValue, "cloud-mimo")
-    }
-
     func testCloudProviderSelectionMapsToRuntimeEngine() {
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo"), .cloudMimo)
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo-token-plan"), .cloudMimo)
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "qwen-asr-flash"), .cloudQwenASRFlashRealtime)
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineRealtime)
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen-fun-asr"))

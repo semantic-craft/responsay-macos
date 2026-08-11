@@ -94,7 +94,7 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             let name = "test.crossCapabilityRoutingMatrix.tts.\(providerId)"
             let d = UserDefaults(suiteName: name)!
             d.removePersistentDomain(forName: name)
-            CapabilitySelectionSync.selectProvider(providerId, capability: .tts, defaults: d)
+            ModelRouteSelectionActions.applyTTSSelection(engine.rawValue, defaults: d)
 
             XCTAssertThrowsError(
                 try engine.makeSynthesizer(
@@ -107,13 +107,54 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
         }
     }
 
+    func testQuickSelectionKeepsOneProviderScopedProfilePerCapability() throws {
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudOpenAI.rawValue,
+            defaults: defaults)
+        ModelRouteSelectionActions.applyLLMSelection("deepseek", defaults: defaults)
+        ModelRouteSelectionActions.applyTTSSelection(
+            TTSEngine.cloudOpenAI.rawValue,
+            defaults: defaults)
+
+        for capability in [ModelCapability.asr, .llm, .tts] {
+            for suffix in ["region", "plan", "model", "voice", "baseURL"] {
+                XCTAssertNil(
+                    defaults.object(forKey: "byok.\(capability.rawValue).\(suffix)"),
+                    "\(capability.rawValue) still writes the obsolete active \(suffix) mirror")
+            }
+        }
+
+        let dispatcher = ProviderConfigDispatcher(defaults: defaults, keyReader: Self.keyReader)
+        let asr = dispatcher.resolve(.asr)
+        XCTAssertEqual(ASREngine.selected(defaults: defaults), .cloudOpenAI)
+        XCTAssertEqual(asr.providerId, "openai")
+        XCTAssertEqual(asr.model, "gpt-4o-transcribe")
+        XCTAssertEqual(asr.apiKey, "asr-openai-key")
+
+        let llm = try XCTUnwrap(
+            LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher))
+        XCTAssertEqual(llm.providerId, "deepseek")
+        XCTAssertEqual(llm.model, "deepseek-v4-flash")
+        XCTAssertEqual(llm.apiKey, "llm-deepseek-key")
+
+        let tts = try XCTUnwrap(
+            TTSEngine.selected(defaults: defaults).makeSynthesizer(
+                defaults: defaults,
+                session: StubURLProtocol.session(),
+                keyReader: Self.keyReader) as? DirectCloudTTSEngine)
+        XCTAssertEqual(tts.model, "gpt-4o-mini-tts")
+        XCTAssertEqual(tts.key, "tts-openai-key")
+    }
+
     private func resetToStaleCloudConfig() {
         defaults.removePersistentDomain(forName: suite)
-        defaults.set(ASREngine.cloudOpenAI.rawValue, forKey: ASREngine.defaultsKey)
-        defaults.set(TTSEngine.cloudOpenAI.rawValue, forKey: TTSEngine.defaultsKey)
-        CapabilitySelectionSync.selectProvider("openai", capability: .asr, defaults: defaults)
-        CapabilitySelectionSync.selectProvider("deepseek", capability: .llm, defaults: defaults)
-        CapabilitySelectionSync.selectProvider("openai", capability: .tts, defaults: defaults)
+        ModelRouteSelectionActions.applyASRSelection(
+            ASREngine.cloudOpenAI.rawValue,
+            defaults: defaults)
+        ModelRouteSelectionActions.applyLLMSelection("deepseek", defaults: defaults)
+        ModelRouteSelectionActions.applyTTSSelection(
+            TTSEngine.cloudOpenAI.rawValue,
+            defaults: defaults)
     }
 
     private static func keyReader(_ account: String) -> String? {
@@ -175,20 +216,14 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
         let tts: TTSRoute
 
         func apply(to defaults: UserDefaults) {
-            defaults.set(asr.engine.rawValue, forKey: ASREngine.defaultsKey)
-            if case .cloud(_, let providerId, _, _) = asr {
-                CapabilitySelectionSync.selectProvider(providerId, capability: .asr, defaults: defaults)
-            }
+            ModelRouteSelectionActions.applyASRSelection(asr.engine.rawValue, defaults: defaults)
 
             switch llm {
             case .cloud(let providerId, _, _):
-                CapabilitySelectionSync.selectProvider(providerId, capability: .llm, defaults: defaults)
+                ModelRouteSelectionActions.applyLLMSelection(providerId, defaults: defaults)
             }
 
-            defaults.set(tts.engine.rawValue, forKey: TTSEngine.defaultsKey)
-            if case .cloud(let engine, _, _) = tts, let providerId = engine.providerID {
-                CapabilitySelectionSync.selectProvider(providerId, capability: .tts, defaults: defaults)
-            }
+            ModelRouteSelectionActions.applyTTSSelection(tts.engine.rawValue, defaults: defaults)
         }
     }
 

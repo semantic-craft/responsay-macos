@@ -119,7 +119,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         // example) was removed. Same dispatcher behavior: a stored region picks that
         // region's endpoint.
         defaults.set("minimax", forKey: "byok.tts.provider")
-        defaults.set(ProviderRegion.intl.rawValue, forKey: "byok.tts.region")
+        defaults.set(ProviderRegion.intl.rawValue, forKey: "byok.tts.minimax.region")
         XCTAssertEqual(
             dispatcher().resolve(.tts).baseURL,
             "https://api.minimax.io/v1")
@@ -143,7 +143,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
     // provider). Selecting mimo + payg resolves to the 开放平台 endpoint + mimo-v2.5.
     func testMiMoLLMPayAsYouGoPlanResolvesToOpenPlatformEndpoint() {
         defaults.set("mimo", forKey: "byok.llm.provider")
-        defaults.set(BillingPlan.payg.rawValue, forKey: "byok.llm.plan")
+        defaults.set(BillingPlan.payg.rawValue, forKey: "byok.llm.mimo.plan")
         let config = dispatcher().resolve(.llm)
         XCTAssertEqual(config.providerId, "mimo")
         XCTAssertEqual(config.plan, .payg)
@@ -159,21 +159,11 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.baseURL, "https://token-plan-cn.xiaomimimo.com/v1")
     }
 
-    // A retired `mimo-payg` selection canonicalizes onto `mimo` instead of falling back
-    // to the global default; the empty-host authHeaders path still resolves to api-key.
-    func testRetiredMiMoPaygSelectionCanonicalizesToMimo() {
-        defaults.set("mimo-payg", forKey: "byok.llm.provider")
-        XCTAssertEqual(dispatcher().resolve(.llm).providerId, "mimo")
-        XCTAssertEqual(
-            LLMProviderCapabilities.resolve(providerId: "mimo-payg", baseURLHost: "").authHeaderStyle,
-            .apiKeyHeader("api-key"))
-    }
-
     // MiMo ASR now honors 按量付费 (no more forced rewrite to Token Plan).
     func testMimoASRPayAsYouGoEndpointIsHonored() {
         defaults.set("mimo", forKey: "byok.asr.provider")
-        defaults.set(BillingPlan.payg.rawValue, forKey: "byok.asr.plan")
-        defaults.set("https://api.xiaomimimo.com/v1", forKey: "byok.asr.baseURL")
+        defaults.set(BillingPlan.payg.rawValue, forKey: "byok.asr.mimo.plan")
+        defaults.set("https://api.xiaomimimo.com/v1", forKey: "byok.asr.mimo.baseURL")
 
         let config = dispatcher().resolve(.asr)
 
@@ -239,8 +229,8 @@ final class ProviderConfigDispatcherTests: XCTestCase {
 
     func testExplicitBaseURLAndModelWinOverCatalog() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        defaults.set("https://my-proxy.internal/v1", forKey: "byok.llm.baseURL")
-        defaults.set("qwen3.7-max", forKey: "byok.llm.model")
+        defaults.set("https://my-proxy.internal/v1", forKey: "byok.llm.qwen.baseURL")
+        defaults.set("qwen3.7-max", forKey: "byok.llm.qwen.model")
         let config = dispatcher().resolve(.llm)
         XCTAssertEqual(config.baseURL, "https://my-proxy.internal/v1")
         XCTAssertEqual(config.model, "qwen3.7-max")
@@ -276,18 +266,6 @@ final class ProviderConfigDispatcherTests: XCTestCase {
     func testUnknownStoredProviderFallsBackToDefault() {
         defaults.set("does-not-exist", forKey: "byok.llm.provider")
         XCTAssertEqual(dispatcher().resolve(.llm).providerId, "qwen")
-    }
-
-    // Legacy provider ids canonicalize onto the surviving Qwen PAYG route.
-    func testLegacyQwenTeamLLMSelectionCanonicalizesToQwen() {
-        defaults.set("qwen-team", forKey: "byok.llm.provider")
-
-        let config = dispatcher().resolve(.llm)
-
-        XCTAssertEqual(config.providerId, "qwen")
-        XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.7-flash")
-        XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
     func testDoubaoLLMDefaultsToArkSeedTurboEndpointAndModel() {
@@ -336,7 +314,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
 
         // Dispatcher reads the slot for the resolved plan: payg key is invisible on Token Plan.
         defaults.set("mimo", forKey: "byok.llm.provider")
-        defaults.set(BillingPlan.package.rawValue, forKey: "byok.llm.plan")
+        defaults.set(BillingPlan.package.rawValue, forKey: "byok.llm.mimo.plan")
         XCTAssertFalse(dispatcher(keys: ["byok.mimo.payg": "sk-x"]).resolve(.llm).hasKey)
         XCTAssertTrue(dispatcher(keys: ["byok.mimo.package": "tp-x"]).resolve(.llm).hasKey)
     }

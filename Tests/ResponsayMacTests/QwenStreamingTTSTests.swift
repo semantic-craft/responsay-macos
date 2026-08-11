@@ -157,9 +157,9 @@ final class QwenStreamingTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("qwen", forKey: "byok.tts.provider")
-        defaults.set("qwen3-tts-flash-realtime", forKey: "byok.tts.model")
-        defaults.set("loongjohn", forKey: "byok.tts.voice")
-        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.tts.region")
+        defaults.set("qwen3-tts-flash-realtime", forKey: "byok.tts.qwen.model")
+        defaults.set("loongjohn", forKey: "byok.tts.qwen.voice")
+        defaults.set(ProviderRegion.singapore.rawValue, forKey: "byok.tts.qwen.region")
 
         let synth = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,
@@ -178,7 +178,7 @@ final class QwenStreamingTTSTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("qwen", forKey: "byok.tts.provider")
-        defaults.set("Cherry", forKey: "byok.tts.voice")
+        defaults.set("Cherry", forKey: "byok.tts.qwen.voice")
 
         let synth = try TTSEngine.cloudQwen.makeStreamingSynthesizer(
             defaults: defaults,

@@ -69,7 +69,6 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
     func test_changingDictationModel_keepsExplicitSkillModel() {
         selectQwenWithSkillMax()
         defaults.set("qwen3.6-flash", forKey: "byok.llm.qwen.model")   // user re-picks dictation
-        defaults.set("qwen3.6-flash", forKey: "byok.llm.model")
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
         let skill = LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())
         XCTAssertEqual(dictation?.model, "qwen3.6-flash")
@@ -99,13 +98,13 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
             "qwen3.7-flash")
     }
 
-    // 6. 旧配置（无新字段）保持原有行为：两条 lane 完全一致。
-    func test_legacyConfigWithoutSkillField_behavesAsBefore() {
+    // 6. 未设置技能字段时，两条 lane 完全一致。
+    func test_configWithoutSkillFieldUsesTheDictationModelForBothLanes() {
         defaults.set("qwen", forKey: "byok.llm.provider")
         defaults.set("qwen3.6-flash", forKey: "byok.llm.qwen.model")   // 既有用户显式保存的旧模型
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
         let skill = LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())
-        XCTAssertEqual(dictation?.model, "qwen3.6-flash")   // `byok.llm.model` 继续生效
+        XCTAssertEqual(dictation?.model, "qwen3.6-flash")
         XCTAssertEqual(skill?.model, "qwen3.6-flash")       // 无新字段 → 跟随，不引入行为变化
         XCTAssertEqual(dictation?.baseURL, skill?.baseURL)
     }

@@ -70,6 +70,12 @@ struct ProviderConfigDispatcher {
         resolve(capability, providerIdOverride: providerIdOverride, planOverride: plan)
     }
 
+    /// Select only the provider identity. Its scoped profile remains the single durable config;
+    /// missing fields resolve from the catalog without creating a second providerless mirror.
+    func selectProvider(_ providerId: String, capability: ModelCapability) {
+        defaults.set(providerId, forKey: CapabilityProviderConfigStore.providerKey(capability))
+    }
+
     /// Resolve both LLM lanes from one provider snapshot. The skill override is provider-scoped;
     /// an obsolete active mirror can therefore never contribute a foreign provider's model.
     func resolveLLM(providerId: String? = nil, plan: BillingPlan? = nil) -> ResolvedLLMLanes {
@@ -100,29 +106,26 @@ struct ProviderConfigDispatcher {
 
     private func resolve(_ capability: ModelCapability, providerIdOverride: String?, planOverride: BillingPlan? = nil) -> ResolvedProviderConfig {
         let presets = ProviderCatalog.presets(for: capability)
-        func activeField(_ suffix: String) -> String {
-            CapabilityProviderConfigStore.activeKey(suffix, capability: capability)
-        }
-
-        let storedProviderId = nonEmpty(defaults.string(forKey: activeField("provider")))
-        var providerId = Self.canonicalProviderId(providerIdOverride ?? storedProviderId ?? Self.defaultProviderId(presets))
+        let storedProviderId = nonEmpty(defaults.string(
+            forKey: CapabilityProviderConfigStore.providerKey(capability)))
+        var providerId = providerIdOverride ?? storedProviderId ?? Self.defaultProviderId(presets)
         if !presets.contains(where: { $0.id == providerId }) {
             providerId = Self.defaultProviderId(presets)
         }
         let preset = presets.first { $0.id == providerId } ?? presets.first ?? ProviderCatalog.custom
         let storedRegion = CapabilityProviderConfigStore.string(
-            "region", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+            "region", providerId: providerId, capability: capability, defaults: defaults)
         let storedPlan = CapabilityProviderConfigStore.string(
-            "plan", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+            "plan", providerId: providerId, capability: capability, defaults: defaults)
         let storedModel = CapabilityProviderConfigStore.string(
-            "model", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+            "model", providerId: providerId, capability: capability, defaults: defaults)
         let storedVoice = CapabilityProviderConfigStore.string(
-            "voice", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+            "voice", providerId: providerId, capability: capability, defaults: defaults)
         let storedBaseURL = CapabilityProviderConfigStore.string(
-            "baseURL", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: storedProviderId)
+            "baseURL", providerId: providerId, capability: capability, defaults: defaults)
         let storedWorkspaceID = CapabilityProviderConfigStore.string(
             "workspaceId", providerId: providerId, capability: capability,
-            defaults: defaults, activeProviderId: storedProviderId)
+            defaults: defaults)
 
         let endpoints = preset.endpoints(for: capability)
         let availableRegions = preset.regions(for: capability)
@@ -130,11 +133,8 @@ struct ProviderConfigDispatcher {
         let storedRegionSelection = requestedRegion.flatMap { availableRegions.contains($0) ? $0 : nil }
         let independentRegion = storedRegionSelection
             ?? availableRegions.first ?? .global
-        let storedPlanSelection = MiMoASRRouting.normalizedPlan(
-            providerId: providerId,
-            capability: capability,
-            stored: BillingPlan(rawValue: storedPlan ?? ""),
-            fallback: preset.plans(for: capability).first ?? .payg)
+        let storedPlanSelection = BillingPlan(rawValue: storedPlan ?? "")
+            ?? preset.plans(for: capability).first ?? .payg
         let requestedPlan = planOverride ?? storedPlanSelection
         let planOverrideChangedStoredSelection = planOverride.map { $0 != storedPlanSelection } ?? false
         let availablePlans = preset.plans(for: capability)
@@ -189,11 +189,7 @@ struct ProviderConfigDispatcher {
             preset: preset,
             storedVoice: storedVoice)
         let catalogBaseURL = endpoint?.baseURL ?? ""
-        let normalizedBaseURL = MiMoASRRouting.normalizedBaseURL(
-            providerId: providerId,
-            capability: capability,
-            stored: storedBaseURL,
-            fallback: catalogBaseURL)
+        let normalizedBaseURL = nonEmpty(storedBaseURL) ?? catalogBaseURL
         let selectedEndpointIdentity = endpointIdentity(catalogBaseURL)
         let storedEndpointIdentity = endpointIdentity(normalizedBaseURL)
         let knownEndpointIdentities = Set(endpoints.compactMap { endpointIdentity($0.baseURL) })
@@ -337,13 +333,4 @@ struct ProviderConfigDispatcher {
         return presets.first?.id ?? "custom"
     }
 
-    /// Map retained merged-provider aliases onto their surviving base provider so a stale
-    /// stored selection resolves instead of silently falling back to the global default.
-    private static func canonicalProviderId(_ providerId: String) -> String {
-        switch providerId {
-        case "qwen-team": return "qwen"
-        case "mimo-payg": return "mimo"
-        default: return providerId
-        }
-    }
 }
