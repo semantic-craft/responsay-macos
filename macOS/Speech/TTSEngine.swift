@@ -39,21 +39,9 @@ enum TTSEngine: String, CaseIterable {
     }
 
     static func selected(defaults: UserDefaults) -> TTSEngine {
-        if let raw = defaults.string(forKey: defaultsKey),
-           let engine = TTSEngine(rawValue: raw) {
-            return engine
-        }
-        // No explicit engine pick yet → prefer a configured cloud 朗读 voice (the TTS card's active
-        // provider, `byok.tts.provider`) over offline Kokoro, matching the other capabilities' BYOK-
-        // first posture. Pure UserDefaults read — no Keychain here, keeping it off the settings-render
-        // freeze path (217); a missing key still degrades gracefully at synth time via the read-aloud
-        // fallback. Kokoro stays the default only when no cloud TTS provider is configured.
-        let provider = defaults.string(forKey: "byok.tts.provider") ?? ""
-        if !provider.isEmpty,
-           let cloudEngine = selectableCases.first(where: { $0.providerID == provider }) {
-            return cloudEngine
-        }
-        return .sherpaKokoroLocal
+        defaults.string(forKey: defaultsKey)
+            .flatMap(TTSEngine.init(rawValue:))
+            ?? .sherpaKokoroLocal
     }
 
     // Canonical naming (product decision 2026-06-12): the current route picker
