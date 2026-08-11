@@ -124,39 +124,56 @@ struct ProviderConfigDispatcher {
             "workspaceId", providerId: providerId, capability: capability,
             defaults: defaults, activeProviderId: storedProviderId)
 
-        let variants = preset.endpoints(for: capability)
+        let endpoints = preset.endpoints(for: capability)
         let availableRegions = preset.regions(for: capability)
         let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
         let storedRegionSelection = requestedRegion.flatMap { availableRegions.contains($0) ? $0 : nil }
-        let initialRegion = storedRegionSelection
+        let independentRegion = storedRegionSelection
             ?? availableRegions.first ?? .global
         let storedPlanSelection = MiMoASRRouting.normalizedPlan(
             providerId: providerId,
             capability: capability,
             stored: BillingPlan(rawValue: storedPlan ?? ""),
             fallback: preset.plans(for: capability).first ?? .payg)
-        let initialPlan = planOverride ?? storedPlanSelection
+        let requestedPlan = planOverride ?? storedPlanSelection
         let planOverrideChangedStoredSelection = planOverride.map { $0 != storedPlanSelection } ?? false
         let availablePlans = preset.plans(for: capability)
-        let requestedPlanIsUnavailable = !availablePlans.contains(initialPlan)
-        let availablePlan = availablePlans.contains(initialPlan)
-            ? initialPlan
+        let requestedPlanIsUnavailable = !availablePlans.contains(requestedPlan)
+        let independentPlan = availablePlans.contains(requestedPlan)
+            ? requestedPlan
             : (availablePlans.first ?? .payg)
-        // Region and plan form one endpoint selection, not independent axes. In particular,
-        // MiMo PAYG exists only in China; a persisted Singapore + PAYG combination must resolve
-        // to China PAYG instead of pairing a Singapore Token Plan host with the PAYG credential.
-        let selectedVariant = variants.first { $0.region == initialRegion && $0.plan == availablePlan }
-            ?? variants.first { $0.plan == availablePlan }
-            ?? variants.first
-        let region = selectedVariant?.region ?? initialRegion
-        let plan = selectedVariant?.plan ?? availablePlan
-        let routePairWasNormalized = region != initialRegion || plan != availablePlan
+        let endpoint: EndpointVariant?
+        let region: ProviderRegion
+        let plan: BillingPlan
+        if capability == .asr {
+            // ASR region + plan describe one endpoint choice, not two independent switches.
+            // Prefer the requested tuple; if it is impossible (for example Singapore + MiMo
+            // PAYG), keep the requested plan and choose a real endpoint that offers it. This
+            // ensures the endpoint and plan-scoped credential cannot come from incompatible rows.
+            endpoint = preset.effectiveASREndpoint(
+                requestedRegion: requestedRegion,
+                plan: requestedPlan)
+            region = endpoint?.region ?? independentRegion
+            plan = endpoint?.plan ?? independentPlan
+        } else {
+            // Region and plan describe one endpoint choice. If a stored tuple is impossible,
+            // retain the requested plan and choose a real endpoint that offers it.
+            endpoint = endpoints.first { $0.region == independentRegion && $0.plan == independentPlan }
+                ?? endpoints.first { $0.plan == independentPlan }
+                ?? endpoints.first
+            region = endpoint?.region ?? independentRegion
+            plan = endpoint?.plan ?? independentPlan
+        }
+        let routePairWasNormalized = region != independentRegion || plan != independentPlan
         let storedRegionWasUnavailable = nonEmpty(storedRegion) != nil && storedRegionSelection == nil
         // 千问非实时 ASR: the model is user-selectable (Qwen-Audio-3.0-ASR-Flash / Fun-ASR-Flash),
         // but a stored `…-realtime-…` id left by the retired OmniRealtime engine must not be sent.
         let isQwenASRFlash = capability == .asr && providerId == QwenASRFlashRouting.providerId
+        // 豆包流式 owns its WSS protocol surface in `VolcengineRealtimeEndpoint`. Persisted values
+        // are display mirrors only and must never replace that fixed endpoint/model at capture time.
+        let fixedVolcengineASR = capability == .asr && providerId == "volcengine-flash"
         let fixedQwenAudioTTS = capability == .tts && providerId == "qwen"
-        let fixedProviderSurface = fixedQwenAudioTTS
+        let fixedProviderSurface = fixedVolcengineASR || fixedQwenAudioTTS
         let catalogModel = preset.defaultModel(for: capability, plan: plan) ?? ""
         let model: String
         if fixedProviderSurface {
@@ -171,17 +188,25 @@ struct ProviderConfigDispatcher {
             providerId: providerId,
             preset: preset,
             storedVoice: storedVoice)
-        let catalogBaseURL = selectedVariant?.baseURL
-            ?? preset.endpoint(for: capability, region: region, plan: plan)?.baseURL
-            ?? ""
+        let catalogBaseURL = endpoint?.baseURL ?? ""
         let normalizedBaseURL = MiMoASRRouting.normalizedBaseURL(
             providerId: providerId,
             capability: capability,
             stored: storedBaseURL,
             fallback: catalogBaseURL)
-        let selectedBaseURL = fixedProviderSurface || requestedPlanIsUnavailable
+        let selectedEndpointIdentity = endpointIdentity(catalogBaseURL)
+        let storedEndpointIdentity = endpointIdentity(normalizedBaseURL)
+        let knownEndpointIdentities = Set(endpoints.compactMap { endpointIdentity($0.baseURL) })
+        let storedMiMoEndpointConflictsWithTuple = capability == .asr
+            && providerId == "mimo"
+            && storedEndpointIdentity != selectedEndpointIdentity
+            && storedEndpointIdentity.map(knownEndpointIdentities.contains) == true
+        let selectedBaseURL = fixedProviderSurface
+            || requestedPlanIsUnavailable
             || planOverrideChangedStoredSelection
-            || routePairWasNormalized || storedRegionWasUnavailable
+            || routePairWasNormalized
+            || storedRegionWasUnavailable
+            || storedMiMoEndpointConflictsWithTuple
             ? catalogBaseURL
             : normalizedBaseURL
         let workspaceID: String?
@@ -241,6 +266,34 @@ struct ProviderConfigDispatcher {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
         return trimmed
+    }
+
+    /// Comparison identity for catalog endpoints. Host/scheme case, default ports and trailing
+    /// path slashes do not create a distinct route; query/fragment/user-info do, so they are kept
+    /// outside the catalog match and cannot accidentally inherit a known endpoint's trust.
+    private func endpointIdentity(_ raw: String) -> String? {
+        guard let value = nonEmpty(raw),
+              let components = URLComponents(string: value),
+              let rawScheme = components.scheme,
+              let rawHost = components.host,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            return nil
+        }
+        let scheme = rawScheme.lowercased()
+        let host = rawHost.lowercased()
+        let port = components.port.flatMap { value -> Int? in
+            if (scheme == "http" && value == 80) || (scheme == "https" && value == 443) {
+                return nil
+            }
+            return value
+        }
+        var path = components.percentEncodedPath
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        if path.isEmpty { path = "/" }
+        return "\(scheme)://\(host)\(port.map { ":\($0)" } ?? "")\(path)"
     }
 
     private func apiKeyForProvider(

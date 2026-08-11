@@ -46,12 +46,10 @@ final class ASREngineMigrationTests: XCTestCase {
         XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
-    func testHTTPBatchEnginesMigrateToWSSStreamingSiblings() {
-        // 2026-07-04: 豆包标准版 2.0 (HTTP submit/query) was dropped from the picker
-        // in favor of its WSS streaming sibling.
+    func testDeletedVolcengineHTTPBatchEngineNoLongerResolves() {
+        XCTAssertNil(ASREngine(rawValue: "cloud-volcengine-flash"))
         UserDefaults.standard.set("cloud-volcengine-flash", forKey: key)
-        XCTAssertEqual(ASREngine.selected, .cloudVolcengineRealtime)
-        XCTAssertFalse(ASREngine.selectableCases.contains(.cloudVolcengineFlash))
+        XCTAssertEqual(ASREngine.selected, .cloudQwenASRFlashRealtime)
     }
 
     func testLegacyMimoTokenPlanRawValueMigratesToCloudMimo() {
@@ -64,12 +62,11 @@ final class ASREngineMigrationTests: XCTestCase {
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo"), .cloudMimo)
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "mimo-token-plan"), .cloudMimo)
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "qwen-asr-flash"), .cloudQwenASRFlashRealtime)
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineFlash)
+        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineRealtime)
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen-fun-asr"))
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen-fun-asr-realtime"))
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "qwen"))
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "zhipu"))
-        XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "volcengine-flash"), .cloudVolcengineFlash)
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "volc-asr"))
         XCTAssertEqual(ASREngine.cloudEngine(forProviderId: "custom"), .customOpenAI)
         XCTAssertNil(ASREngine.cloudEngine(forProviderId: "apple"))

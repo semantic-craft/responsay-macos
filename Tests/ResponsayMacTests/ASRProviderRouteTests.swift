@@ -25,7 +25,7 @@ final class ASRProviderRouteTests: XCTestCase {
             ("openai", .cloudOpenAI, .openAI),
             ("mimo", .cloudMimo, .mimo),
             ("qwen-asr-flash", .cloudQwenASRFlashRealtime, .qwenASRFlashRealtime),
-            ("volcengine-flash", .cloudVolcengineFlash, .volcengineFlash),
+            ("volcengine-flash", .cloudVolcengineRealtime, .volcengineRealtime),
             ("custom", .customOpenAI, .customOpenAI),
         ]
 

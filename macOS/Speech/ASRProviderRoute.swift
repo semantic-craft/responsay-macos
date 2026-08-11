@@ -7,7 +7,6 @@ enum ASRProviderRoute: Equatable {
     case mimo
     case gemini
     case qwenASRFlashRealtime
-    case volcengineFlash
     case volcengineRealtime
     case sensevoiceLocal
     case qwen3LocalASR
@@ -38,8 +37,6 @@ enum ASRProviderRoute: Equatable {
             return .gemini
         case .cloudQwenASRFlashRealtime:
             return .qwenASRFlashRealtime
-        case .cloudVolcengineFlash:
-            return .volcengineFlash
         case .cloudVolcengineRealtime:
             return .volcengineRealtime
         case .sensevoiceLocal:
@@ -61,7 +58,7 @@ enum ASRProviderRoute: Equatable {
         case "qwen-asr-flash":
             return .qwenASRFlashRealtime
         case "volcengine-flash":
-            return .volcengineFlash
+            return .volcengineRealtime
         case "openai":
             return .openAI
         case "mimo":
@@ -79,8 +76,6 @@ enum ASRProviderRoute: Equatable {
         switch self {
         case .qwenASRFlashRealtime:
             return .cloudQwenASRFlashRealtime
-        case .volcengineFlash:
-            return .cloudVolcengineFlash
         case .volcengineRealtime:
             return .cloudVolcengineRealtime
         case .openAI:

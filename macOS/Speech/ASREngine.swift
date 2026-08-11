@@ -22,9 +22,6 @@ enum ASREngine: String, CaseIterable {
     /// not a live capsule preview. Replaced the OmniRealtime engine (#588), which spoke a different
     /// protocol on the sibling `/api-ws/v1/realtime` path and whose only model supports no hotwords.
     case cloudQwenASRFlashRealtime = "cloud-qwen-asr-flash-realtime"
-    /// 火山引擎大模型录音文件极速版: record locally, then on stop upload the WAV once
-    /// to the `volc.bigasr.auc_turbo` HTTP endpoint for one final transcript.
-    case cloudVolcengineFlash = "cloud-volcengine-flash"
     /// 火山引擎大模型流式语音识别 (流式输入模式, `bigmodel_nostream`, #580): record locally, then on
     /// stop replay the clip over the streaming WebSocket for one clean final — lower
     /// stop-to-final latency than the submit/query 录音文件 path. Shares the 火山
@@ -60,10 +57,6 @@ enum ASREngine: String, CaseIterable {
     static func selected(defaults: UserDefaults) -> ASREngine {
         if let engine = fromStoredValue(defaults.string(forKey: defaultsKey)) {
             switch engine {
-            // 2026-07-04: the 豆包标准版 2.0 HTTP submit/query engine retired in favor
-            // of its lower-latency WSS streaming sibling. It shares the same key card.
-            case .cloudVolcengineFlash:
-                return .cloudVolcengineRealtime
             // FireRedASR2 retired 2026-06-17 (no clear advantage over SenseVoice); a stored
             // selection migrates to the comparable offline AED. Case/spec/recognizer stay for compat.
             case .fireRedASR2AEDLocal:
@@ -78,8 +71,7 @@ enum ASREngine: String, CaseIterable {
         return .cloudQwenASRFlashRealtime
     }
 
-    /// Resolves persisted raw values, including legacy names kept only for
-    /// settings/backward compatibility.
+    /// Resolves persisted raw values, including the surviving MiMo plan alias.
     static func fromStoredValue(_ raw: String?) -> ASREngine? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else {
@@ -98,7 +90,6 @@ enum ASREngine: String, CaseIterable {
         case .cloudMimo: "小米Mimo"
         case .cloudGemini: "Google Gemini"
         case .cloudQwenASRFlashRealtime: "阿里云百炼 · 千问实时"
-        case .cloudVolcengineFlash: "火山引擎 · 豆包标准版 2.0"
         case .cloudVolcengineRealtime: "火山引擎 · 豆包流式"
         case .sensevoiceLocal: "SenseVoice"
         case .qwen3LocalASR: "Qwen3-ASR"
@@ -127,8 +118,6 @@ enum ASREngine: String, CaseIterable {
         case .cloudMimo: return "mimo"
         case .cloudGemini: return "gemini"
         case .cloudQwenASRFlashRealtime: return "qwen-asr-flash"
-        case .cloudVolcengineFlash: return "volcengine-flash"
-        // Shares the 火山 key card + readiness with the whole-clip engine (same account/key).
         case .cloudVolcengineRealtime: return "volcengine-flash"
         case .customOpenAI: return "custom"
         case .apple, .sensevoiceLocal, .qwen3LocalASR,

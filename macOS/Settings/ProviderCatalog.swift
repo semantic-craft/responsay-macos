@@ -269,6 +269,22 @@ struct ProviderPreset: Identifiable, Sendable {
             ?? scoped.first { $0.region == region }
             ?? scoped.first
     }
+    /// Resolve one internally consistent ASR endpoint tuple from persisted region + plan fields.
+    /// A requested billing plan wins when that region does not offer it, keeping the route aligned
+    /// with the plan-scoped credential selected for the next capture.
+    func effectiveASREndpoint(
+        requestedRegion: ProviderRegion?,
+        plan requestedPlan: BillingPlan
+    ) -> EndpointVariant? {
+        let scoped = endpoints(for: .asr)
+        return scoped.first {
+            $0.region == requestedRegion && $0.plan == requestedPlan
+        } ?? scoped.first {
+            $0.plan == requestedPlan
+        } ?? requestedRegion.flatMap { requested in
+            scoped.first { $0.region == requested }
+        } ?? scoped.first
+    }
     func keyFormatHint(for capability: ModelCapability) -> String? {
         capabilityKeyFormatHints[capability] ?? keyFormatHint
     }

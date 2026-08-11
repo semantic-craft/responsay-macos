@@ -56,14 +56,25 @@ enum ModelRouteSelectionActions {
         guard let preset = ProviderCatalog.presets(for: capability).first(where: { $0.id == providerId }) else { return }
         let storedRegion = CapabilityProviderConfigStore.string(
             "region", providerId: providerId, capability: capability, defaults: defaults, activeProviderId: providerId)
-        let region = ProviderRegion(rawValue: storedRegion ?? "") ?? preset.regions(for: capability).first ?? .global
-        let baseURL = preset.endpoint(for: capability, region: region, plan: plan)?.baseURL ?? ""
+        let requestedRegion = ProviderRegion(rawValue: storedRegion ?? "")
+            ?? preset.regions(for: capability).first ?? .global
+        let endpoint: EndpointVariant?
+        if capability == .asr {
+            endpoint = preset.effectiveASREndpoint(
+                requestedRegion: requestedRegion,
+                plan: plan)
+        } else {
+            endpoint = preset.endpoint(for: capability, region: requestedRegion, plan: plan)
+        }
+        let region = endpoint?.region ?? requestedRegion
+        let baseURL = endpoint?.baseURL ?? ""
         let model = preset.defaultModel(for: capability, plan: plan) ?? ""
         func write(_ suffix: String, _ value: String) {
             CapabilityProviderConfigStore.set(
                 value, suffix: suffix, providerId: providerId, capability: capability,
                 defaults: defaults, activeProviderId: providerId)
         }
+        if capability == .asr { write("region", region.rawValue) }
         write("plan", plan.rawValue)
         write("baseURL", baseURL)
         write("model", model)

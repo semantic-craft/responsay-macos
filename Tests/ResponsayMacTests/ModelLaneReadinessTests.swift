@@ -77,10 +77,10 @@ final class ModelLaneReadinessTests: XCTestCase {
         XCTAssertEqual(resolver(keys: [account: "sk-test"]).asr(optionId: "cloud-openai"), .cloudReady)
     }
 
-    func testVolcengineFlashASRWithKeyIsReady() {
+    func testVolcengineRealtimeASRWithKeyIsReady() {
         let account = CapabilityCredentialAccount.apiKeyAccount(providerId: "volcengine-flash", capability: .asr)
         XCTAssertEqual(
-            resolver(keys: [account: "volc-app-key"]).asr(optionId: "cloud-volcengine-flash"),
+            resolver(keys: [account: "volc-app-key"]).asr(optionId: "cloud-volcengine-realtime"),
             .cloudReady)
     }
 

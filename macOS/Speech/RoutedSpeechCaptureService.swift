@@ -11,25 +11,20 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     // app-direct migration (the old `client:` shape froze the `{ [] }` /
     // `.dictation` defaults forever).
     private let cloudOpenAI = CloudQwenSpeechCaptureService(provider: "openai", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.openAI(profileProvider: profile)
+        ASRTranscriptionClientFactory.batchClient(for: .openAI, profileProvider: profile)
     }
     private let cloudMimo = CloudQwenSpeechCaptureService(provider: "mimo", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.mimo(profileProvider: profile)
+        ASRTranscriptionClientFactory.batchClient(for: .mimo, profileProvider: profile)
     }
     /// Google Gemini 整段识别 — batch transcription via native :generateContent (BYOK-direct).
     private let cloudGemini = CloudQwenSpeechCaptureService(provider: "gemini", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.gemini(profileProvider: profile)
-    }
-    /// 火山引擎大模型录音文件极速版 — final-only HTTP recognition via
-    /// `volc.bigasr.auc_turbo`. No realtime partials; insertion waits for stop().
-    private let cloudVolcengineFlash = CloudQwenSpeechCaptureService(provider: "volcengine-flash", requireMicPermission: { try MicrophonePermission.ensure(feature: "Volcengine BigASR flash") }) { profile in
-        ASRTranscriptionClientFactory.volcengineFlash(profileProvider: profile)
+        ASRTranscriptionClientFactory.batchClient(for: .gemini, profileProvider: profile)
     }
     /// 火山引擎大模型流式 — final-only over the `bigmodel_nostream` streaming socket (#580): record the
     /// clip, then on stop replay it over the WebSocket for one clean final (lower stop-to-final
     /// latency than the submit/query 录音文件 path). No live partials yet. Same 火山 key.
     private let cloudVolcengineRealtime = CloudQwenSpeechCaptureService(provider: "volcengine-realtime", requireMicPermission: { try MicrophonePermission.ensure(feature: "Volcengine BigASR streaming") }) { profile in
-        ASRTranscriptionClientFactory.volcengineRealtime(profileProvider: profile)
+        ASRTranscriptionClientFactory.batchClient(for: .volcengineRealtime, profileProvider: profile)
     }
     /// 阿里云百炼 千问实时 — 实时语音识别 over the run-task WebSocket (#588): frames stream while the
     /// hotkey is held, `finish-task` on release returns the 整段 transcript. Replaced the
@@ -59,11 +54,9 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
     private let funAsrNanoLocal = OfflineSherpaCaptureService(spec: .funAsrNano) {
         try FunASRNanoRecognizer(modelDir: LocalModelSpec.funAsrNano.storagePath)
     }
-    // 320: endpoint/model resolve from the credential card's keys (legacy
-    // customASR* pair as fallback) — the「高级」fields were the only live
-    // surface before, while the card's Base URL/Model were silently dead.
+    // Custom ASR endpoint/model resolve exclusively from the provider card's effective state.
     private let customOpenAI = CloudQwenSpeechCaptureService(provider: "custom", requireMicPermission: { try MicrophonePermission.ensure(feature: "cloud ASR") }) { profile in
-        ASRTranscriptionClientFactory.customOpenAI(profileProvider: profile)
+        ASRTranscriptionClientFactory.batchClient(for: .customOpenAI, profileProvider: profile)
     }
     private var active: SpeechCaptureService?
     private var captureProfile: SpeechCaptureProfile = .dictation
@@ -147,8 +140,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
             return cloudGemini
         case .qwenASRFlashRealtime:
             return qwenASRFlashRealtime
-        case .volcengineFlash:
-            return cloudVolcengineFlash
         case .volcengineRealtime:
             return cloudVolcengineRealtime
         case .sensevoiceLocal:

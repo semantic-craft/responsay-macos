@@ -55,11 +55,6 @@ final class ASREngineBiasingProfileTests: XCTestCase {
         XCTAssertEqual(ASREngineBiasingProfile.routes(for: .cloudMimo), [.hardMatch])
     }
 
-    /// Volcengine flash gets no request-side biasing today (BigASR boosting not wired).
-    func testVolcengineCarriesOnlyHardMatch() {
-        XCTAssertEqual(ASREngineBiasingProfile.routes(for: .cloudVolcengineFlash), [.hardMatch])
-    }
-
     /// The cold-start default carries a request-side route since #588 moved it from the
     /// OmniRealtime socket (which documents 精度增强「不支持」) onto the 非实时 HTTP endpoint, where the
     /// 词典 rides `parameters.vocabulary` 即时热词. A regression here means the default engine went

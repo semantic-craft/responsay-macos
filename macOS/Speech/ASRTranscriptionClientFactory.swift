@@ -10,25 +10,58 @@ import ResponsayCore
 enum ASRTranscriptionClientFactory {
     typealias KeyReader = @Sendable (String) -> String?
 
+    /// Shared production route → client seam for every whole-clip cloud ASR provider. The routed
+    /// capture service and the persisted-selection matrix both pass through this switch, so adding
+    /// a provider cannot leave settings routing and runtime construction on separate code paths.
+    static func batchClient(
+        for route: ASRProviderRoute,
+        defaults: UserDefaults = .standard,
+        session: URLSession = .shared,
+        profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
+        keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
+    ) -> any TranscriptionAPI {
+        switch route {
+        case .openAI:
+            return openAI(
+                defaults: defaults, session: session,
+                profileProvider: profileProvider, keyReader: keyReader)
+        case .mimo:
+            return mimo(
+                defaults: defaults, session: session,
+                profileProvider: profileProvider, keyReader: keyReader)
+        case .gemini:
+            return gemini(
+                defaults: defaults, session: session,
+                profileProvider: profileProvider, keyReader: keyReader)
+        case .volcengineRealtime:
+            return volcengineRealtime(
+                defaults: defaults, session: session,
+                profileProvider: profileProvider, keyReader: keyReader)
+        case .customOpenAI:
+            return customOpenAI(
+                defaults: defaults, session: session,
+                profileProvider: profileProvider, keyReader: keyReader)
+        case .apple, .qwenASRFlashRealtime, .sensevoiceLocal, .qwen3LocalASR,
+                .fireRedASR2AEDLocal, .funAsrNanoLocal:
+            preconditionFailure("ASR route \(route) does not use a batch transcription client")
+        }
+    }
+
     static func openAI(
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> DirectOpenAITranscriptionAPI {
-        let settings = DefaultsReader(defaults: defaults)
+        let effective = effectiveConfiguration(
+            forProvider: "openai", defaults: defaults, keyReader: keyReader)
         return DirectOpenAITranscriptionAPI(
-            baseURL: baseURL(
-                forProvider: "openai",
-                fallback: URL(string: "https://api.openai.com/v1")!,
-                defaults: defaults),
+            baseURL: httpBaseURL(effective),
             session: session,
             hotwordsProvider: { ContextHotwordSettings.asrWeakPrompt() },   // 517: 词典 + 当次屏幕临时词
             profileProvider: profileProvider,
-            modelProvider: {
-                settings.model(forProvider: "openai", fallback: "gpt-4o-transcribe")
-            },
-            apiKeyProvider: { apiKey(forProvider: "openai", plan: settings.asrPlan(forProvider: "openai"), keyReader: keyReader) })
+            modelProvider: { effective.model },
+            apiKeyProvider: { effective.apiKey ?? "" })
     }
 
     static func mimo(
@@ -37,19 +70,15 @@ enum ASRTranscriptionClientFactory {
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> DirectMimoTranscriptionAPI {
-        let settings = DefaultsReader(defaults: defaults)
+        let effective = effectiveConfiguration(
+            forProvider: "mimo", defaults: defaults, keyReader: keyReader)
         return DirectMimoTranscriptionAPI(
-            baseURL: baseURL(
-                forProvider: "mimo",
-                fallback: URL(string: MiMoASRRouting.tokenPlanChinaBaseURL)!,
-                defaults: defaults),
+            baseURL: httpBaseURL(effective),
             session: session,
             hotwordsProvider: { ContextHotwordSettings.asrWeakPrompt() },   // 517: 词典 + 当次屏幕临时词
             profileProvider: profileProvider,
-            modelProvider: {
-                settings.model(forProvider: "mimo", fallback: "mimo-v2.5-asr")
-            },
-            apiKeyProvider: { apiKey(forProvider: "mimo", plan: settings.asrPlan(forProvider: "mimo"), keyReader: keyReader) })
+            modelProvider: { effective.model },
+            apiKeyProvider: { effective.apiKey ?? "" })
     }
 
     /// Google Gemini batch ASR (整段识别). Unlike the OpenAI-compatible clients
@@ -63,19 +92,15 @@ enum ASRTranscriptionClientFactory {
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> DirectGeminiTranscriptionAPI {
-        let settings = DefaultsReader(defaults: defaults)
+        let effective = effectiveConfiguration(
+            forProvider: "gemini", defaults: defaults, keyReader: keyReader)
         return DirectGeminiTranscriptionAPI(
-            baseURL: baseURL(
-                forProvider: "gemini",
-                fallback: URL(string: "https://generativelanguage.googleapis.com/v1beta/")!,
-                defaults: defaults),
+            baseURL: httpBaseURL(effective),
             session: session,
             hotwordsProvider: { ContextHotwordSettings.asrWeakPrompt() },   // 517: 词典 + 当次屏幕临时词
             profileProvider: profileProvider,
-            modelProvider: {
-                settings.model(forProvider: "gemini", fallback: "gemini-3.1-flash-lite")
-            },
-            apiKeyProvider: { apiKey(forProvider: "gemini", plan: settings.asrPlan(forProvider: "gemini"), keyReader: keyReader) })
+            modelProvider: { effective.model },
+            apiKeyProvider: { effective.apiKey ?? "" })
     }
 
     static func customOpenAI(
@@ -84,39 +109,15 @@ enum ASRTranscriptionClientFactory {
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> DirectOpenAITranscriptionAPI {
-        let settings = DefaultsReader(defaults: defaults)
+        let effective = effectiveConfiguration(
+            forProvider: "custom", defaults: defaults, keyReader: keyReader)
         return DirectOpenAITranscriptionAPI(
-            baseURL: CustomASREndpoint.baseURL(defaults: defaults),
+            baseURL: httpBaseURL(effective),
             session: session,
             hotwordsProvider: { ContextHotwordSettings.asrWeakPrompt() },   // 517: 词典 + 当次屏幕临时词
             profileProvider: profileProvider,
-            modelProvider: { settings.customModel() },
-            apiKeyProvider: { apiKey(forProvider: CustomASREndpoint.providerID, plan: settings.asrPlan(forProvider: CustomASREndpoint.providerID), keyReader: keyReader) })
-    }
-
-    static func volcengineFlash(
-        defaults: UserDefaults = .standard,
-        session: URLSession = .shared,
-        profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
-        keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
-    ) -> DirectVolcengineFlashTranscriptionAPI {
-        _ = profileProvider
-        let settings = DefaultsReader(defaults: defaults)
-        return DirectVolcengineFlashTranscriptionAPI(
-            baseURL: baseURL(
-                forProvider: "volcengine-flash",
-                fallback: URL(string: "https://openspeech.bytedance.com/api/v3")!,
-                defaults: defaults),
-            session: session,
-            modelProvider: {
-                settings.model(forProvider: "volcengine-flash", fallback: "bigmodel")
-            },
-            apiKeyProvider: {
-                apiKey(
-                    forProvider: "volcengine-flash",
-                    plan: settings.asrPlan(forProvider: "volcengine-flash"),
-                    keyReader: keyReader)
-            })
+            modelProvider: { effective.model },
+            apiKeyProvider: { effective.apiKey ?? "" })
     }
 
     /// 火山引擎 大模型流式 (bigmodel_nostream, #580). Reuses the `volcengine-flash` key slot (same 火山
@@ -128,13 +129,10 @@ enum ASRTranscriptionClientFactory {
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> VolcengineRealtimeTranscriptionAPI {
         _ = profileProvider
-        let settings = DefaultsReader(defaults: defaults)
-        let key = apiKey(
-            forProvider: "volcengine-flash",
-            plan: settings.asrPlan(forProvider: "volcengine-flash"),
-            keyReader: keyReader)
+        let effective = effectiveConfiguration(
+            forProvider: "volcengine-flash", defaults: defaults, keyReader: keyReader)
         return VolcengineRealtimeTranscriptionAPI(
-            endpoint: VolcengineRealtimeEndpoint(apiKey: key),
+            endpoint: VolcengineRealtimeEndpoint(apiKey: effective.apiKey ?? ""),
             // #580: whole-utterance semantic mode (bigmodel_nostream endpoint) — the #579
             // param combo was self-defeating per the full docs (enable_nonstream forces
             // 800ms VAD splits and voids vad_segment_duration). Plain config; the endpoint
@@ -161,8 +159,10 @@ enum ASRTranscriptionClientFactory {
         contextScope: String? = nil,
         keyReader: @escaping KeyReader = { BYOKKeychain.read($0) }
     ) -> QwenRunTaskCaptureConfig {
-        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
-            .resolve(.asr, providerId: QwenASRFlashRouting.providerId)
+        let effective = effectiveConfiguration(
+            forProvider: QwenASRFlashRouting.providerId,
+            defaults: defaults,
+            keyReader: keyReader)
         let endpoint = QwenASRFlashRouting.endpoint(
             workspaceID: effective.workspaceID,
             region: effective.region)
@@ -197,92 +197,30 @@ enum ASRTranscriptionClientFactory {
             heartbeat: true)
     }
 
-    // 按量付费 (sk-) and Token Plan (tp-) keep separate keys for multi-plan providers (e.g.
-    // MiMo) — read the slot for the given ASR plan. `plan` is resolved at build time (the
-    // client is rebuilt per capture) so the @Sendable apiKeyProvider closure captures only
-    // Sendable values (plan + keyReader), never the non-Sendable UserDefaults.
-    private static func apiKey(
-        forProvider providerId: String,
-        plan: BillingPlan,
-        keyReader: KeyReader
-    ) -> String {
-        nonEmpty(keyReader(CapabilityCredentialAccount.apiKeyAccount(
-            providerId: providerId, capability: .asr, plan: plan))) ?? ""
+    /// Resolve once when a capture starts. Every client closure captures this Sendable value, so
+    /// a settings change while recording cannot combine the old endpoint with a new model, plan,
+    /// or credential. `CloudQwenSpeechCaptureService.start()` rebuilds the client for the next
+    /// capture, where the newly selected state then takes effect.
+    private static func effectiveConfiguration(
+        forProvider providerID: String,
+        defaults: UserDefaults,
+        keyReader: @escaping KeyReader
+    ) -> ResolvedProviderConfig {
+        ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+            .resolve(.asr, providerId: providerID)
     }
 
-    fileprivate static func resolvedPlan(forProvider providerId: String, defaults: UserDefaults) -> BillingPlan {
-        let providerMatches = ASRModelSelection.providerMatches(
-            defaults.string(forKey: "byok.asr.provider"), providerId)
-        let storedPlan = providerMatches
-            ? BillingPlan(rawValue: defaults.string(forKey: "byok.asr.plan") ?? "")
-            : nil
-        let preset = ProviderCatalog.presets(for: .asr).first { $0.id == providerId }
-        return MiMoASRRouting.normalizedPlan(
-            providerId: providerId, capability: .asr,
-            stored: storedPlan, fallback: preset?.plans(for: .asr).first ?? .payg)
-    }
-
-    private static func baseURL(
-        forProvider providerId: String,
-        fallback: URL,
-        defaults: UserDefaults
-    ) -> URL {
-        let providerMatches = ASRModelSelection.providerMatches(
-            defaults.string(forKey: "byok.asr.provider"),
-            providerId)
-        if providerMatches,
-           let custom = nonEmpty(defaults.string(forKey: "byok.asr.baseURL")),
-           let url = URL(string: MiMoASRRouting.normalizedBaseURL(
-            providerId: providerId,
-            capability: .asr,
-            stored: custom,
-            fallback: MiMoASRRouting.tokenPlanChinaBaseURL)) {
-            return url
-        }
-        guard let preset = ProviderCatalog.presets(for: .asr)
-            .first(where: { $0.id == providerId }) else {
-            return fallback
-        }
-        let region = providerMatches
-            ? ProviderRegion(rawValue: defaults.string(forKey: "byok.asr.region") ?? "") ?? preset.regions(for: .asr).first ?? .global
-            : preset.regions(for: .asr).first ?? .global
-        let storedPlan = providerMatches
-            ? BillingPlan(rawValue: defaults.string(forKey: "byok.asr.plan") ?? "")
-            : nil
-        let plan = MiMoASRRouting.normalizedPlan(
-            providerId: providerId,
-            capability: .asr,
-            stored: storedPlan,
-            fallback: preset.plans(for: .asr).first ?? .payg)
-        guard let raw = preset.endpoint(for: .asr, region: region, plan: plan)?.baseURL,
-              let url = URL(string: raw) else {
-            return fallback
+    /// Invalid custom settings fail closed to a local non-network URL. Normal routing checks the
+    /// effective configuration's endpoint before constructing a cloud client, but direct callers
+    /// must still never fall back to a real provider and send a custom credential there.
+    private static func httpBaseURL(_ effective: ResolvedProviderConfig) -> URL {
+        guard let components = URLComponents(string: effective.baseURL),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              components.host != nil,
+              let url = components.url else {
+            return URL(fileURLWithPath: "/invalid-asr-endpoint")
         }
         return url
-    }
-
-    private static func nonEmpty(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else { return nil }
-        return trimmed
-    }
-}
-
-private struct DefaultsReader: @unchecked Sendable {
-    let defaults: UserDefaults
-
-    func model(forProvider providerId: String, fallback: String) -> String {
-        ASRModelSelection.model(forProvider: providerId, fallback: fallback, defaults: defaults)
-    }
-
-    func customModel() -> String {
-        CustomASREndpoint.model(defaults: defaults)
-    }
-
-    /// Resolve the active ASR billing plan for this provider — used to pick the per-plan key
-    /// slot. Lives here so the @Sendable apiKeyProvider closure captures this (@unchecked
-    /// Sendable) reader rather than the non-Sendable UserDefaults directly.
-    func asrPlan(forProvider providerId: String) -> BillingPlan {
-        ASRTranscriptionClientFactory.resolvedPlan(forProvider: providerId, defaults: defaults)
     }
 }

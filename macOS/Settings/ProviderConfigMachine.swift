@@ -9,7 +9,7 @@ import ResponsayCore
 /// Behaviour is identical to the pre-extraction view: same `CapabilityProviderConfigStore`
 /// keys, same `CapabilityCredentialAccount` keychain accounts (ADR-0023: BYOK keys are read
 /// on load / provider-switch and written on change, never stored in UserDefaults / plaintext),
-/// same `MiMoASRRouting` normalization and same fixed-endpoint forcing for the 豆包流式 ASR engine.
+/// same effective provider configuration consumed by the next ASR capture.
 ///
 /// `defaults` is injectable purely so tests can drive a fresh suite; production always uses
 /// `.standard`, so runtime behaviour is unchanged.
@@ -203,17 +203,7 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        if capability == .llm {
-            applyEffectiveLLMConfiguration(providerId: pid)
-        } else if capability == .asr, pid == QwenASRFlashRouting.providerId {
-            applyEffectiveQwenASRConfiguration()
-        } else if capability == .tts {
-            applyEffectiveTTSConfiguration()
-        } else {
-            apiKey = readApiKey(providerId: pid, plan: plan)
-        }
-        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: pid)) ?? ""
-        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: pid)) ?? ""
+        hydrateRuntimeConfiguration(providerId: pid)
         boostingTableId = d.string(forKey: "byok.\(pid).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
     }
@@ -269,17 +259,7 @@ final class ProviderConfigMachine {
             setScoped(baseURL, suffix: "baseURL")
             setScoped(model, suffix: "model")
         }
-        if capability == .llm {
-            applyEffectiveLLMConfiguration(providerId: prov.id)
-        } else if capability == .asr, prov.id == QwenASRFlashRouting.providerId {
-            applyEffectiveQwenASRConfiguration()
-        } else if capability == .tts {
-            applyEffectiveTTSConfiguration()
-        } else {
-            apiKey = readApiKey(providerId: prov.id, plan: plan)
-        }
-        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: prov.id)) ?? ""
-        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: prov.id)) ?? ""
+        hydrateRuntimeConfiguration(providerId: prov.id)
         boostingTableId = defaults.string(forKey: "byok.\(prov.id).boostingTableId") ?? ""
         loadQwenPrecompiledVocabulary()
         status = ""
@@ -383,18 +363,34 @@ final class ProviderConfigMachine {
         return keyReader(account) ?? ""
     }
 
-    /// Bring the Qwen settings surface onto the same effective state the next capture consumes.
-    /// This is read-only with respect to persisted choices; obsolete or invalid raw values remain
-    /// inert inputs until the user explicitly saves the normalized settings surface.
-    private func applyEffectiveQwenASRConfiguration() {
-        let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
-            .resolve(.asr, providerId: QwenASRFlashRouting.providerId)
-        regionRaw = effective.region.rawValue
-        planRaw = effective.plan.rawValue
-        workspaceID = effective.workspaceID ?? ""
-        baseURL = effective.baseURL
-        model = effective.model
-        apiKey = effective.apiKey ?? ""
+    private func hydrateRuntimeConfiguration(providerId: String) {
+        if capability == .llm {
+            applyEffectiveLLMConfiguration(providerId: providerId)
+        } else if capability == .tts {
+            applyEffectiveTTSConfiguration()
+        }
+
+        if capability == .asr {
+            // Bring every cloud ASR settings surface onto the same effective state the next
+            // capture consumes. Invalid raw combinations remain inert until explicitly saved.
+            let effective = ProviderConfigDispatcher(defaults: defaults, keyReader: keyReader)
+                .resolve(.asr, providerId: providerId)
+            regionRaw = effective.region.rawValue
+            planRaw = effective.plan.rawValue
+            workspaceID = showsWorkspaceIDField ? (effective.workspaceID ?? "") : ""
+            baseURL = effective.baseURL
+            model = effective.model
+            apiKey = effective.apiKey ?? ""
+            appId = effective.appId ?? ""
+            accessToken = effective.accessToken ?? ""
+            return
+        }
+
+        if capability != .llm && capability != .tts {
+            apiKey = readApiKey(providerId: providerId, plan: plan)
+        }
+        appId = keyReader(CapabilityCredentialAccount.appIdAccount(providerId: providerId)) ?? ""
+        accessToken = keyReader(CapabilityCredentialAccount.accessTokenAccount(providerId: providerId)) ?? ""
     }
 
 }

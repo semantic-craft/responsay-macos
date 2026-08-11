@@ -21,8 +21,6 @@ enum ASRBiasingRoute: Sendable, Hashable {
 /// - `.cloudMimo` is wired with a weak-prompt provider in `ASRTranscriptionClientFactory`, but the
 ///   MiMo API discards text content parts (`DirectMimoTranscriptionAPI`), so it carries **no**
 ///   effective `weakPrompt` — hard-match only. We pin the effective (honest) behavior, not the wiring.
-/// - `.cloudVolcengineFlash` carries only `hardMatch`: BigASR's boosting table is not wired (a
-///   missed capability, tracked separately).
 ///
 /// The `switch` is exhaustive on purpose: a new `ASREngine` case will not compile until its routes
 /// are declared here. When you change which biasing closure (`hotwordsProvider`) an engine's
@@ -46,10 +44,6 @@ enum ASREngineBiasingProfile {
         // Fun-ASR-Realtime model in the card drops this engine back to hard-match for that session.
         case .cloudQwenASRFlashRealtime:
             return [.weakPrompt, .hardMatch]
-
-        // BigASR boosting table not wired (missed capability) → hard-match only.
-        case .cloudVolcengineFlash:
-            return [.hardMatch]
 
         // 大模型流式: hotwords are sent via the request's `corpus.context` biasing channel
         // (VolcengineRealtimeTranscriptionAPI) → carries weakPrompt + the universal hard-match.
