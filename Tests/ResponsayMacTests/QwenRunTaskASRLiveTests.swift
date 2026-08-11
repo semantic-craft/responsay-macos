@@ -10,7 +10,7 @@ import XCTest
 /// logged. It intentionally exercises the first-batch official capabilities in two bounded tasks:
 /// an unassisted baseline, followed by the exact same audio after a real `matis` → `Metis` edit
 /// has passed through the explicit-correction learner. The enhanced request covers
-/// instant vocabulary, mixed-language hints, context, heartbeat, and an in-task context refresh.
+/// instant vocabulary, mixed-language hints, context, heartbeat, and session-managed context refresh.
 /// VAD/noise tuning stays on provider defaults; the separate
 /// `scripts/qwen-asr-vad-eval.py` live matrix owns any future evidence for changing them.
 @MainActor
@@ -76,64 +76,40 @@ final class QwenRunTaskASRLiveTests: XCTestCase {
         hotwords: [String] = [],
         context: [String] = []
     ) async throws -> String {
-        let endpoint = QwenRunTaskEndpoint(region: .china)
-        var request = URLRequest(url: endpoint.url)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let socket = URLSession.shared.webSocketTask(with: request)
-        socket.resume()
-        defer { socket.cancel(with: .normalClosure, reason: nil) }
-
-        let client = QwenRunTaskASRClient(transport: socket)
-        let receiver = Task<String, Error> {
-            while true {
-                let event = try await client.receive()
-                guard let update = await client.handleEvent(event) else { continue }
-                switch update {
-                case .partial:
-                    continue
-                case let .final(text):
-                    return text
-                case let .failed(message):
-                    throw LiveAcceptanceError.server(message ?? "unknown server failure")
-                }
-            }
-        }
-
-        try await client.sendRunTask(
-            model: QwenRunTaskEndpoint.defaultModel,
+        let session = QwenRunTaskSession(taskResponseTimeoutNanos: 30_000_000_000)
+        let config = QwenRunTaskCaptureConfig(
+            endpoint: .init(region: .china),
+            apiKey: apiKey,
             hotwords: hotwords,
-            languageHints: ["zh", "en"],
             context: context,
+            captureLocale: .mixed,
             heartbeat: true)
-        guard await client.awaitStarted() else {
-            receiver.cancel()
-            throw LiveAcceptanceError.taskDidNotStart
-        }
-        try await client.sendContinueTask(context: context)
+        let (audio, continuation) = AsyncStream.makeStream(of: Data.self)
 
         // 100 ms of 16 kHz mono Int16 audio per frame, paced in real time.
-        let frameSize = 3_200
-        for start in stride(from: 0, to: pcm.count, by: frameSize) {
-            let end = min(start + frameSize, pcm.count)
-            try await client.sendAudio(pcm.subdata(in: start ..< end))
-            try await Task.sleep(nanoseconds: 100_000_000)
-        }
-        try await client.finish()
-
-        return try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask { try await receiver.value }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
-                throw LiveAcceptanceError.timeout
+        let feeder = Task {
+            let frameSize = 3_200
+            for start in stride(from: 0, to: pcm.count, by: frameSize) {
+                let end = min(start + frameSize, pcm.count)
+                continuation.yield(pcm.subdata(in: start ..< end))
+                try await Task.sleep(nanoseconds: 100_000_000)
             }
-            defer { group.cancelAll() }
-            return try await group.next() ?? ""
+            continuation.finish()
         }
-    }
 
-    private enum LiveAcceptanceError: Error {
-        case server(String)
-        case taskDidNotStart
-        case timeout
+        do {
+            let transcript = try await session.transcribe(
+                config: config,
+                audio: audio,
+                onFinalSentence: { _ in context })
+            try await feeder.value
+            await session.shutdown()
+            return transcript
+        } catch {
+            feeder.cancel()
+            continuation.finish()
+            await session.shutdown()
+            throw error
+        }
     }
 }

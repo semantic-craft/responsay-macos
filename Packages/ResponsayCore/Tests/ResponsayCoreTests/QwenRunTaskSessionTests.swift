@@ -2,8 +2,169 @@ import Foundation
 import Testing
 @testable import ResponsayCore
 
-@Suite("QwenRunTaskSession reuse")
+@Suite("QwenRunTaskSession")
 struct QwenRunTaskSessionTests {
+    @Test func streamsAudioThroughTheSessionInterface() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["streamed transcript"]),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) })
+        let (audio, continuation) = AsyncStream.makeStream(of: Data.self)
+        continuation.yield(Data([0x01]))
+        continuation.finish()
+
+        let transcript = try await session.transcribe(config: config(), audio: audio)
+
+        #expect(transcript == "streamed transcript")
+        let transport = try #require(await factory.transport(at: 0))
+        let taskID = try #require(await transport.taskIDs.first)
+        #expect(await transport.audioByTask[taskID] == [Data([0x01])])
+        await session.shutdown()
+    }
+
+    @Test func waitsForTaskStartedBeforeSendingBufferedAudio() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["gated transcript"], automaticStart: false),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) })
+        let transcription = Task {
+            try await session.transcribe(
+                config: config(),
+                audio: completedAudio([Data([0x01])]))
+        }
+        let transport = try await waitForTransport(factory, index: 0)
+        try await waitUntilAsync("run-task is sent") { await transport.runCount == 1 }
+
+        #expect(await transport.audioByTask.isEmpty)
+        await transport.emitStarted()
+
+        #expect(try await transcription.value == "gated transcript")
+        let taskID = try #require(await transport.taskIDs.first)
+        #expect(await transport.audioByTask[taskID] == [Data([0x01])])
+        await session.shutdown()
+    }
+
+    @Test func decodesAndFoldsTransportFramesInsideTheSession() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(
+                transcripts: [],
+                finishFrames: [
+                    .text("not json"),
+                    .text(sentenceEventMessage(
+                        taskID: "ignored", id: 0, text: "", isFinal: false, heartbeat: true)),
+                    .data(Data(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "你好世", isFinal: false).utf8)),
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "你好世界。", isFinal: true)),
+                    .data(Data(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "你好世界。", isFinal: true).utf8)),
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 2, text: "这是法言。", isFinal: true)),
+                    .text(serverEventMessage(taskID: "task-1", event: "task-finished")),
+                ]),
+        ])
+        let ids = LockedTaskIDs(["task-1"])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) },
+            taskIDProvider: { ids.next() })
+        let callbacks = SentenceSink()
+
+        let transcript = try await session.transcribe(
+            config: config(),
+            audio: completedAudio([Data([0x01])]),
+            onFinalSentence: { await callbacks.append($0); return [] })
+
+        #expect(transcript == "你好世界。这是法言。")
+        #expect(await callbacks.values == ["你好世界。", "这是法言。"])
+        await session.shutdown()
+    }
+
+    @Test func sendsConfiguredRunTaskAndFinishThroughTheTransportSeam() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: ["configured transcript"]),
+        ])
+        let ids = LockedTaskIDs(["task-wire"])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) },
+            taskIDProvider: { ids.next() })
+
+        _ = try await session.transcribe(
+            config: config(
+                locale: .mixed,
+                hotwords: ["Westlaw", "法研 Metis", "Westlaw"],
+                precompiledVocabularyID: "vocab-curated-a1b2c3",
+                context: ["drop me", "one", "two", "three", "four", "five"],
+                heartbeat: true),
+            audio: completedAudio([Data([0x01])]))
+
+        let transport = try #require(await factory.transport(at: 0))
+        #expect(await transport.runTasks == [
+            .init(
+                taskID: "task-wire",
+                streaming: "duplex",
+                taskGroup: "audio",
+                task: "asr",
+                function: "recognition",
+                model: QwenRunTaskEndpoint.defaultModel,
+                parameterKeys: ["format", "sample_rate", "language_hints", "vocabulary", "heartbeat"],
+                format: "pcm",
+                sampleRate: 16_000,
+                languageHints: ["zh", "en"],
+                vocabulary: ["Westlaw": 4, "法研 Metis": 4],
+                vocabularyID: nil,
+                heartbeat: true,
+                context: ["one", "two", "three", "four", "five"]),
+        ])
+        #expect(await transport.finishTasks == [
+            .init(taskID: "task-wire", streaming: "duplex", hasEmptyInput: true),
+        ])
+        await session.shutdown()
+    }
+
+    @Test func finalSentenceCallbackRefreshesContextWhileAudioIsOpen() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(
+                transcripts: [],
+                framesAfterStart: [
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "first sentence。", isFinal: true)),
+                ],
+                finishFrames: [
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 2, text: "second sentence。", isFinal: true)),
+                    .text(serverEventMessage(taskID: "task-1", event: "task-finished")),
+                ]),
+        ])
+        let ids = LockedTaskIDs(["task-1"])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) },
+            taskIDProvider: { ids.next() })
+        let (audio, continuation) = AsyncStream.makeStream(of: Data.self)
+        let transcription = Task {
+            try await session.transcribe(
+                config: config(),
+                audio: audio,
+                onFinalSentence: { _ in ["updated context"] })
+        }
+        let transport = try await waitForTransport(factory, index: 0)
+        try await waitUntilAsync("continue-task carries refreshed context") {
+            await transport.continueContexts == [["updated context"]]
+        }
+
+        continuation.finish()
+
+        #expect(try await transcription.value == "first sentence。second sentence。")
+        #expect(await transport.continueContexts == [["updated context"]])
+        await session.shutdown()
+    }
+
     @Test func sequentialTasksReuseOneSocketWithFreshTaskState() async throws {
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: ["first transcript", "second transcript"],
@@ -73,15 +234,15 @@ struct QwenRunTaskSessionTests {
         _ = try await session.transcribe(
             config: config(),
             audio: completedAudio([Data([0x01])]))
-        let liveAudio = QwenReplayableAudioBuffer()
-        liveAudio.append(Data([0x0A]))
+        let (liveAudio, audioContinuation) = AsyncStream.makeStream(of: Data.self)
+        audioContinuation.yield(Data([0x0A]))
         let recovery = Task {
             try await session.transcribe(config: config(), audio: liveAudio)
         }
         let fresh = try await waitForTransport(factory, index: 1)
         try await waitUntilAsync("replacement Qwen task starts") { await fresh.runCount == 1 }
-        liveAudio.append(Data([0x0B]))
-        liveAudio.finish()
+        audioContinuation.yield(Data([0x0B]))
+        audioContinuation.finish()
         let recovered = try await recovery.value
 
         #expect(recovered == "recovered")
@@ -128,10 +289,15 @@ struct QwenRunTaskSessionTests {
             idleTimeoutNanos: .max,
             factory: { request in try await factory.make(request) })
 
-        await #expect(throws: QwenRunTaskSessionError.self) {
+        do {
             _ = try await session.transcribe(
                 config: config(),
                 audio: completedAudio([Data([0x01])]))
+            Issue.record("Expected the second rejected task to surface its session error.")
+        } catch QwenRunTaskSessionError.taskFailed(let message) {
+            #expect(message == "TEST_ERROR: rejected")
+        } catch {
+            Issue.record("Unexpected bounded-retry error: \(error)")
         }
         let next = try await session.transcribe(
             config: config(),
@@ -194,8 +360,8 @@ struct QwenRunTaskSessionTests {
         let session = QwenRunTaskSession(
             idleTimeoutNanos: .max,
             factory: { request in try await factory.make(request) })
-        let liveAudio = QwenReplayableAudioBuffer()
-        liveAudio.append(Data([0x01]))
+        let (liveAudio, audioContinuation) = AsyncStream.makeStream(of: Data.self)
+        audioContinuation.yield(Data([0x01]))
         let cancelled = Task {
             try await session.transcribe(config: config(), audio: liveAudio)
         }
@@ -205,6 +371,7 @@ struct QwenRunTaskSessionTests {
         }
 
         cancelled.cancel()
+        audioContinuation.finish()
         await #expect(throws: CancellationError.self) {
             _ = try await cancelled.value
         }
@@ -219,7 +386,7 @@ struct QwenRunTaskSessionTests {
     }
 
     @Test func finalResponseTimeoutReconnectsAndReplaysWithoutDroppingAudio() async throws {
-        let timeoutSleeper = TimeoutOnCallSleeper(timeoutCall: 2)
+        let timeoutSleeper = TimeoutOnCallsSleeper(timeoutCalls: [2])
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: [], hangsAfterStart: true),
             .init(transcripts: ["recovered after timeout"]),
@@ -242,6 +409,35 @@ struct QwenRunTaskSessionTests {
         #expect(await timedOut.isClosed)
         let recoveredTaskID = try #require(await recovered.taskIDs.first)
         #expect(await recovered.audioByTask[recoveredTaskID] == frames)
+        await session.shutdown()
+    }
+
+    @Test func repeatedFinalResponseTimeoutIsTerminalAfterOneRetry() async throws {
+        let timeoutSleeper = TimeoutOnCallsSleeper(timeoutCalls: [2, 4])
+        let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: [], hangsAfterStart: true),
+            .init(transcripts: [], hangsAfterStart: true),
+        ])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            taskResponseTimeoutNanos: 123,
+            factory: { request in try await factory.make(request) },
+            taskResponseSleeper: { _ in try await timeoutSleeper.sleep() })
+
+        do {
+            _ = try await session.transcribe(
+                config: config(),
+                audio: completedAudio([Data([0x01])]))
+            Issue.record("Expected the bounded retry to end in a terminal timeout.")
+        } catch QwenRunTaskSessionError.taskResponseTimedOut {
+            // Expected: the timeout remains observable through the session interface.
+        } catch {
+            Issue.record("Unexpected terminal timeout error: \(error)")
+        }
+
+        #expect(await factory.makeCount == 2)
+        #expect(await factory.transport(at: 0)?.isClosed == true)
+        #expect(await factory.transport(at: 1)?.isClosed == true)
         await session.shutdown()
     }
 
@@ -300,20 +496,24 @@ struct QwenRunTaskSessionTests {
     private func config(
         locale: CaptureLocale = .chinese,
         hotwords: [String] = [],
-        precompiledVocabularyID: String? = nil
+        precompiledVocabularyID: String? = nil,
+        context: [String] = [],
+        heartbeat: Bool = false
     ) -> QwenRunTaskCaptureConfig {
         QwenRunTaskCaptureConfig(
             endpoint: .init(region: .china),
             apiKey: "synthetic-test-key",
             hotwords: hotwords,
             precompiledVocabularyID: precompiledVocabularyID,
-            captureLocale: locale)
+            context: context,
+            captureLocale: locale,
+            heartbeat: heartbeat)
     }
 
-    private func completedAudio(_ frames: [Data]) -> QwenReplayableAudioBuffer {
-        let audio = QwenReplayableAudioBuffer()
-        for frame in frames { audio.append(frame) }
-        audio.finish()
+    private func completedAudio(_ frames: [Data]) -> AsyncStream<Data> {
+        let (audio, continuation) = AsyncStream.makeStream(of: Data.self)
+        for frame in frames { continuation.yield(frame) }
+        continuation.finish()
         return audio
     }
 
@@ -335,9 +535,35 @@ private struct ScriptedTransportPlan: Sendable {
     var hangsAfterStart = false
     var duplicateFinalSentence = false
     var emitsPartialBeforeFinal = false
+    var automaticStart = true
+    var framesAfterStart: [QwenRunTaskTransportMessage] = []
+    var finishFrames: [QwenRunTaskTransportMessage]?
     var firstStartNanos: UInt64 = 0
     var reusedStartNanos: UInt64 = 0
     var clock: VirtualNanosecondClock?
+}
+
+private struct RunTaskObservation: Sendable, Equatable {
+    var taskID: String
+    var streaming: String?
+    var taskGroup: String?
+    var task: String?
+    var function: String?
+    var model: String?
+    var parameterKeys: Set<String>
+    var format: String?
+    var sampleRate: Int?
+    var languageHints: [String]?
+    var vocabulary: [String: Int]?
+    var vocabularyID: String?
+    var heartbeat: Bool?
+    var context: [String]
+}
+
+private struct FinishTaskObservation: Sendable, Equatable {
+    var taskID: String
+    var streaming: String?
+    var hasEmptyInput: Bool
 }
 
 private actor ScriptedQwenTransportFactory {
@@ -366,10 +592,14 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
     private let continuation: AsyncThrowingStream<QwenRunTaskTransportMessage, Error>.Continuation
     private let receiver: ScriptedStreamReceiver
     private var currentTaskID: String?
+    private var startedTaskIDs = Set<String>()
     private(set) var taskIDs: [String] = []
     private(set) var audioByTask: [String: [Data]] = [:]
     private(set) var vocabularyIDs: [String?] = []
     private(set) var vocabularies: [[String: Int]?] = []
+    private(set) var runTasks: [RunTaskObservation] = []
+    private(set) var finishTasks: [FinishTaskObservation] = []
+    private(set) var continueContexts: [[String]] = []
     private(set) var isClosed = false
 
     init(plan: ScriptedTransportPlan) {
@@ -386,7 +616,10 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
         guard !isClosed else { throw ScriptedTransportError.closed }
         switch message {
         case let .data(data):
-            guard let currentTaskID else { throw ScriptedTransportError.audioBeforeTask }
+            guard let currentTaskID,
+                  startedTaskIDs.contains(currentTaskID) else {
+                throw ScriptedTransportError.audioBeforeStart
+            }
             audioByTask[currentTaskID, default: []].append(data)
         case let .text(text):
             let root = try json(text)
@@ -401,54 +634,85 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
                 let parameters = payload?["parameters"] as? [String: Any]
                 vocabularyIDs.append(parameters?["vocabulary_id"] as? String)
                 vocabularies.append(parameters?["vocabulary"] as? [String: Int])
+                runTasks.append(.init(
+                    taskID: taskID,
+                    streaming: header?["streaming"] as? String,
+                    taskGroup: payload?["task_group"] as? String,
+                    task: payload?["task"] as? String,
+                    function: payload?["function"] as? String,
+                    model: payload?["model"] as? String,
+                    parameterKeys: Set(parameters?.keys.map { $0 } ?? []),
+                    format: parameters?["format"] as? String,
+                    sampleRate: parameters?["sample_rate"] as? Int,
+                    languageHints: parameters?["language_hints"] as? [String],
+                    vocabulary: parameters?["vocabulary"] as? [String: Int],
+                    vocabularyID: parameters?["vocabulary_id"] as? String,
+                    heartbeat: parameters?["heartbeat"] as? Bool,
+                    context: context(from: (payload?["input"] as? [String: Any])?["context"])))
                 let ordinal = taskIDs.count
                 if plan.failingRunOrdinals.contains(ordinal) {
-                    continuation.yield(.text(serverEvent(
+                    continuation.yield(.text(serverEventMessage(
                         taskID: taskID,
                         event: "task-failed",
                         errorMessage: "rejected")))
                     return
                 }
-                if let clock = plan.clock {
-                    clock.advance(by: ordinal == 1 ? plan.firstStartNanos : plan.reusedStartNanos)
+                if plan.automaticStart {
+                    emitStart(taskID: taskID, ordinal: ordinal)
                 }
-                continuation.yield(.text(serverEvent(taskID: taskID, event: "task-started")))
             case "finish-task":
+                let payload = root["payload"] as? [String: Any]
+                let input = payload?["input"] as? [String: Any]
+                finishTasks.append(.init(
+                    taskID: taskID,
+                    streaming: header?["streaming"] as? String,
+                    hasEmptyInput: input?.isEmpty == true))
                 if plan.hangsAfterStart { return }
+                if let finishFrames = plan.finishFrames {
+                    for frame in finishFrames { continuation.yield(frame) }
+                    currentTaskID = nil
+                    startedTaskIDs.remove(taskID)
+                    return
+                }
                 let ordinal = taskIDs.count
                 guard plan.transcripts.indices.contains(ordinal - 1) else {
                     throw ScriptedTransportError.noTranscript
                 }
                 let transcript = plan.transcripts[ordinal - 1]
                 if plan.emitsPartialBeforeFinal {
-                    continuation.yield(.text(sentenceEvent(
-                        taskID: taskID,
-                        text: "partial hypothesis",
-                        isFinal: false)))
+                    continuation.yield(.text(sentenceEventMessage(
+                        taskID: taskID, id: 1, text: "partial hypothesis", isFinal: false)))
                 }
-                continuation.yield(.text(sentenceEvent(
-                    taskID: taskID,
-                    text: transcript,
-                    isFinal: true)))
+                continuation.yield(.text(sentenceEventMessage(
+                    taskID: taskID, id: 1, text: transcript, isFinal: true)))
                 if plan.duplicateFinalSentence {
-                    continuation.yield(.text(sentenceEvent(
-                        taskID: taskID,
-                        text: transcript,
-                        isFinal: true)))
+                    continuation.yield(.text(sentenceEventMessage(
+                        taskID: taskID, id: 1, text: transcript, isFinal: true)))
                 }
                 if plan.failingAfterFinalRunOrdinals.contains(ordinal) {
-                    continuation.yield(.text(serverEvent(
+                    continuation.yield(.text(serverEventMessage(
                         taskID: taskID,
                         event: "task-failed",
                         errorMessage: "connection lost after final")))
                 } else {
-                    continuation.yield(.text(serverEvent(taskID: taskID, event: "task-finished")))
+                    continuation.yield(.text(serverEventMessage(
+                        taskID: taskID, event: "task-finished")))
                 }
                 currentTaskID = nil
+                startedTaskIDs.remove(taskID)
+            case "continue-task":
+                let payload = root["payload"] as? [String: Any]
+                let input = payload?["input"] as? [String: Any]
+                continueContexts.append(context(from: input?["context"]))
             default:
                 break
             }
         }
+    }
+
+    func emitStarted() {
+        guard let taskID = currentTaskID else { return }
+        emitStart(taskID: taskID, ordinal: taskIDs.count)
     }
 
     func receive() async throws -> QwenRunTaskTransportMessage {
@@ -473,31 +737,57 @@ private actor ScriptedQwenTransport: QwenRunTaskTransport {
         return root
     }
 
-    private func serverEvent(
-        taskID: String,
-        event: String,
-        errorMessage: String? = nil
-    ) -> String {
-        var header = ["task_id": taskID, "event": event]
-        if let errorMessage {
-            header["error_code"] = "TEST_ERROR"
-            header["error_message"] = errorMessage
+    private func emitStart(taskID: String, ordinal: Int) {
+        guard startedTaskIDs.insert(taskID).inserted else { return }
+        if let clock = plan.clock {
+            clock.advance(by: ordinal == 1 ? plan.firstStartNanos : plan.reusedStartNanos)
         }
-        let root: [String: Any] = ["header": header, "payload": [:] as [String: Any]]
-        let data = try! JSONSerialization.data(withJSONObject: root)
-        return String(decoding: data, as: UTF8.self)
+        continuation.yield(.text(serverEventMessage(taskID: taskID, event: "task-started")))
+        for frame in plan.framesAfterStart { continuation.yield(frame) }
     }
 
-    private func sentenceEvent(taskID: String, text: String, isFinal: Bool) -> String {
-        let root: [String: Any] = [
-            "header": ["task_id": taskID, "event": "result-generated"],
-            "payload": ["output": ["sentence": [
-                "sentence_id": 1, "text": text, "sentence_end": isFinal,
-            ]]],
-        ]
-        let data = try! JSONSerialization.data(withJSONObject: root)
-        return String(decoding: data, as: UTF8.self)
+    private func context(from value: Any?) -> [String] {
+        guard let messages = value as? [[String: Any]] else { return [] }
+        return messages.compactMap { message in
+            let content = message["content"] as? [[String: Any]]
+            return content?.first?["text"] as? String
+        }
     }
+}
+
+private func serverEventMessage(
+    taskID: String,
+    event: String,
+    errorMessage: String? = nil
+) -> String {
+    var header = ["task_id": taskID, "event": event]
+    if let errorMessage {
+        header["error_code"] = "TEST_ERROR"
+        header["error_message"] = errorMessage
+    }
+    let root: [String: Any] = ["header": header, "payload": [:] as [String: Any]]
+    let data = try! JSONSerialization.data(withJSONObject: root)
+    return String(decoding: data, as: UTF8.self)
+}
+
+private func sentenceEventMessage(
+    taskID: String,
+    id: Int,
+    text: String,
+    isFinal: Bool,
+    heartbeat: Bool = false
+) -> String {
+    let root: [String: Any] = [
+        "header": ["task_id": taskID, "event": "result-generated"],
+        "payload": ["output": ["sentence": [
+            "sentence_id": id,
+            "text": text,
+            "sentence_end": isFinal,
+            "heartbeat": heartbeat,
+        ]]],
+    ]
+    let data = try! JSONSerialization.data(withJSONObject: root)
+    return String(decoding: data, as: UTF8.self)
 }
 
 private final class ScriptedStreamReceiver: @unchecked Sendable {
@@ -515,7 +805,7 @@ private final class ScriptedStreamReceiver: @unchecked Sendable {
 private enum ScriptedTransportError: Error {
     case noPlan
     case closed
-    case audioBeforeTask
+    case audioBeforeStart
     case noTranscript
     case malformedJSON
 }
@@ -574,17 +864,17 @@ private actor ManualSleeper {
     }
 }
 
-private actor TimeoutOnCallSleeper {
-    private let timeoutCall: Int
+private actor TimeoutOnCallsSleeper {
+    private let timeoutCalls: Set<Int>
     private var callCount = 0
 
-    init(timeoutCall: Int) {
-        self.timeoutCall = timeoutCall
+    init(timeoutCalls: Set<Int>) {
+        self.timeoutCalls = timeoutCalls
     }
 
     func sleep() async throws {
         callCount += 1
-        if callCount == timeoutCall { return }
+        if timeoutCalls.contains(callCount) { return }
         try await Task.sleep(nanoseconds: .max)
     }
 }

@@ -39,7 +39,7 @@ enum ASREngineBiasingProfile {
             return [.hardMatch]
 
         // 千问实时 (run-task WSS): the 词典 weak prompt is sent as 即时热词 `parameters.vocabulary` on
-        // the run-task frame (QwenRunTaskASRProtocol) → weakPrompt + the universal hard-match. Note
+        // the session's run-task frame → weakPrompt + the universal hard-match. Note
         // the field is documented for `qwen-audio-3.0-asr-flash-streaming` only, so picking the
         // Fun-ASR-Realtime model in the card drops this engine back to hard-match for that session.
         case .cloudQwenASRFlashRealtime:

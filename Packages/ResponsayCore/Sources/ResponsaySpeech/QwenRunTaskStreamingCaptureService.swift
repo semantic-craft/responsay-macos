@@ -14,10 +14,9 @@ import ResponsayCore
 /// here for latency: the audio is already recognised by the time the hotkey comes up, so
 /// release→text is far shorter than uploading a whole clip afterwards.
 ///
-/// HITL boundary: the mic tap, the socket drive, and the send/receive concurrency can only be
-/// verified on a real Mac (mic + network). The pieces around it are unit-tested:
-/// `QwenRunTaskASRProtocol` (codec), `QwenRunTaskASRClient` (fold + start gate),
-/// `QwenRunTaskSession` (reuse + reconnect), and `QwenRealtimePCM` (sample conversion).
+/// HITL boundary: the mic tap and production socket can only be verified on a real Mac
+/// (mic + network). Run-task sequencing, folding, replay, and reconnect are verified through
+/// `QwenRunTaskSession`; sample conversion is verified through `QwenRealtimePCM`.
 @MainActor
 public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     private let log = Logger(subsystem: AppBrand.loggerSubsystem, category: "qwen-runtask-capture")
@@ -27,7 +26,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
     private let requireMicPermission: () throws -> Void
 
     private var recorder: AVCaptureAudioRecorder?
-    private var audioBuffer: QwenReplayableAudioBuffer?
+    private var audioContinuation: AsyncStream<Data>.Continuation?
     private var transcriptionTask: Task<String, Error>?
     private var levelContinuation: AsyncStream<Float>.Continuation?
 
@@ -62,8 +61,8 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         let (levelStream, levelCont) = AsyncStream.makeStream(of: Float.self)
         levels = levelStream
         levelContinuation = levelCont
-        let audioBuffer = QwenReplayableAudioBuffer()
-        self.audioBuffer = audioBuffer
+        let (audio, audioContinuation) = AsyncStream.makeStream(of: Data.self)
+        self.audioContinuation = audioContinuation
 
         let contextScope = config.contextScope
         let contextRecorder = self.contextRecorder
@@ -72,7 +71,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         transcriptionTask = Task.detached {
             try await runTaskSession.transcribe(
                 config: config,
-                audio: audioBuffer,
+                audio: audio,
                 onFinalSentence: { text in await contextRecorder(text, contextScope) },
                 onTaskStarted: { metric in
                     let milliseconds = Double(metric.runTaskToStartedNanos) / 1_000_000
@@ -90,10 +89,10 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 var sumOfSquares: Float = 0
                 for value in floats { sumOfSquares += value * value }
                 levelCont.yield(min(1, (sumOfSquares / Float(count)).squareRoot() * 8))
-                audioBuffer.append(QwenRealtimePCM.int16LE(from: floats))
+                audioContinuation.yield(QwenRealtimePCM.int16LE(from: floats))
             }
         } catch {
-            audioBuffer.finish()
+            audioContinuation.finish()
             transcriptionTask?.cancel()
             cleanupTaskState()
             throw error
@@ -106,7 +105,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         recorder = nil
         levelContinuation?.finish()
         levelContinuation = nil
-        audioBuffer?.finish()
+        audioContinuation?.finish()
         let text = await awaitFinal()
         cleanupTaskState()
         log.info("qwen run-task transcript length \(text.count, privacy: .public)")
@@ -134,7 +133,7 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
 
     private func cleanupTaskState() {
         transcriptionTask = nil
-        audioBuffer = nil
+        audioContinuation = nil
     }
 }
 
