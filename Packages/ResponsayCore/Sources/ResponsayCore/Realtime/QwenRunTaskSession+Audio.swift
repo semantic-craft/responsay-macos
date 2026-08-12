@@ -20,6 +20,14 @@ extension QwenRunTaskSession {
             }
         }
 
+        /// Total PCM bytes buffered so far. At 16 kHz mono Int16 this maps to duration
+        /// (32,000 bytes/s), letting the finalization timeout scale with the recording length.
+        var totalBytes: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return frames.reduce(0) { $0 + $1.count }
+        }
+
         func replayingStream() -> AsyncStream<Data> {
             let id = UUID()
             return AsyncStream { continuation in

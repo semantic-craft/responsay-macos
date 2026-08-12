@@ -283,6 +283,7 @@ struct QwenRunTaskSessionTests {
         let factory = ScriptedQwenTransportFactory([
             .init(transcripts: [], failingRunOrdinals: [1]),
             .init(transcripts: [], failingRunOrdinals: [1]),
+            .init(transcripts: [], failingRunOrdinals: [1]),
             .init(transcripts: ["next task"]),
         ])
         let session = QwenRunTaskSession(
@@ -293,7 +294,7 @@ struct QwenRunTaskSessionTests {
             _ = try await session.transcribe(
                 config: config(),
                 audio: completedAudio([Data([0x01])]))
-            Issue.record("Expected the second rejected task to surface its session error.")
+            Issue.record("Expected the third rejected task to surface its session error.")
         } catch QwenRunTaskSessionError.taskFailed(let message) {
             #expect(message == "TEST_ERROR: rejected")
         } catch {
@@ -304,8 +305,50 @@ struct QwenRunTaskSessionTests {
             audio: completedAudio([Data([0x02])]))
 
         #expect(next == "next task")
-        #expect(await factory.makeCount == 3)
+        #expect(await factory.makeCount == 4)
         await session.shutdown()
+    }
+
+    /// If the server ever reuses a `sentence_id` with *different* text (numbering reset after a
+    /// long pause), both sentences must survive — keying finals by id alone silently replaced
+    /// everything said before the pause.
+    @Test func reusedSentenceIDWithDifferentTextAppendsInsteadOfReplacing() async throws {
+        let factory = ScriptedQwenTransportFactory([
+            .init(
+                transcripts: [],
+                finishFrames: [
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "停顿前的内容。", isFinal: true)),
+                    .text(sentenceEventMessage(
+                        taskID: "task-1", id: 1, text: "停顿后的内容。", isFinal: true)),
+                    .text(serverEventMessage(taskID: "task-1", event: "task-finished")),
+                ]),
+        ])
+        let ids = LockedTaskIDs(["task-1"])
+        let session = QwenRunTaskSession(
+            idleTimeoutNanos: .max,
+            factory: { request in try await factory.make(request) },
+            taskIDProvider: { ids.next() })
+
+        let transcript = try await session.transcribe(
+            config: config(),
+            audio: completedAudio([Data([0x01])]))
+
+        #expect(transcript == "停顿前的内容。停顿后的内容。")
+        await session.shutdown()
+    }
+
+    /// The post-`finish-task` wait must grow with the recording so a reconnect replay of a long
+    /// capture is not cut off at the flat handshake timeout, and must stay capped.
+    @Test func finalWaitScalesWithRecordedAudioAndIsCapped() {
+        let base: UInt64 = 5_000_000_000
+        #expect(QwenRunTaskSession.finalWaitNanos(base: base, audioBytes: 0) == base)
+        // 60 s of 16 kHz mono Int16 audio = 1,920,000 bytes → +30 s of grace.
+        #expect(QwenRunTaskSession.finalWaitNanos(base: base, audioBytes: 1_920_000)
+                == 35_000_000_000)
+        // 15 min of audio would scale past the cap; the wait clamps at 90 s.
+        #expect(QwenRunTaskSession.finalWaitNanos(base: base, audioBytes: 28_800_000)
+                == 90_000_000_000)
     }
 
     @Test func finalSentenceCallbackRunsOnceAcrossRetryReplay() async throws {
@@ -448,9 +491,10 @@ struct QwenRunTaskSessionTests {
         await session.shutdown()
     }
 
-    @Test func repeatedFinalResponseTimeoutIsTerminalAfterOneRetry() async throws {
-        let timeoutSleeper = TimeoutOnCallsSleeper(timeoutCalls: [2, 4])
+    @Test func repeatedFinalResponseTimeoutIsTerminalAfterBoundedRetries() async throws {
+        let timeoutSleeper = TimeoutOnCallsSleeper(timeoutCalls: [2, 4, 6])
         let factory = ScriptedQwenTransportFactory([
+            .init(transcripts: [], hangsAfterStart: true),
             .init(transcripts: [], hangsAfterStart: true),
             .init(transcripts: [], hangsAfterStart: true),
         ])
@@ -471,9 +515,10 @@ struct QwenRunTaskSessionTests {
             Issue.record("Unexpected terminal timeout error: \(error)")
         }
 
-        #expect(await factory.makeCount == 2)
+        #expect(await factory.makeCount == 3)
         #expect(await factory.transport(at: 0)?.isClosed == true)
         #expect(await factory.transport(at: 1)?.isClosed == true)
+        #expect(await factory.transport(at: 2)?.isClosed == true)
         await session.shutdown()
     }
 

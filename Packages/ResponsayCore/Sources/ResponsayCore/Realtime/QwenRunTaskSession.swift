@@ -175,7 +175,9 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
                 await invalidate(lease)
                 if error is CancellationError { throw error }
                 attempt += 1
-                guard attempt < 2 else { throw error }
+                // Three attempts, not two: a multi-minute dictation can survive one mid-capture
+                // failure and still have a full retry left at finalization time.
+                guard attempt < 3 else { throw error }
             }
         }
     }
@@ -261,8 +263,15 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
                     switch result {
                     case .senderFinished where !finalTimeoutArmed:
                         finalTimeoutArmed = true
+                        // After a reconnect the whole recording was just replayed, so the server
+                        // may still be recognising minutes of backlog when `finish-task` lands.
+                        // Scale the final wait with the recording length instead of cutting a
+                        // long capture off at the flat handshake timeout.
+                        let finalWait = Self.finalWaitNanos(
+                            base: responseTimeout,
+                            audioBytes: audio.totalBytes)
                         group.addTask {
-                            try await responseSleeper(responseTimeout)
+                            try await responseSleeper(finalWait)
                             await lease.transport.close()
                             throw QwenRunTaskSessionError.taskResponseTimedOut
                         }
@@ -334,6 +343,14 @@ public actor QwenRunTaskSession: QwenRunTaskTranscribing {
         idleCloseTask = nil
         idleGeneration = nil
         await current.transport.close()
+    }
+
+    /// Post-`finish-task` wait for the terminal transcript: half a second of grace per second of
+    /// recorded audio on top of the flat handshake timeout, capped at 90 s. 16 kHz mono Int16 is
+    /// 32,000 bytes/s → 15,625 ns of allowance per byte.
+    static func finalWaitNanos(base: UInt64, audioBytes: Int) -> UInt64 {
+        let scaled = base + UInt64(max(0, audioBytes)) * 15_625
+        return min(scaled, 90_000_000_000)
     }
 
     private static func request(for config: QwenRunTaskCaptureConfig) -> URLRequest {

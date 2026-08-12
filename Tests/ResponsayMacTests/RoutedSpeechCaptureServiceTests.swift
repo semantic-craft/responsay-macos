@@ -439,26 +439,40 @@ final class RoutedSpeechCaptureServiceTests: XCTestCase {
         XCTAssertEqual(transcript, "推到代码仓里")
     }
 
+    /// A timeout after a sentence was already recognised must salvage that sentence — a long
+    /// dictation degrades to "missing the tail", never to nothing.
     @MainActor
-    func testQwenTimeoutIsObservableAtProductionRouter() async throws {
+    func testQwenTimeoutSalvagesRecognisedSentencesAtProductionRouter() async throws {
         let adapter = LocalQwenDictationAdapter(completion: .timeout)
         let router = makeQwenRouter(adapter: adapter)
 
         try router.start(locale: .mixed)
-        do {
-            _ = try await router.stop()
-            XCTFail("timeout must not be collapsed into an empty transcript")
-        } catch QwenRunTaskSessionError.taskResponseTimedOut {
-            XCTAssertTrue(adapter.stopped)
-        } catch {
-            XCTFail("unexpected error: \(error)")
-        }
+        let transcript = try await router.stop()
+
+        XCTAssertEqual(transcript, "前一段原始转写")
+        XCTAssertTrue(adapter.stopped)
     }
 
     @MainActor
-    func testQwenTaskFailureIsObservableAtProductionRouter() async throws {
+    func testQwenTaskFailureSalvagesRecognisedSentencesAtProductionRouter() async throws {
         let adapter = LocalQwenDictationAdapter(
             completion: .taskFailure("synthetic run-task failure"))
+        let router = makeQwenRouter(adapter: adapter)
+
+        try router.start(locale: .mixed)
+        let transcript = try await router.stop()
+
+        XCTAssertEqual(transcript, "前一段原始转写")
+        XCTAssertTrue(adapter.stopped)
+    }
+
+    /// With nothing recognised there is nothing to salvage — the failure must stay observable
+    /// at the router instead of collapsing into an empty transcript.
+    @MainActor
+    func testQwenTaskFailureWithNothingRecognisedIsObservableAtProductionRouter() async throws {
+        let adapter = LocalQwenDictationAdapter(
+            completion: .taskFailure("synthetic run-task failure"),
+            finalSentences: [])
         let router = makeQwenRouter(adapter: adapter)
 
         try router.start(locale: .mixed)
