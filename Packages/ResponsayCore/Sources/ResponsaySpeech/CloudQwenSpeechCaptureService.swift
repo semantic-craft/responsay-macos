@@ -245,21 +245,40 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
             guard raw.count <= Self.maxRequestBytes else {
                 throw CoachAPIError.message("音频解码失败,无法分段上传,请重试或缩短录音。")
             }
-            return try await transcribeSegment(
+            let text = try await transcribeSegment(
                 raw,
                 mimeType: "audio/wav",
                 stitchedPrefix: [])
+            guard !text.isEmpty else {
+                throw CoachAPIError.message("云端语音识别返回为空")
+            }
+            return text
         }
         var parts: [String] = []
         for (index, wav) in segments.enumerated() {
             log.info("Backend ASR segment \(index + 1, privacy: .public)/\(segments.count, privacy: .public) (\(wav.count, privacy: .public) bytes) via \(self.providerName, privacy: .public)")
-            let text = try await transcribeSegment(
-                wav,
-                mimeType: "audio/wav",
-                stitchedPrefix: parts)
-            parts.append(text)
+            do {
+                let text = try await transcribeSegment(
+                    wav,
+                    mimeType: "audio/wav",
+                    stitchedPrefix: parts)
+                if !text.isEmpty { parts.append(text) }
+            } catch {
+                // Fail fast on the first segment: an error there is a config /
+                // auth / connectivity problem that would doom every segment.
+                // A later segment's failure (transient 5xx, a provider-side
+                // 返回为空 on a quiet stretch) must not discard the minutes
+                // already transcribed — salvage what we have, like the
+                // realtime path does.
+                guard index > 0 else { throw error }
+                log.error("Backend ASR segment \(index + 1, privacy: .public)/\(segments.count, privacy: .public) failed via \(self.providerName, privacy: .public); salvaging the rest: \(error.localizedDescription, privacy: .public)")
+            }
         }
-        return TranscriptJoiner.join(parts)
+        let joined = TranscriptJoiner.join(parts)
+        guard !joined.isEmpty else {
+            throw CoachAPIError.message("云端语音识别返回为空")
+        }
+        return joined
     }
 
     private func transcribeSegment(
@@ -280,20 +299,15 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
                     let stitched = TranscriptJoiner.join(stitchedPrefix + [segmentText])
                     partialContinuation?.yield(stitched)
                 case .done:
-                    let trimmed = segmentText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else {
-                        throw CoachAPIError.message("MiMo ASR 返回为空")
-                    }
-                    return trimmed
+                    // Empty is not an error here: a segment of a long capture can
+                    // legitimately cover a quiet stretch. The caller throws
+                    // 返回为空 only when the WHOLE capture yields nothing.
+                    return segmentText.trimmingCharacters(in: .whitespacesAndNewlines)
                 case .failed(let message):
                     throw CoachAPIError.message(message)
                 }
             }
-            let trimmed = segmentText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                throw CoachAPIError.message("云端语音识别返回为空")
-            }
-            return trimmed
+            return segmentText.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
         let result = try await client.transcribe(

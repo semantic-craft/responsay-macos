@@ -11,6 +11,11 @@ import Foundation
 /// use), NOT the OpenAI-compat Bearer. Base URL is the native host; the model and
 /// custom method are appended per request.
 public struct DirectGeminiTranscriptionAPI: TranscriptionAPI {
+    /// Gemini caps a single inline request at 20 MB *total* (audio doc); base64
+    /// inflates by 4/3, so cap raw audio at 15 MB. The capture service segments
+    /// well below this, so the guard only trips on a pathological single clip.
+    public static let defaultMaxAudioBytes = 15_000_000
+
     private let baseURL: URL
     private let session: URLSession
     private let maxAudioBytes: Int
@@ -22,10 +27,7 @@ public struct DirectGeminiTranscriptionAPI: TranscriptionAPI {
     public init(
         baseURL: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/")!,
         session: URLSession = .shared,
-        // Gemini caps a single inline request at 20 MB *total* (audio doc); base64
-        // inflates by 4/3, so cap raw audio at 15 MB. The capture service segments
-        // well below this, so the guard only trips on a pathological single clip.
-        maxAudioBytes: Int = 15_000_000,
+        maxAudioBytes: Int = DirectGeminiTranscriptionAPI.defaultMaxAudioBytes,
         hotwordsProvider: @escaping @Sendable () -> [String] = { [] },
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         modelProvider: @escaping @Sendable () -> String = { "gemini-3.1-flash-lite" },

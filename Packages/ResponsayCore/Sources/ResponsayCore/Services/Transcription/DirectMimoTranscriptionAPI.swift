@@ -1,6 +1,12 @@
 import Foundation
 
 public struct DirectMimoTranscriptionAPI: StreamingTranscriptionAPI {
+    /// MiMo's 10 MB limit applies to the *base64-encoded* payload
+    /// (xiaomi_mimo_asr.md); base64 inflates by 4/3, so cap raw at 7.5 MB.
+    /// The tightest cap of all direct clients — `PCMWAVSegmenterTests` pins
+    /// every planned segment under it.
+    public static let defaultMaxAudioBytes = 7_500_000
+
     private let baseURL: URL
     private let session: URLSession
     private let maxAudioBytes: Int
@@ -10,9 +16,7 @@ public struct DirectMimoTranscriptionAPI: StreamingTranscriptionAPI {
     public init(
         baseURL: URL = URL(string: "https://token-plan-cn.xiaomimimo.com/v1")!,
         session: URLSession = .shared,
-        // MiMo's 10 MB limit applies to the *base64-encoded* payload
-        // (xiaomi_mimo_asr.md); base64 inflates by 4/3, so cap raw at 7.5 MB.
-        maxAudioBytes: Int = 7_500_000,
+        maxAudioBytes: Int = DirectMimoTranscriptionAPI.defaultMaxAudioBytes,
         hotwordsProvider: @escaping @Sendable () -> [String] = { [] },
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         modelProvider: @escaping @Sendable () -> String = { "mimo-v2.5-asr" },

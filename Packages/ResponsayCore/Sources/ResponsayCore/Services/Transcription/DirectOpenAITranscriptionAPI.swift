@@ -1,6 +1,10 @@
 import Foundation
 
 public struct DirectOpenAITranscriptionAPI: TranscriptionAPI {
+    /// OpenAI caps an uploaded audio file at 25 MB; 20 MB leaves headroom for
+    /// the multipart framing around it.
+    public static let defaultMaxAudioBytes = 20_000_000
+
     private let baseURL: URL
     private let session: URLSession
     private let maxAudioBytes: Int
@@ -12,7 +16,7 @@ public struct DirectOpenAITranscriptionAPI: TranscriptionAPI {
     public init(
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         session: URLSession = .shared,
-        maxAudioBytes: Int = 20_000_000,
+        maxAudioBytes: Int = DirectOpenAITranscriptionAPI.defaultMaxAudioBytes,
         hotwordsProvider: @escaping @Sendable () -> [String] = { [] },
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile = { .dictation },
         modelProvider: @escaping @Sendable () -> String = { "whisper-1" },
