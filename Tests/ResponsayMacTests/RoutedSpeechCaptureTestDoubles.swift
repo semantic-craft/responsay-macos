@@ -30,6 +30,7 @@ final class LocalQwenDictationAdapter: @unchecked Sendable,
 
     private let lock = NSLock()
     private let completion: Completion
+    private let finalSentences: [String]
     private var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private var _started = false
     private var _stopped = false
@@ -39,8 +40,12 @@ final class LocalQwenDictationAdapter: @unchecked Sendable,
     private var _audio = [Data]()
     private var _callbackContext = [String]()
 
-    init(completion: Completion = .transcript("推到代码厂里")) {
+    init(
+        completion: Completion = .transcript("推到代码厂里"),
+        finalSentences: [String] = ["前一段原始转写"]
+    ) {
         self.completion = completion
+        self.finalSentences = finalSentences
     }
 
     var started: Bool { withLock { _started } }
@@ -91,8 +96,10 @@ final class LocalQwenDictationAdapter: @unchecked Sendable,
         for await frame in audio {
             withLock { _audio.append(frame) }
         }
-        let updatedContext = await onFinalSentence("前一段原始转写")
-        withLock { _callbackContext = updatedContext }
+        for sentence in finalSentences {
+            let updatedContext = await onFinalSentence(sentence)
+            withLock { _callbackContext = updatedContext }
+        }
         switch completion {
         case let .transcript(text):
             return text

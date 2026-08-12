@@ -19,21 +19,69 @@ public enum PCMWAVSegmenter {
     /// 10 MB *base64* limit (≈ 7.5 MB raw). 6 MB ≈ 187 s of 16 kHz mono PCM.
     public static let defaultMaxSegmentBytes = 6_000_000
 
+    /// How far back from the hard byte boundary a cut may move to land in a
+    /// pause. 10 s of speech virtually always contains at least one breath gap;
+    /// the window is clamped to half the segment so a cut can never starve the
+    /// next segment.
+    public static let boundarySearchSamples = 10 * sampleRate
+
+    /// Energy-scan granularity for the cut search. 100 ms is long enough that a
+    /// minimum-energy frame is a genuine pause rather than a stop-consonant
+    /// closure inside a word.
+    public static let energyFrameSamples = sampleRate / 10
+
     /// Frame ranges that each fit within `maxSegmentBytes` of PCM payload.
+    ///
+    /// A cut at the raw byte boundary lands mid-word and mangles the words on
+    /// both sides of the join, so each non-final cut is moved back to the
+    /// middle of the quietest 100 ms frame within the last 10 s of the segment
+    /// — for real speech that is a pause between words. When every frame is
+    /// equally loud (tone, music) the latest minimum wins, keeping segments as
+    /// full as possible.
     public static func planSegments(
-        sampleCount: Int,
+        samples: [Int16],
         maxSegmentBytes: Int = defaultMaxSegmentBytes
     ) -> [Range<Int>] {
-        guard sampleCount > 0 else { return [] }
+        guard !samples.isEmpty else { return [] }
         let maxSamples = max(1, maxSegmentBytes / bytesPerSample)
         var ranges: [Range<Int>] = []
         var start = 0
-        while start < sampleCount {
-            let end = min(start + maxSamples, sampleCount)
-            ranges.append(start..<end)
-            start = end
+        while start < samples.count {
+            let hardEnd = start + maxSamples
+            guard hardEnd < samples.count else {
+                ranges.append(start..<samples.count)
+                break
+            }
+            let cut = quietestCut(
+                in: samples,
+                before: hardEnd,
+                window: min(boundarySearchSamples, maxSamples / 2))
+            ranges.append(start..<cut)
+            start = cut
         }
         return ranges
+    }
+
+    /// Midpoint of the lowest-energy frame in `[hardEnd - window, hardEnd)`,
+    /// or `hardEnd` itself when the window is too small to hold one frame.
+    private static func quietestCut(in samples: [Int16], before hardEnd: Int, window: Int) -> Int {
+        guard window >= energyFrameSamples else { return hardEnd }
+        var bestStart = hardEnd - energyFrameSamples
+        var bestEnergy = Int64.max
+        var frameStart = hardEnd - window
+        while frameStart + energyFrameSamples <= hardEnd {
+            var energy: Int64 = 0
+            for index in frameStart..<(frameStart + energyFrameSamples) {
+                let sample = Int64(samples[index])
+                energy += sample * sample
+            }
+            if energy <= bestEnergy {
+                bestEnergy = energy
+                bestStart = frameStart
+            }
+            frameStart += energyFrameSamples
+        }
+        return bestStart + energyFrameSamples / 2
     }
 
     /// Wrap a slice of 16 kHz mono Int16 samples in a canonical 44-byte PCM WAV.
@@ -62,7 +110,7 @@ public enum PCMWAVSegmenter {
         samples: [Int16],
         maxSegmentBytes: Int = defaultMaxSegmentBytes
     ) -> [Data] {
-        planSegments(sampleCount: samples.count, maxSegmentBytes: maxSegmentBytes)
+        planSegments(samples: samples, maxSegmentBytes: maxSegmentBytes)
             .map { wavData(samples[$0]) }
     }
 

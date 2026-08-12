@@ -15,10 +15,15 @@ extension QwenRunTaskSession {
             case terminated
         }
 
+        private struct FinalKey: Hashable {
+            var id: Int
+            var text: String
+        }
+
         private let transport: any QwenRunTaskTransport
         private let taskID: String
-        private var finalsByID: [Int: String] = [:]
-        private var finalOrder: [Int] = []
+        private var finalSegments: [String] = []
+        private var seenFinals = Set<FinalKey>()
         private var pendingPartial = ""
         private var finishSent = false
         private var startState: StartState = .waiting
@@ -82,8 +87,12 @@ extension QwenRunTaskSession {
                 return nil
             case let .sentence(id, text, isFinal):
                 if isFinal {
-                    if finalsByID.updateValue(text, forKey: id) == nil {
-                        finalOrder.append(id)
+                    // Dedup by (id, text): a replayed duplicate cannot double-append, while a
+                    // *reused* `sentence_id` carrying different text (numbering reset after a long
+                    // pause) still appends — keying by id alone silently dropped everything said
+                    // before the pause.
+                    if seenFinals.insert(.init(id: id, text: text)).inserted {
+                        finalSegments.append(text)
                     }
                     pendingPartial = ""
                 } else {
@@ -102,7 +111,7 @@ extension QwenRunTaskSession {
         }
 
         private var transcript: String {
-            var segments = finalOrder.compactMap { finalsByID[$0] }
+            var segments = finalSegments
             if !pendingPartial.isEmpty { segments.append(pendingPartial) }
             return TranscriptJoiner.mergeSegments(segments)
         }

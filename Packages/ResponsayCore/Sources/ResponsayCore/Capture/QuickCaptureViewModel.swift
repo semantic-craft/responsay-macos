@@ -167,7 +167,9 @@ public final class QuickCaptureViewModel {
     /// Hard cap on a single listening session. A lost push-to-talk key-up (sleep/wake,
     /// focus loss, AX revoke) can otherwise strand the mic open forever; this stops and
     /// processes whatever was captured instead of recording indefinitely (HOTKEY-STUCK-004).
-    static let maxListeningDuration: UInt64 = 180_000_000_000  // 180s
+    /// 15 minutes: long enough for a real dictated monologue — the 180 s original silently
+    /// truncated long captures mid-sentence — while still bounding a stuck session.
+    static let maxListeningDuration: UInt64 = 900_000_000_000  // 15 min
     // 558: the capsule reads this to badge Intent-aware captures (校验成稿中); writes stay internal.
     public internal(set) var activeOutputMode: OutputMode = .coachRewrite
 
