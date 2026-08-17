@@ -19,12 +19,14 @@ struct CapabilityCardView: View {
             capability: capability, preferredProviderId: preferredProviderId))
     }
 
-    /// 预设 + 拉取合并的模型菜单（听写模型与技能平台模型两个选择器共用一份）。
+    /// 预设 + 拉取合并的模型菜单（听写模型与技能平台模型两个选择器共用一份）。拉取过就以拉取结果
+    /// 领先——它按新旧排过序，比预设更新的一代（如新发布的 Gemini flash）才会出现在第一屏；预设里
+    /// 没被拉到的 id 仍然保留在后面，拉取失败或列表不全时不至于少了选项。
     private var menuModels: [String] {
         let presetList = machine.current.presetModels[capability] ?? []
         if machine.fetchedModels.isEmpty { return presetList }
-        var combined = presetList
-        for m in machine.fetchedModels where !combined.contains(m) { combined.append(m) }
+        var combined = machine.fetchedModels
+        for m in presetList where !combined.contains(m) { combined.append(m) }
         return combined
     }
 

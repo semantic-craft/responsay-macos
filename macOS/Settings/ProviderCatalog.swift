@@ -162,6 +162,12 @@ struct ProviderPreset: Identifiable, Sendable {
     /// instead of relying on a `/models` ping that returns chat models. Editable
     /// field stays; this is just the curated dropdown.
     var presetModels: [ModelCapability: [String]] = [:]
+    /// Model families a `/models` fetch may surface *beyond* `presetModels`. A curated list can
+    /// only name models that existed when the app shipped, so a provider that keeps releasing
+    /// inside one naming family (Gemini flash / flash-lite) declares it here and 「拉取模型」
+    /// offers the newer generation the moment it goes live — no release needed. See
+    /// `OpenModelFamily`.
+    var openModelFamilies: [ModelCapability: OpenModelFamily] = [:]
     /// Known voices for TTS (语音合成), driving the "音色" picker menu.
     var presetVoices: [PresetVoice] = []
 
@@ -180,6 +186,7 @@ struct ProviderPreset: Identifiable, Sendable {
         isCustom: Bool,
         isLocal: Bool,
         presetModels: [ModelCapability: [String]] = [:],
+        openModelFamilies: [ModelCapability: OpenModelFamily] = [:],
         presetVoices: [PresetVoice] = []
     ) {
         self.id = id
@@ -196,6 +203,7 @@ struct ProviderPreset: Identifiable, Sendable {
         self.isCustom = isCustom
         self.isLocal = isLocal
         self.presetModels = presetModels
+        self.openModelFamilies = openModelFamilies
         self.presetVoices = presetVoices
     }
 
