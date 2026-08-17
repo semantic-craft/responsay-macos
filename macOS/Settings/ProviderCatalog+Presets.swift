@@ -269,6 +269,8 @@ extension ProviderCatalog {
                 "gemini-2.5-flash",        // 旧代 flash
                 "gemini-3-flash-preview",  // Gemini 3 flash(preview)
                 "gemini-3.5-flash",        // 质量最好但最贵(可选)
+                "gemini-flash-lite-latest", // lite 别名 — 永远指向最新一代 lite
+                "gemini-flash-latest",     // flash 别名 — 永远指向最新一代 flash
             ],
             .llm: [
                 "gemini-3.5-flash-lite",   // default — 2026-07-21 stable, cheapest/fastest 3.5 (1M ctx, thinking)
@@ -278,11 +280,16 @@ extension ProviderCatalog {
                 "gemini-3.1-pro-preview",  // Gemini 3 Pro (text)
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
-                "gemini-flash-latest",     // latest-flash alias (auto-tracks newest)
+                "gemini-flash-latest",       // latest-flash alias (auto-tracks newest)
+                "gemini-flash-lite-latest",  // latest-lite alias (auto-tracks newest lite)
             ],
             // Single TTS model — newest + fastest (see TTSProviderCatalogPresets.gemini).
             .tts: ["gemini-3.1-flash-tts-preview"],
         ],
+        // 一代新 flash 发布后不必等 App 更新：「拉取模型」把比列表更新的
+        // gemini-*-flash / -flash-lite 直接排在最前(见 OpenModelFamily.geminiFlash)。
+        // Pro / image / tts / live / native-audio 仍然进不来。
+        openModelFamilies: [.llm: .geminiFlash, .asr: .geminiFlash],
         presetVoices: [
             PresetVoice(id: "Kore", displayName: "Kore (清晰)"),
             PresetVoice(id: "Puck", displayName: "Puck (明亮)"),

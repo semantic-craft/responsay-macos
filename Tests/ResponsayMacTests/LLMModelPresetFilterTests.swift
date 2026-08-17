@@ -125,6 +125,73 @@ final class LLMModelPresetFilterTests: XCTestCase {
         XCTAssertEqual(models, ["gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"])
     }
 
+    /// Gemini flash 是开放族（`openModelFamilies`）：比列表更新的一代 flash / flash-lite 一经发布，
+    /// 「拉取模型」就能选到，不用等 App 更新。新的排在最前，越新越靠前；预设列表本身顺序不变。
+    func testGeminiFetchSurfacesNewerFlashGenerationAheadOfCuratedList() {
+        let models = LLMModelPresetFilter.models(
+            from: ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash",
+                   "gemini-3.7-flash-lite", "gemini-4-flash-preview", "gemini-2.5-pro"],
+            preset: ProviderCatalog.gemini,
+            capability: .llm)
+
+        XCTAssertEqual(models, [
+            "gemini-4-flash-preview", "gemini-3.7-flash", "gemini-3.7-flash-lite",
+            "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-pro",
+        ])
+    }
+
+    /// The open family is shaped, not keyword-matched: a *newer* generation's image / tts / live /
+    /// native-audio ids stay out of the text picker, and so does a newer Pro (a different family —
+    /// curation still decides those).
+    func testGeminiFetchKeepsNonTextAndOtherFamilyModelsOutEvenWhenNewer() {
+        let models = LLMModelPresetFilter.models(
+            from: ["gemini-3.5-flash-lite", "gemini-3.7-flash-image", "gemini-3.7-flash-tts-preview",
+                   "gemini-live-3.7-flash-preview", "gemini-3.7-flash-preview-native-audio-dialog",
+                   "gemini-3.7-pro-preview", "gemini-embedding-002"],
+            preset: ProviderCatalog.gemini,
+            capability: .llm)
+
+        XCTAssertEqual(models, ["gemini-3.5-flash-lite"])
+    }
+
+    /// Discovery only reaches *forward*: older flash ids the curation deliberately left out are
+    /// still left out, and a curated `*-latest` alias (no pinned version) does not count as
+    /// "newest curated" — otherwise nothing could ever be newer and the family would be closed.
+    func testGeminiFetchIgnoresOlderUncuratedFlashModels() {
+        let models = LLMModelPresetFilter.models(
+            from: ["gemini-2.0-flash", "gemini-2.0-flash-lite-001", "gemini-3.1-flash-lite",
+                   "gemini-3.6-flash-lite", "gemini-flash-latest"],
+            preset: ProviderCatalog.gemini,
+            capability: .llm)
+
+        XCTAssertEqual(models, ["gemini-3.6-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"])
+    }
+
+    /// The `*-latest` aliases are curated on both lanes, so 「一直用最新一代」 works even without a
+    /// fetch — and the ASR lane opens the same flash family for dictation.
+    func testGeminiLatestAliasesAreCuratedAndASRLaneOpensTheFlashFamily() {
+        XCTAssertTrue((ProviderCatalog.gemini.presetModels[.llm] ?? []).contains("gemini-flash-lite-latest"))
+        XCTAssertTrue((ProviderCatalog.gemini.presetModels[.asr] ?? []).contains("gemini-flash-lite-latest"))
+
+        let models = LLMModelPresetFilter.models(
+            from: ["gemini-3.1-flash-lite", "gemini-3.7-flash-lite", "gemini-3.7-flash-tts-preview"],
+            preset: ProviderCatalog.gemini,
+            capability: .asr)
+
+        XCTAssertEqual(models, ["gemini-3.7-flash-lite", "gemini-3.1-flash-lite"])
+    }
+
+    /// A provider with no open family is unaffected: qwen's fetch stays trimmed to its curated set
+    /// even when the endpoint offers a newer flash-shaped id.
+    func testProviderWithoutOpenFamilyStaysCurated() {
+        let models = LLMModelPresetFilter.models(
+            from: ["qwen3.7-flash", "qwen3.9-flash"],
+            preset: ProviderCatalog.qwen,
+            capability: .llm)
+
+        XCTAssertEqual(models, ["qwen3.7-flash"])
+    }
+
     /// A custom OpenAI-compatible ASR endpoint has no curation, so its fetched list passes
     /// through untouched.
     func testCustomASRFetchKeepsProviderList() {
