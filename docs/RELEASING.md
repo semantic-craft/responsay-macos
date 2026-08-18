@@ -5,6 +5,8 @@ It signs with the `Developer ID Application` certificate already in the login ke
 signs the Sparkle feed with the EdDSA key `generate_keys` stored there. Nothing is
 exported, and no signing material exists outside that machine.
 
+Development, review, and version-bump pull requests live on Cursor Origin. The current public download and Sparkle feed still live on GitHub, so `semantic-craft/responsay-macos` must remain publicly readable until both artifacts are moved to a selected public host and old/current clients are tested against it. Making the GitHub archive private before that migration breaks steps 4–7 and installed-client updates; see `docs/operations/ci.md`.
+
 This repository's root `appcast.xml` is the canonical Sparkle feed. New builds read it from
 the repository's stable raw `main` URL. The old `https://responsay.com/appcast.xml` URL is a
 compatibility redirect for already-installed builds; cutting a release does not require a
@@ -48,33 +50,34 @@ must belong to the team that owns the Developer ID certificate.
 Set `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`. Open a pull
 request and merge it once CI is green.
 
-Nothing enforces either half automatically. The `main` ruleset requires a pull request and
-blocks unresolved review threads, but it has no required checks or approval requirement.
-The pull request is the review surface; CI is an additional safety signal, not a substitute
-for the local test suites below.
+Nothing enforces either half automatically. The Origin `main` rules require a pull request,
+an up-to-date branch, and successful Depot and Buildkite checks. The pull request is the
+review surface; remote CI is an additional safety signal, not a substitute for the local
+test suites below.
 
-Run both suites locally before tagging regardless of what CI says, because CI does not cover
-the same ground:
+Run both suites locally at the exact merge commit before tagging. Buildkite runs the same
+native tests on a clean hosted Mac, but the release still depends on the maintainer Mac's
+signing, notarization, and final artifact checks:
 
 ```bash
 swift test --package-path Packages/ResponsayCore
 xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 ```
 
-The workflow only does `build-for-testing` for the macOS target, so those tests **compile**
-in CI and never **run** there — a failure in them leaves CI green. Its `macos-26` runners
-also queue for tens of minutes when GitHub is short on them, which is the usual reason a
-release ends up merged with CI still pending.
+Buildkite must report both `build-for-testing` and executed `ResponsayMac` tests green. A
+queued, skipped, missing, or still-running hosted-macOS check is not release evidence.
 
 ## 2. Tag the merge commit
 
 ```bash
 git tag -a v1.5.10 -m "Responsay 1.5.10 (build 143)" <merge-sha>
 git push origin v1.5.10
+git push github v1.5.10
 ```
 
 The tag must match `MARKETING_VERSION`; the script refuses otherwise. Confirm the tag is on
-`main` before continuing.
+Origin `main` before continuing. The second push exists only while GitHub remains the public
+release host; remove it when the distribution migration replaces steps 4–7.
 
 ## 3. Build, sign, and notarize
 

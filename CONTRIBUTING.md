@@ -2,6 +2,8 @@
 
 ## Source of truth
 
+Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the canonical development forge. GitHub `semantic-craft/responsay-macos` is the private archive and issue tracker; do not create new development branches or code pull requests there.
+
 This repository is the canonical development repository for:
 
 - `macOS/`
@@ -17,7 +19,7 @@ Changes flow from this repository to internal consumers. Do not copy an internal
 1. Start macOS and ResponsayCore changes in this repository.
 2. Keep credentials, signing identities, private fixtures, captured pages, user data, and internal release material out of the change.
 3. Regenerate the Xcode project from `project.yml`; do not commit `Responsay.xcodeproj`.
-4. Run the relevant tests before opening a pull request.
+4. Run the relevant tests before opening an Origin pull request.
 
 ```bash
 scripts/ci/public-source-gate.sh
@@ -29,7 +31,10 @@ swift test --package-path Packages/ResponsayCore
 scripts/fetch-sherpa-onnx.sh
 xcodegen generate
 xcodebuild build-for-testing -scheme ResponsayMac -destination 'platform=macOS'
+xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 ```
+
+Depot runs only the portable policy and privacy guards. Buildkite runs the authoritative Apple Silicon macOS gates. Both exact reported checks are required on an up-to-date Origin branch before merge; see [docs/operations/ci.md](docs/operations/ci.md).
 
 Microphone, accessibility, global-hotkey, insertion, Keychain, and screen-recording behavior still requires a real-Mac check.
 

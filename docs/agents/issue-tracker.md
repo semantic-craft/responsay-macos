@@ -2,6 +2,8 @@
 
 Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+The code forge is Cursor Origin, so `gh` cannot infer the issue repository from the `origin` remote. Set `GH_REPO=semantic-craft/responsay-macos` for the session, or pass `--repo semantic-craft/responsay-macos` to every command below. The examples assume `GH_REPO` is set.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
@@ -11,7 +13,7 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+Do not infer the issue repository from `git remote -v`: `origin` is Cursor Origin and the `github` remote is only the private archive/issue host.
 
 ## Pull requests as a triage surface
 

@@ -13,7 +13,6 @@
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+">
     <img src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white" alt="Swift 6">
-    <a href="https://github.com/semantic-craft/responsay-macos/actions/workflows/ci.yml"><img src="https://github.com/semantic-craft/responsay-macos/actions/workflows/ci.yml/badge.svg" alt="公开源码 CI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7B3651" alt="MIT License"></a>
   </p>
 </div>
@@ -74,11 +73,13 @@
 
 提交 bug 前，请删除日志或截图中的转写文本、选区内容、文件路径、账户标识和凭证。
 
-每个 pull request、`main` 推送和正式发布都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证和 Sparkle 凭证始终位于仓库之外。
+每个 Origin pull request 和 `main` 合并都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 Apple Silicon macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证和 Sparkle 凭证始终位于仓库之外。
 
 ## 参与开发
 
 法言使用原生 Swift 6 与 SwiftUI，最低支持 macOS 14。`ResponsayCore` 承载平台无关的采集、服务商、OCR、技能与写作逻辑；XcodeGen 用于生成可复现的 Xcode 工程。
+
+Cursor Origin 的 [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) 是 macOS 应用、`ResponsayCore` 和对应测试的唯一开发主仓。新分支、代码审查和 pull request 都在 Origin 完成；GitHub 只保留为私有归档与 issue tracker。贡献、CI 与跨仓规则见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/operations/ci.md](docs/operations/ci.md)。
 
 ```text
 macOS/                         macOS UI 与系统集成
