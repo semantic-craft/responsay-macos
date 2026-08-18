@@ -195,9 +195,8 @@ BUILD_NUMBER="$(sed -n 's/^[[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*"\([^
 [[ -n "${BUILD_NUMBER}" ]] || fail "CURRENT_PROJECT_VERSION is missing"
 
 mkdir -p "${NOTARY_DIR}" "${OUTPUT_DIR}"
-# The name is deliberately constant. The site's download button is a permanent redirect to
-# `releases/latest/download/Responsay.dmg`, which resolves by filename — a versioned name
-# makes that link 404 the moment a release lands.
+# The local name is deliberately constant. The publisher stores an immutable copy below the
+# release tag and refreshes a stable top-level copy for the website download button.
 DMG_NAME="Responsay.dmg"
 DMG_PATH="${OUTPUT_DIR}/${DMG_NAME}"
 SHA_PATH="${DMG_PATH}.sha256"
@@ -305,9 +304,9 @@ xcrun stapler validate "${DMG_PATH}"
   shasum -a 256 "${DMG_NAME}" >"${DMG_NAME}.sha256"
 )
 
-# Where the DMG will be downloaded from: this repository's own release. Override with
-# RESPONSAY_DOWNLOAD_URL_PREFIX when hosting moves.
-DEFAULT_URL_PREFIX="https://github.com/semantic-craft/responsay-macos/releases/download/${TAG}/"
+# Sparkle downloads immutable, versioned artifacts from Responsay's update host. Keeping the
+# URL on our own domain lets the source repository remain private. Override only for staging.
+DEFAULT_URL_PREFIX="https://updates.responsay.com/releases/${TAG}/"
 DOWNLOAD_URL_PREFIX="${RESPONSAY_DOWNLOAD_URL_PREFIX:-${DEFAULT_URL_PREFIX}}"
 
 GENERATE_APPCAST="$(find "${DERIVED_DATA}/SourcePackages/artifacts" -path '*/Sparkle/bin/generate_appcast' -type f -print -quit)"

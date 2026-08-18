@@ -2,13 +2,13 @@
   <img src="macOS/Assets.xcassets/AppIcon.appiconset/MacIcon-512.png" width="112" alt="法言应用图标">
   <h1>法言 · Responsay for macOS</h1>
   <p><strong>自然开口，落字成文。</strong></p>
-  <p>一款原生、开源、能在 Mac 任意输入位置工作的 AI 语音输入与写作助手。</p>
+  <p>一款原生、本地优先、能在 Mac 任意输入位置工作的 AI 语音输入与写作助手。</p>
   <p>
     <a href="README.md">English</a>
     ·
     <a href="https://responsay.com/">官方网站</a>
     ·
-    <a href="https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg"><strong>下载 macOS 版</strong></a>
+    <a href="https://responsay.com/Responsay.dmg"><strong>下载 macOS 版</strong></a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+">
@@ -52,7 +52,7 @@
 
 ## 四步开始使用
 
-1. **[下载最新版 DMG](https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg)**，把 Responsay 移入“应用程序”。
+1. **[下载最新版 DMG](https://responsay.com/Responsay.dmg)**，把 Responsay 移入“应用程序”。
 2. 打开应用并完成首次引导。听写需要麦克风权限；把结果写入当前应用需要辅助功能权限。
 3. 先用 Apple 系统听写、下载离线基础模型，或在设置中加入自己的服务商 API Key。
 4. 按下听写快捷键说一句话。需要时，再为听写翻译、任意提问、截图翻译和划词菜单设置快捷键。
@@ -65,7 +65,7 @@
 - **是否改动文字由你决定。**会替换正文的操作是明确的；回答、来源核验和法律技能结果先供你审阅。
 - **它能在本机记住你的词。**被纠正的人名、术语和专有词可以改善后续识别，并留在当前 Mac。
 - **它围绕完整工作流设计。**听写、翻译、OCR、来源核验、文风技能和朗读共享一套原生交互。
-- **它的实现可检查。**macOS 应用与跨平台 Swift 核心均以 MIT License 公开。
+- **数据尽量贴近你的工作现场。**本机模型、词汇、设置与历史留在 Mac；只有主动调用云端服务时才会连接相应服务商。
 
 ## 隐私与安全
 
@@ -73,7 +73,7 @@
 
 提交 bug 前，请删除日志或截图中的转写文本、选区内容、文件路径、账户标识和凭证。
 
-每个 GitHub pull request 和 `main` 合并都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 Apple Silicon macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证和 Sparkle 凭证始终位于仓库之外。
+每个 GitHub pull request 和 `main` 合并都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 Apple Silicon macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证、Sparkle 与 R2 凭证始终位于仓库之外。
 
 ## 参与开发
 
@@ -87,7 +87,7 @@ Packages/ResponsayCore/       跨平台 Swift 模块与单元测试
 Tests/ResponsayMacTests/      macOS 应用测试
 project.yml                   XcodeGen 工程定义
 scripts/fetch-sherpa-onnx.sh  获取未纳入 Git 的本地推理依赖
-scripts/ci/                    公开源码边界与秘密扫描门
+scripts/ci/                    发布边界与秘密扫描门
 scripts/release-macos.sh       维护者发布驱动
 docs/RELEASING.md             维护者发布手册
 ```
@@ -123,4 +123,4 @@ xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 
 ## 许可证
 
-法言以 [MIT License](LICENSE) 开源。
+源码仓目前保持私有；仓内源码文件继续适用 [MIT License](LICENSE)。

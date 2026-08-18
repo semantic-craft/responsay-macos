@@ -25,7 +25,7 @@ allowed_path() {
     Packages/ResponsayCore/*|Tests/ResponsayMacTests/*|macOS/*)
       return 0
       ;;
-    scripts/fetch-sherpa-onnx.sh|scripts/release-macos.sh|scripts/ci/public-source-gate.sh|scripts/ci/scan-secrets.sh)
+    scripts/fetch-sherpa-onnx.sh|scripts/release-macos.sh|scripts/publish-update-r2.sh|scripts/ci/public-source-gate.sh|scripts/ci/scan-secrets.sh)
       return 0
       ;;
     scripts/qwen-asr-vad-eval.py|scripts/qwen-asr-vad-eval-requirements.txt)
