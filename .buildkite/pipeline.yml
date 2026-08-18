@@ -34,6 +34,6 @@ steps:
         CODE_SIGNING_ALLOWED=NO
     cache:
       name: responsay-macos-native-dependencies
-      size: 10g
+      size: 20g
       paths:
         - "Vendor"
