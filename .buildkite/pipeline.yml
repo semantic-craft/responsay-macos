@@ -32,8 +32,3 @@ steps:
         -destination 'platform=macOS' \
         -derivedDataPath .build/DerivedData \
         CODE_SIGNING_ALLOWED=NO
-    cache:
-      name: responsay-macos-native-dependencies
-      size: 20g
-      paths:
-        - "Vendor"
