@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the canonical development forge. GitHub `semantic-craft/responsay-macos` is the private archive and issue tracker; do not create new development branches or code pull requests there.
+Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the canonical development forge. GitHub `semantic-craft/responsay-macos` is the archival repository and issue tracker; it remains public only until the Sparkle feed and DMG move to their replacement host. Do not create new development branches or code pull requests there.
 
 This repository is the canonical development repository for:
 

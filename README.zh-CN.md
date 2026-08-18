@@ -79,7 +79,7 @@
 
 法言使用原生 Swift 6 与 SwiftUI，最低支持 macOS 14。`ResponsayCore` 承载平台无关的采集、服务商、OCR、技能与写作逻辑；XcodeGen 用于生成可复现的 Xcode 工程。
 
-Cursor Origin 的 [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) 是 macOS 应用、`ResponsayCore` 和对应测试的唯一开发主仓。新分支、代码审查和 pull request 都在 Origin 完成；GitHub 只保留为私有归档与 issue tracker。贡献、CI 与跨仓规则见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/operations/ci.md](docs/operations/ci.md)。
+Cursor Origin 的 [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) 是 macOS 应用、`ResponsayCore` 和对应测试的唯一开发主仓。新分支、代码审查和 pull request 都在 Origin 完成；GitHub 只保留为归档与 issue tracker，并在现有更新与下载地址迁走前暂时公开。贡献、CI 与跨仓规则见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/operations/ci.md](docs/operations/ci.md)。
 
 ```text
 macOS/                         macOS UI 与系统集成

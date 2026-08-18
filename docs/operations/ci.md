@@ -1,6 +1,6 @@
 # Origin and CI operations
 
-Cursor Origin is the code, branch, review, and pull-request forge for this repository. GitHub is the private archival repository and remains the issue tracker. The canonical clone URL is:
+Cursor Origin is the code, branch, review, and pull-request forge for this repository. GitHub is the archival repository and remains the issue tracker. It is temporarily public only because the current Sparkle feed and DMG depend on unauthenticated GitHub URLs. The canonical clone URL is:
 
 ```text
 https://origin.cursor.com/xianwei/responsay-macos.git
@@ -9,7 +9,7 @@ https://origin.cursor.com/xianwei/responsay-macos.git
 Keep the local remotes distinct:
 
 - `origin`: Cursor Origin, used for normal fetch, branches, pull requests, and tags.
-- `github`: `semantic-craft/responsay-macos`, retained as the private archive and issue tracker. It is not a source for new development branches and is not mirrored automatically.
+- `github`: `semantic-craft/responsay-macos`, retained as the archive and issue tracker. It is not a source for new development branches and is never mirrored.
 
 ## Public distribution boundary
 
@@ -17,11 +17,13 @@ Moving development to Origin does not by itself move app distribution. The curre
 
 The GitHub visibility change is therefore the final distribution gate: first move the feed and DMG to an explicitly selected public host, update the tracked URLs, and prove both old-client and current-client download paths. Do not treat an authenticated maintainer request as public acceptance.
 
+Until that cutover, publish the reviewed state with one explicit fast-forward of the exact Origin merge object: fetch both remotes, prove `github/main` is an ancestor of `origin/main`, push only `origin/main:main` to `github`, and then compare the two remote object IDs. This is a bounded archival/distribution sync, not development on GitHub and never a mirror. If the ancestry check fails, stop rather than merge or force-push.
+
 ## CI ownership
 
 | Service | File | Responsibility |
 | --- | --- | --- |
-| Depot CI | `.depot/workflows/ci.yml` | Fast Linux-safe source, publication-policy, privacy, and deterministic secret guards |
+| Depot CI | `.depot/workflows/ci.yml` | Fast Linux-safe source, publication-policy, privacy, and deterministic credential-pattern guards |
 | Buildkite | `.buildkite/pipeline.yml` | Authoritative Apple Silicon macOS secret scan, `ResponsayCore` tests, generated Xcode project, app test build, and executed `ResponsayMac` tests |
 
 Responsay is a macOS application. Depot must not run Linux Swift compilation as a substitute for AppKit, AVFoundation, Xcode, or native framework validation. The portable Depot job is deliberately small:

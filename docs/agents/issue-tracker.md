@@ -13,7 +13,7 @@ The code forge is Cursor Origin, so `gh` cannot infer the issue repository from 
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Do not infer the issue repository from `git remote -v`: `origin` is Cursor Origin and the `github` remote is only the private archive/issue host.
+Do not infer the issue repository from `git remote -v`: `origin` is Cursor Origin and the `github` remote is only the archive/issue host.
 
 ## Pull requests as a triage surface
 

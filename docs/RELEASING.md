@@ -16,8 +16,8 @@ A GitHub-hosted release path used to exist alongside this one. It was removed: i
 completed a release, and it had no step that updated the live Sparkle feed, so following it
 produced a GitHub Release that no installed copy would ever learn about.
 
-The steps below are the whole procedure, in order. **Until step 6's appcast pull request
-lands, no installed copy knows an update exists.**
+The steps below are the whole procedure, in order. **Until step 6's reviewed Origin merge
+is fast-forwarded to the current public GitHub feed, no installed copy knows an update exists.**
 
 ## Before you start
 
@@ -135,8 +135,22 @@ resolve — the site's redirect depends on it.
 ## 6. Add the appcast item
 
 Copy the `<item>` block from `build/release/appcast.xml` into this repository's root
-`appcast.xml`, **inserted above the existing items**, and merge it through a pull request.
-The feed is served from `main`, so the merge is what publishes the update.
+`appcast.xml`, **inserted above the existing items**, and merge it through an Origin pull
+request. While GitHub remains the public feed host, publish only that reviewed canonical
+state by fast-forwarding the exact Origin merge object:
+
+```bash
+git fetch origin main
+git fetch github main
+git merge-base --is-ancestor github/main origin/main
+git push github origin/main:main
+test "$(git ls-remote origin refs/heads/main | cut -f1)" = \
+     "$(git ls-remote github refs/heads/main | cut -f1)"
+```
+
+Stop if the ancestry check or object comparison fails; never merge GitHub history, force
+push, or mirror refs. This transitional publication step disappears when the feed moves to
+its selected public host.
 
 Do not re-run `generate_appcast` against that file: it prunes entries whose DMG is not in
 the working directory, which silently drops the published history. Confirm the diff is pure

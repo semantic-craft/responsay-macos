@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   guard:
-    name: Static policy and secret guard
+    name: Static policy and credential-pattern guard
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 15
     steps:
@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - name: Confirm the portable Node runtime
         run: node --version
-      - name: Enforce the public-source and deterministic secret boundary
+      - name: Enforce public-source and deterministic credential patterns
         run: scripts/ci/public-source-gate.sh
       - name: Test and run portable source guards
         run: |

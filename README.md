@@ -79,7 +79,7 @@ Every Origin pull request and merge to `main` runs a fixed public-source allowli
 
 Responsay is a native Swift 6 and SwiftUI app targeting macOS 14+. `ResponsayCore` contains the platform-independent capture, provider, OCR, skill, and writing logic. XcodeGen keeps the Xcode project reproducible.
 
-Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the only development forge for the macOS app, `ResponsayCore`, and their tests. New branches, code reviews, and pull requests live on Origin; GitHub remains the private archive and issue tracker. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/operations/ci.md](docs/operations/ci.md) for the contribution, CI, and cross-repository rules.
+Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the only development forge for the macOS app, `ResponsayCore`, and their tests. New branches, code reviews, and pull requests live on Origin; GitHub remains the archival repository and issue tracker, temporarily public while it serves the existing update and download URLs. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/operations/ci.md](docs/operations/ci.md) for the contribution, CI, and cross-repository rules.
 
 ```text
 macOS/                         macOS UI and system integration
