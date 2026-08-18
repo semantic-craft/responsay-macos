@@ -16,7 +16,7 @@ allowed_path() {
     .github/dependabot.yml|.github/workflows/ci.yml|.github/workflows/codeql.yml)
       return 0
       ;;
-    .gitignore|.gitleaks.toml|AGENTS.md|CONTRIBUTING.md|LICENSE|README.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
+    .gitignore|.gitleaks.toml|AGENTS.md|CONTRIBUTING.md|LICENSE|README.md|README.zh-CN.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
       return 0
       ;;
     docs/RELEASING.md|docs/agents/domain.md|docs/agents/issue-tracker.md|docs/agents/triage-labels.md|docs/evaluations/qwen-asr-vad-2026-08-03.md)
