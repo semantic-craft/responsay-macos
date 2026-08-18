@@ -79,7 +79,10 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
         controller.noteInsertion()
         snapshot.text = "我在用 Claude Code 写代码"
         XCTAssertTrue(checkAfterStablePolls(controller))
-        try? await Task.sleep(for: .milliseconds(50))
+        for _ in 0..<200
+        where AutoLearnHotwordHistorySettings.records(defaults: defaults).first?.term != "Claude Code" {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertTrue(ContextHotwordSettings.autoHotwords(defaults: defaults).contains("Claude Code"))
         XCTAssertTrue(ContextHotwordSettings.biasingSets(defaults: defaults).weakPrompt.contains("Claude Code"))
