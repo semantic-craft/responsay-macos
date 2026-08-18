@@ -55,7 +55,7 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
         defaults.set(true, forKey: AutoLearnHotwordSettings.key)
         var snapshot = (text: "我在用 cloud code 写代码", app: "Notes", sceneID: "note-1", windowTitle: "Test")
         let processor = AutoLearnHotwordProcessor(
-            isEnabled: { AutoLearnHotwordSettings.isEnabled },
+            isEnabled: { [defaults] in AutoLearnHotwordSettings.resolve(defaults: defaults!) },
             mode: { .localRules },
             confirmationPolicy: { .autoAddHighConfidence },
             existingManualTerms: { [defaults] in Set(ContextHotwordSettings.hotwords(defaults: defaults!)) },
@@ -79,7 +79,10 @@ final class HotwordAutoLearnControllerTests: XCTestCase {
         controller.noteInsertion()
         snapshot.text = "我在用 Claude Code 写代码"
         XCTAssertTrue(checkAfterStablePolls(controller))
-        try? await Task.sleep(for: .milliseconds(50))
+        for _ in 0..<200
+        where AutoLearnHotwordHistorySettings.records(defaults: defaults).first?.term != "Claude Code" {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertTrue(ContextHotwordSettings.autoHotwords(defaults: defaults).contains("Claude Code"))
         XCTAssertTrue(ContextHotwordSettings.biasingSets(defaults: defaults).weakPrompt.contains("Claude Code"))

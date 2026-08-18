@@ -68,20 +68,42 @@ enum MainMenuBuilder {
 @MainActor
 final class AppMenuActions: NSObject {
     static let shared = AppMenuActions()
+    private let orderedWindows: () -> [NSWindow]
+    private let keyWindow: () -> NSWindow?
+    private let activateWindow: (NSWindow, Any?) -> Void
+
+    init(
+        orderedWindows: @escaping () -> [NSWindow] = { NSApp.orderedWindows },
+        keyWindow: @escaping () -> NSWindow? = { NSApp.keyWindow },
+        activateWindow: @escaping (NSWindow, Any?) -> Void = { window, sender in
+            window.makeKeyAndOrderFront(sender)
+        }
+    ) {
+        self.orderedWindows = orderedWindows
+        self.keyWindow = keyWindow
+        self.activateWindow = activateWindow
+        super.init()
+    }
+
     @objc func openSettings() { MacSettingsWindowController.shared.show() }
 
     /// The app builds its menu without a storyboard, so AppKit has no standard ⌘` item to route.
     /// Cycle only visible keyable document windows; non-activating capsule panels are excluded by
     /// `canBecomeKey`, while the floating Read Aloud reader remains a normal participant.
     @objc func cycleWindows(_ sender: Any?) {
-        let candidates = NSApp.orderedWindows.filter {
+        let candidates = orderedWindows().filter {
             $0.isVisible && !$0.isMiniaturized && $0.canBecomeKey
         }
-        guard candidates.count > 1 else { return }
-        let currentIndex = NSApp.keyWindow.flatMap { current in
+        guard let next = Self.nextWindow(in: candidates, after: keyWindow()) else { return }
+        activateWindow(next, sender)
+    }
+
+    static func nextWindow(in candidates: [NSWindow], after current: NSWindow?) -> NSWindow? {
+        guard candidates.count > 1 else { return nil }
+        let currentIndex = current.flatMap { current in
             candidates.firstIndex(where: { $0 === current })
         }
         let nextIndex = currentIndex.map { ($0 + 1) % candidates.count } ?? 0
-        candidates[nextIndex].makeKeyAndOrderFront(sender)
+        return candidates[nextIndex]
     }
 }

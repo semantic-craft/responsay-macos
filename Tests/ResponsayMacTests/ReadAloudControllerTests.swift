@@ -266,7 +266,8 @@ final class ReadAloudControllerTests: XCTestCase {
     }
 
     func testStreamingFailureStillUsesNonStreamingFallbackSynth() async throws {
-        let reader = ReadAloudController()
+        let player = RecordingAudioPlayer()
+        let reader = ReadAloudController(player: player)
         let synth = RecordingSynthesizer()
         reader.makeStreamingSynthesizer = { throw TTSError.missingAPIKey(provider: "阿里云百炼") }
         reader.makeFallbackAttempts = {
@@ -278,6 +279,7 @@ final class ReadAloudControllerTests: XCTestCase {
 
         let calls = await synth.recordedCalls
         XCTAssertEqual(calls, ["I'll call you."])
+        XCTAssertEqual(player.playCalls.count, 1)
         reader.stop()
     }
 

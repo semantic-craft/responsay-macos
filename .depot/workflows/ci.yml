@@ -1,0 +1,35 @@
+name: Depot CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Static policy and credential-pattern guard
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Origin reports a synthetic pull-request merge SHA that is not a
+          # fetchable ref. Check the reviewed head directly; the branch rule
+          # separately requires it to be up to date with main.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Confirm the portable Node runtime
+        run: node --version
+      - name: Enforce public-source and deterministic credential patterns
+        run: scripts/ci/public-source-gate.sh
+      - name: Test and run portable source guards
+        run: |
+          node --test scripts/architecture-lint.test.mjs scripts/diag-privacy-guard.test.mjs
+          scripts/lint/no-architecture-regressions.sh
+          scripts/lint/no-diag-raw-text.sh
+          scripts/lint/brand-identity-consistency.sh

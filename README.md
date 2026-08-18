@@ -13,7 +13,6 @@
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+">
     <img src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white" alt="Swift 6">
-    <a href="https://github.com/semantic-craft/responsay-macos/actions/workflows/ci.yml"><img src="https://github.com/semantic-craft/responsay-macos/actions/workflows/ci.yml/badge.svg" alt="Public source CI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7B3651" alt="MIT License"></a>
   </p>
 </div>
@@ -74,11 +73,13 @@ Local dictation, local OCR, local read-aloud, settings, usage metrics, and saved
 
 Before sharing a bug report, remove transcript text, selected content, file paths, account identifiers, and credentials from logs or screenshots.
 
-Every pull request, push to `main`, and release runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and a macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, and Sparkle credentials stay outside this repository.
+Every Origin pull request and merge to `main` runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and an Apple Silicon macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, and Sparkle credentials stay outside this repository.
 
 ## For contributors
 
 Responsay is a native Swift 6 and SwiftUI app targeting macOS 14+. `ResponsayCore` contains the platform-independent capture, provider, OCR, skill, and writing logic. XcodeGen keeps the Xcode project reproducible.
+
+Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the only development forge for the macOS app, `ResponsayCore`, and their tests. New branches, code reviews, and pull requests live on Origin; GitHub remains the archival repository and issue tracker, temporarily public while it serves the existing update and download URLs. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/operations/ci.md](docs/operations/ci.md) for the contribution, CI, and cross-repository rules.
 
 ```text
 macOS/                         macOS UI and system integration

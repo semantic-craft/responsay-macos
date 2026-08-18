@@ -1,0 +1,34 @@
+agents:
+  queue: macos-medium
+
+steps:
+  - label: ":mac: Responsay macOS gates"
+    key: macos
+    timeout_in_minutes: 75
+    command: |
+      set -euo pipefail
+      test "$$(uname -s)" = Darwin
+      test "$$(uname -m)" = arm64
+      export HOMEBREW_NO_AUTO_UPDATE=1
+      brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      brew list gitleaks >/dev/null 2>&1 || brew install gitleaks
+      brew list trufflehog >/dev/null 2>&1 || brew install trufflehog
+      scripts/ci/public-source-gate.sh
+      scripts/ci/scan-secrets.sh
+      node --test scripts/architecture-lint.test.mjs scripts/diag-privacy-guard.test.mjs
+      scripts/lint/no-architecture-regressions.sh
+      scripts/lint/no-diag-raw-text.sh
+      scripts/lint/brand-identity-consistency.sh
+      scripts/fetch-sherpa-onnx.sh
+      swift test --package-path Packages/ResponsayCore
+      xcodegen generate
+      xcodebuild -quiet build-for-testing \
+        -scheme ResponsayMac \
+        -destination 'platform=macOS' \
+        -derivedDataPath .build/DerivedData \
+        CODE_SIGNING_ALLOWED=NO
+      xcodebuild -quiet test \
+        -scheme ResponsayMac \
+        -destination 'platform=macOS' \
+        -derivedDataPath .build/DerivedData \
+        CODE_SIGNING_ALLOWED=NO

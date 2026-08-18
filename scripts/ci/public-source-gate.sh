@@ -13,13 +13,13 @@ reject() {
 
 allowed_path() {
   case "$1" in
-    .github/dependabot.yml|.github/workflows/ci.yml|.github/workflows/codeql.yml)
+    .buildkite/pipeline.yml|.cursor/cli.json|.cursor/commands/fix-ci.md|.depot/workflows/ci.yml)
       return 0
       ;;
     .gitignore|.gitleaks.toml|AGENTS.md|CONTRIBUTING.md|LICENSE|README.md|README.zh-CN.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
       return 0
       ;;
-    docs/RELEASING.md|docs/agents/domain.md|docs/agents/issue-tracker.md|docs/agents/triage-labels.md|docs/evaluations/qwen-asr-vad-2026-08-03.md)
+    docs/RELEASING.md|docs/agents/domain.md|docs/agents/issue-tracker.md|docs/agents/triage-labels.md|docs/evaluations/qwen-asr-vad-2026-08-03.md|docs/operations/ci.md)
       return 0
       ;;
     Packages/ResponsayCore/*|Tests/ResponsayMacTests/*|macOS/*)
@@ -44,7 +44,10 @@ allowed_path() {
 }
 
 file_size() {
-  /usr/bin/stat -f '%z' "$1" 2>/dev/null || /usr/bin/stat -c '%s' "$1"
+  case "$(uname -s)" in
+    Darwin) /usr/bin/stat -f '%z' "$1" ;;
+    *) /usr/bin/stat -c '%s' "$1" ;;
+  esac
 }
 
 while IFS= read -r -d '' path; do
