@@ -12,6 +12,7 @@ final class MainMenuWindowCyclingTests: XCTestCase {
         // is up from launch and ⌘` lands there instead of wrapping to the first fixture. Order
         // the host's windows out for the duration so the assertions describe the fixtures rather
         // than whatever the machine running the suite happens to be showing.
+        let previousKeyWindow = NSApp.keyWindow
         let hostWindows = keyableWindows()
         hostWindows.forEach { $0.orderOut(nil) }
         let first = makeWindow(title: "First test window", level: .floating)
@@ -19,7 +20,12 @@ final class MainMenuWindowCyclingTests: XCTestCase {
         defer {
             first.close()
             second.close()
-            hostWindows.forEach { $0.orderFront(nil) }
+            // `hostWindows` is front-to-back, so replay it back-to-front: each `orderFront` goes
+            // to the top, and front-to-back order would leave the stack inverted. `orderFront`
+            // also never restores key, so hand that back explicitly — `makeKey` rather than
+            // `makeKeyAndOrderFront`, which would pull that window out of the restored stack.
+            hostWindows.reversed().forEach { $0.orderFront(nil) }
+            previousKeyWindow?.makeKey()
             NSApp.mainMenu = previousMainMenu
             NSApp.windowsMenu = previousWindowsMenu
         }
