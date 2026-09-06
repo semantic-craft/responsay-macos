@@ -5,8 +5,3 @@ updates:
     directory: /
     schedule:
       interval: weekly
-
-  - package-ecosystem: swift
-    directory: /Packages/ResponsayCore
-    schedule:
-      interval: weekly

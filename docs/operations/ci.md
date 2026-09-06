@@ -24,7 +24,7 @@ GitHub Actions owns the development gates in `.github/workflows/ci.yml`:
 | Static policy and privacy guards | `ubuntu-24.04` | Public-source allowlist, deterministic credential patterns, and source/privacy lint tests |
 | Privacy, tests, and macOS build | `macos-26` (Apple Silicon) | Full Gitleaks/TruffleHog scans, ResponsayCore tests, generated Xcode project, app test build, and executed ResponsayMac tests |
 
-The macOS job asserts `Darwin` and `arm64`. Linux checks do not substitute for AppKit, AVFoundation, Xcode, or native tests. All action references are pinned to commit SHAs. Dependabot maintains action and Swift dependency updates. CodeQL runs separately in `.github/workflows/codeql.yml`.
+The macOS job asserts `Darwin` and `arm64`. Linux checks do not substitute for AppKit, AVFoundation, Xcode, or native tests. All action references are pinned to commit SHAs. Dependabot maintains GitHub Actions updates. The external Swift packages are pinned in `project.yml`; review and update those pins in ordinary PRs because Dependabot does not manage the XcodeGen manifest. CodeQL runs separately in `.github/workflows/codeql.yml`.
 
 Use `gh pr checks --repo semantic-craft/responsay-macos <number>` and `gh run view --repo semantic-craft/responsay-macos <run-id> --log-failed` to diagnose failures. A missing, queued, skipped, or running required check is not a pass. No signing, notarization, release, or provider credentials belong in CI. Microphone, accessibility, hotkey, insertion, Keychain, and screen-recording acceptance still requires a real Mac.
 
