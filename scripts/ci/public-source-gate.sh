@@ -13,7 +13,7 @@ reject() {
 
 allowed_path() {
   case "$1" in
-    .buildkite/pipeline.yml|.cursor/cli.json|.cursor/commands/fix-ci.md|.depot/workflows/ci.yml)
+    .github/workflows/ci.yml|.github/workflows/codeql.yml|.github/dependabot.yml|.cursor/commands/fix-ci.md)
       return 0
       ;;
     .gitignore|.gitleaks.toml|AGENTS.md|CONTRIBUTING.md|LICENSE|README.md|README.zh-CN.md|THIRD_PARTY_NOTICES.md|appcast.xml|project.yml)
