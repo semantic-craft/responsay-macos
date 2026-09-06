@@ -23,7 +23,7 @@ VERIFY_DIR="$(mktemp -d "${TEMP_BASE}/responsay-publish.XXXXXX")"
 cleanup() {
   case "${VERIFY_DIR}" in
     "${TEMP_BASE}"/responsay-publish.*)
-      for verify_file in Responsay.dmg existing-Responsay.dmg appcast.xml; do
+      for verify_file in Responsay.dmg existing-Responsay.dmg appcast.xml live-appcast.xml versioned.sha256; do
         [[ -f "${VERIFY_DIR}/${verify_file}" ]] && unlink "${VERIFY_DIR}/${verify_file}"
       done
       rmdir "${VERIFY_DIR}"
@@ -55,7 +55,7 @@ put_object() {
 }
 
 [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "release tag must look like v1.2.3"
-for tool in curl shasum xcrun; do
+for tool in curl shasum xcrun python3; do
   command -v "${tool}" >/dev/null 2>&1 || fail "required tool is missing: ${tool}"
 done
 if [[ -n "${RESPONSAY_WRANGLER:-}" ]]; then
@@ -74,10 +74,61 @@ EXPECTED_URL="${PUBLIC_BASE_URL}/releases/${TAG}/Responsay.dmg"
 grep -Fq "url=\"${EXPECTED_URL}\"" "${NEW_ITEM_APPCAST}" ||
   fail "generated appcast does not point at ${EXPECTED_URL}"
 
-NEW_BUILD="$(sed -n 's:.*<sparkle:version>\([^<]*\)</sparkle:version>.*:\1:p' "${NEW_ITEM_APPCAST}" | head -1)"
-FULL_BUILD="$(sed -n 's:.*<sparkle:version>\([^<]*\)</sparkle:version>.*:\1:p' "${FULL_APPCAST}" | head -1)"
-[[ -n "${NEW_BUILD}" && "${FULL_BUILD}" == "${NEW_BUILD}" ]] ||
-  fail "root appcast does not begin with the generated release item"
+# Compare parsed release metadata, not just a build number. Check the live feed before
+# any write so a retry of an old tag cannot downgrade the stable download or appcast.
+LIVE_APPCAST="${VERIFY_DIR}/live-appcast.xml"
+if ! LIVE_STATUS="$(curl -sS -o "${LIVE_APPCAST}" -w '%{http_code}' \
+  "${PUBLIC_BASE_URL}/appcast.xml?preflight=${TAG}&at=$(date +%s)")"; then
+  fail "could not read the current public appcast"
+fi
+case "${LIVE_STATUS}" in
+  200) ;;
+  404) unlink "${LIVE_APPCAST}" ;;
+  *) fail "unexpected HTTP ${LIVE_STATUS} while checking current appcast" ;;
+esac
+
+python3 - "${TAG}" "${DMG_PATH}" "${NEW_ITEM_APPCAST}" "${FULL_APPCAST}" "${LIVE_APPCAST}" "${EXPECTED_URL}" <<'PYXML'
+import pathlib
+import sys
+import xml.etree.ElementTree as ET
+
+tag, dmg, generated, full, live, expected_url = sys.argv[1:]
+namespace = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+
+def metadata(path):
+    item = ET.parse(path).find("./channel/item")
+    if item is None:
+        raise ValueError("appcast has no release item")
+    build = item.findtext(namespace + "version")
+    version = item.findtext(namespace + "shortVersionString")
+    enclosure = item.find("enclosure")
+    if not build or not build.isdecimal() or enclosure is None:
+        raise ValueError("appcast has invalid release metadata")
+    return int(build), version, enclosure.attrib
+
+try:
+    expected = metadata(generated)
+    actual = metadata(full)
+    if actual != expected:
+        raise ValueError("root appcast release metadata differs from generated item")
+    attrs = expected[2]
+    if attrs.get("url") != expected_url:
+        raise ValueError("appcast enclosure URL does not match release tag")
+    if expected[1] != tag[1:]:
+        raise ValueError("appcast version does not match release tag")
+    if int(attrs.get("length", "0")) != pathlib.Path(dmg).stat().st_size:
+        raise ValueError("appcast enclosure length does not match DMG")
+    if not attrs.get(namespace + "edSignature"):
+        raise ValueError("appcast enclosure has no EdDSA signature")
+    if pathlib.Path(live).exists():
+        published = metadata(live)
+        if published[0] > expected[0]:
+            raise ValueError("refusing to replace a newer live build")
+        if published[0] == expected[0] and published != expected:
+            raise ValueError("live build already exists with different release metadata")
+except (ET.ParseError, ValueError, OSError) as error:
+    sys.exit("publish: " + str(error))
+PYXML
 
 (
   cd "${OUTPUT_DIR}"
@@ -103,13 +154,28 @@ case "${EXISTING_STATUS}" in
     unlink "${EXISTING_DMG}"
     put_object "releases/${TAG}/Responsay.dmg" "${DMG_PATH}" \
       "application/x-apple-diskimage" "public, max-age=31536000, immutable"
-    put_object "releases/${TAG}/Responsay.dmg.sha256" "${SHA_PATH}" \
-      "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
     ;;
   *)
     fail "unexpected HTTP ${EXISTING_STATUS} while checking ${EXPECTED_URL}"
     ;;
 esac
+
+# A prior attempt may have uploaded the DMG but failed before its checksum. Repair only
+# a missing checksum, never overwrite conflicting versioned metadata.
+VERSIONED_SHA="${VERIFY_DIR}/versioned.sha256"
+if ! SHA_STATUS="$(curl -sS -o "${VERSIONED_SHA}" -w '%{http_code}' "${EXPECTED_URL}.sha256")"; then
+  fail "could not read the versioned checksum"
+fi
+case "${SHA_STATUS}" in
+  200) cmp "${SHA_PATH}" "${VERSIONED_SHA}" >/dev/null || fail "versioned checksum differs" ;;
+  404)
+    put_object "releases/${TAG}/Responsay.dmg.sha256" "${SHA_PATH}" \
+      "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
+    ;;
+  *) fail "unexpected HTTP ${SHA_STATUS} while checking versioned checksum" ;;
+esac
+curl -fsSL "${EXPECTED_URL}.sha256" -o "${VERSIONED_SHA}"
+cmp "${SHA_PATH}" "${VERSIONED_SHA}" >/dev/null || fail "downloaded versioned checksum differs"
 
 DOWNLOADED_DMG="${VERIFY_DIR}/Responsay.dmg"
 curl -fsSL "${EXPECTED_URL}" -o "${DOWNLOADED_DMG}"

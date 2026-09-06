@@ -85,7 +85,6 @@ queued, skipped, missing, or still-running hosted-macOS check is not release evi
 ```bash
 git tag -a v1.5.10 -m "Responsay 1.5.10 (build 143)" <merge-sha>
 git push origin v1.5.10
-git push github v1.5.10
 ```
 
 The tag must match `MARKETING_VERSION`; the script refuses otherwise. Confirm the tag is on

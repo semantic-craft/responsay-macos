@@ -13,7 +13,7 @@ git@github.com:semantic-craft/responsay-macos.git
 
 Before starting work, check `git remote -v`; old clones may still call Cursor Origin `origin` and GitHub `github`. Rename the former to `cursor`, then the latter to `origin`, and set `remote.pushDefault` to `origin`. Git remote renaming preserves upstream associations. Review any branch still tracking `cursor` before continuing it through a GitHub PR; do not overwrite its worktree.
 
-At the return-to-GitHub audit on 2026-09-07, both main branches were `e51bd89d016b49feb4be646a9bfa617f07de29bf`, and Cursor Origin had no open PRs. Its `codex/r2-joint-release` and `codex/tts-configured-default` branches were absent from GitHub and were preserved in place. GitHub PR #101 was already open. These are audit facts, not instructions to resume or merge those tasks; recheck live state when handling them.
+At the return-to-GitHub audit on 2026-09-07, both main branches were `e51bd89d016b49feb4be646a9bfa617f07de29bf`, and Cursor Origin had no non-draft open PRs; draft PR #3 retained the joint release candidate. Its `codex/r2-joint-release` and `codex/tts-configured-default` branches were absent from GitHub and were preserved in place. GitHub PR #101 was already open. These are audit facts, not instructions to resume or merge those tasks; recheck live state when handling them.
 
 ## CI ownership
 
@@ -34,4 +34,4 @@ All changes land through a GitHub PR with a merge commit. Require an up-to-date 
 
 ## Public distribution
 
-The Sparkle feed, DMG, README links, and `responsay.com` redirects continue using GitHub. Keep their public access intact. Publishing remains the maintainer procedure in `docs/RELEASING.md`; CI does not sign or publish releases. Appcast updates land through GitHub PRs with no archival sync to another forge.
+This branch proposes moving the Sparkle feed and DMG to R2 while keeping GitHub as the primary source repository. Complete the R2 domain, signed-artifact, redirect, and real-client transition checks in `docs/RELEASING.md` before release. Keep the existing GitHub feed public for installed clients. CI does not sign or publish releases, and no source mirror is part of R2 distribution.
