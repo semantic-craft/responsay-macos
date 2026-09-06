@@ -68,6 +68,9 @@ public final class VoiceAssistantViewModel {
     private var levelTask: Task<Void, Never>?
     private var partialTask: Task<Void, Never>?
     private var responseTask: Task<Void, Never>?
+    private var captureTimeoutTask: Task<Void, Never>?
+    // Internal so tests can exercise the real deadline without waiting 15 minutes.
+    var maxListeningDuration: Duration = .seconds(15 * 60)
 
     public init(speech: SpeechCaptureService) {
         self.speech = speech
@@ -78,6 +81,7 @@ public final class VoiceAssistantViewModel {
     /// Recording itself is push-to-talk via the 任意提问 hotkey — same as the
     /// plain global assistant.
     public func beginSelectionAsk(selection: String) {
+        guard phase == .idle || phase == .responding else { return }
         clearConversation()
         selectionContext = SelectionAskPolicy.truncate(selection).text
         systemPrompt = SelectionAskEnvelope.systemPrompt()
@@ -89,6 +93,7 @@ public final class VoiceAssistantViewModel {
     /// already played the opening round, so the conversation starts on the 加压 side.
     /// Push-to-talk like the rest (user speaks「继续」to advance the 对抗).
     public func beginDebate(subject: String, script: DebateScript) {
+        guard phase == .idle || phase == .responding else { return }
         clearConversation()
         selectionContext = SelectionAskPolicy.truncate(subject).text
         debateScript = script
@@ -139,6 +144,8 @@ public final class VoiceAssistantViewModel {
     
     public func startCapture() {
         guard phase == .idle || phase == .responding else { return }
+        // A previous answer must not settle to idle after this recording starts.
+        responseTask?.cancel()
         errorMessage = nil
         partialTranscript = ""
         phase = .listening
@@ -147,6 +154,7 @@ public final class VoiceAssistantViewModel {
             try speech.start(locale: .chinese)
             startLevelMonitoring()
             startPartialMonitoring()
+            startCaptureTimeout()
         } catch {
             errorMessage = error.localizedDescription
             phase = .idle
@@ -168,6 +176,7 @@ public final class VoiceAssistantViewModel {
                 // *previous* conversation (the panel shows the answer card for `.idle` +
                 // non-empty messages) — a privacy leak. Clear it.
                 vaLog.info("VA stopCapture: empty transcript → discard session (no LLM)")
+                phase = .idle
                 clearConversation()
                 return
             }
@@ -187,6 +196,8 @@ public final class VoiceAssistantViewModel {
     /// erasing the conversation.
     public func cancelCapture() async {
         guard phase == .listening else { return }
+        // Reserve the session while stop suspends; no second stop or new capture.
+        phase = .thinking
         stopMonitoring()
         _ = try? await speech.stop()
         partialTranscript = ""
@@ -276,6 +287,8 @@ public final class VoiceAssistantViewModel {
     }
 
     public func clearConversation() {
+        // Resetting UI state cannot relinquish ownership of a live/stopping microphone.
+        guard phase == .idle || phase == .responding else { return }
         responseTask?.cancel()
         messages.removeAll()
         partialTranscript = ""
@@ -316,7 +329,22 @@ public final class VoiceAssistantViewModel {
         }
     }
     
+    private func startCaptureTimeout() {
+        captureTimeoutTask?.cancel()
+        let duration = maxListeningDuration
+        captureTimeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: duration) } catch { return }
+            guard let self, !Task.isCancelled, self.phase == .listening else { return }
+            // Detach before cancelCapture so cleanup does not cancel its own stop call.
+            self.captureTimeoutTask = nil
+            await self.cancelCapture()
+            self.errorMessage = "已达到最长录音时间（15 分钟），录音已停止。"
+        }
+    }
+
     private func stopMonitoring() {
+        captureTimeoutTask?.cancel()
+        captureTimeoutTask = nil
         levelTask?.cancel()
         levelTask = nil
         partialTask?.cancel()
