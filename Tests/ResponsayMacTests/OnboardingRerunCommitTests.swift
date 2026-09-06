@@ -68,6 +68,18 @@ final class OnboardingRerunCommitTests: XCTestCase {
         XCTAssertNotEqual(d.string(forKey: ASREngine.defaultsKey), ASREngine.cloudMimo.rawValue)
     }
 
+    func testLocalOnboardingPreservesAnAlreadyConfiguredCloudVoice() {
+        let d = UserDefaults.standard
+        d.removeObject(forKey: OnboardingWindowController.completedKey)
+        d.set(TTSEngine.cloudGemini.rawValue, forKey: TTSEngine.defaultsKey)
+
+        let model = OnboardingModel()
+        model.engine = .local
+        model.commit()
+
+        XCTAssertEqual(TTSEngine.selected(defaults: d), .cloudGemini)
+    }
+
     func testFirstRunStillCommitsDefaults() {
         let d = UserDefaults.standard
         d.removeObject(forKey: OnboardingWindowController.completedKey)

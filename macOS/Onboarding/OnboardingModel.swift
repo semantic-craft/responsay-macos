@@ -148,17 +148,14 @@ final class OnboardingModel {
             }
         }
 
-        // Engine → ASR / TTS. Local picks the on-device transcription + TTS baseline (works
-        // without a key); cloud keeps Apple ASR as the zero-key dictation baseline. Text 改写
-        // always runs on the BYOK cloud provider (entered later in Settings — the engine step
-        // only links the 图文教程). Re-runs write only on an actual change, so a configured
-        // engine survives an innocent wizard re-watch.
+        // The engine step sets the ASR baseline. TTS follows configured cloud services;
+        // only a deliberate pick in the TTS route picker pins Kokoro. Rewatching onboarding
+        // must preserve an existing cloud voice or explicit local voice.
         if !isRerun || engine != initialEngine {
             switch engine {
             case .local:
                 let asr: ASREngine = SenseVoiceModel.isInstalled ? .sensevoiceLocal : .apple
                 d.set(asr.rawValue, forKey: ASREngine.defaultsKey)
-                d.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
             case .cloud:
                 d.set(ASREngine.apple.rawValue, forKey: ASREngine.defaultsKey)
             }

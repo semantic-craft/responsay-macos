@@ -18,12 +18,11 @@ struct SettingsTTSPane: View {
 
             SettingsStatusBar {
                 StatusDot(state: .gray)
-                Text("当前朗读引擎在「设置 · 模型」选择")
+                Text("首次配置云端朗读后自动启用；可在「设置 · 模型」切换")
                 Spacer(minLength: 0)
                 Text("这里只配置密钥、端点、模型 ID 和音色").foregroundStyle(appearanceStore.palette.ink3)
             }
             CapabilityCardView(capability: .tts, preferredProviderId: currentCloudProviderId)
-                .id("tts-config-\(currentCloudProviderId ?? "cloud")")
             SettingsLocalModelCard(
                 capability: .tts,
                 title: "轻量内置模型（开箱即用）",
