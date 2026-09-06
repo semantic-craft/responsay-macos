@@ -144,20 +144,21 @@ public final class VoiceAssistantViewModel {
     
     public func startCapture() {
         guard phase == .idle || phase == .responding else { return }
-        // A previous answer must not settle to idle after this recording starts.
-        responseTask?.cancel()
+        let previousPhase = phase
         errorMessage = nil
         partialTranscript = ""
         phase = .listening
         
         do {
             try speech.start(locale: .chinese)
+            // Only a successful recording takes ownership from the previous answer.
+            responseTask?.cancel()
             startLevelMonitoring()
             startPartialMonitoring()
             startCaptureTimeout()
         } catch {
             errorMessage = error.localizedDescription
-            phase = .idle
+            phase = previousPhase
         }
     }
     

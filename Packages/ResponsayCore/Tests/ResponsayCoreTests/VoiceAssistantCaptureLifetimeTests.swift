@@ -93,6 +93,24 @@ import Testing
         #expect(speech.stopCalls == 2)
     }
 
+    @Test func failedFollowUpStartPreservesStreamingAnswer() async {
+        let speech = MockSpeechCaptureService()
+        speech.transcriptToReturn = "question"
+        let vm = VoiceAssistantViewModel(speech: speech)
+        let client = HeldAnswerClient()
+        vm.startCapture()
+        await vm.stopCapture(client: client)
+        for await _ in client.started { break }
+        speech.startError = CaptureStartFailure()
+        vm.startCapture()
+        #expect(vm.phase == .responding)
+        client.continuation.yield(.delta("complete answer"))
+        client.continuation.finish()
+        await vm.awaitResponseCompletion()
+        #expect(vm.messages.last?.content == "complete answer")
+        #expect(vm.errorMessage != nil)
+    }
+
     @Test func cancellingReservesCaptureUntilStopCompletes() async throws {
         let speech = HeldStopSpeech()
         let vm = VoiceAssistantViewModel(speech: speech)
@@ -149,3 +167,5 @@ private final class HeldAnswerClient: StreamingChatClient, Sendable {
         return await withCheckedContinuation { stopContinuation = $0 }
     }
 }
+
+private struct CaptureStartFailure: Error {}
