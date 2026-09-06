@@ -1,61 +1,37 @@
-# Origin and CI operations
+# GitHub and CI operations
 
-Cursor Origin is the code, branch, review, and pull-request forge for this repository. GitHub is the archival repository and remains the issue tracker. It is temporarily public only because the current Sparkle feed and DMG depend on unauthenticated GitHub URLs. The canonical clone URL is:
+GitHub `semantic-craft/responsay-macos` is the primary repository for code, branches, reviews, pull requests, issues, CI, and releases. The canonical clone URL is:
 
 ```text
-https://origin.cursor.com/xianwei/responsay-macos.git
+git@github.com:semantic-craft/responsay-macos.git
 ```
 
-Keep the local remotes distinct:
+## Local remotes and preserved work
 
-- `origin`: Cursor Origin, used for normal fetch, branches, pull requests, and tags.
-- `github`: `semantic-craft/responsay-macos`, retained as the archive and issue tracker. It is not a source for new development branches and is never mirrored.
+- `origin`: GitHub, used for normal fetch, branches, pull requests, and tags.
+- `cursor`: the former Cursor Origin repository, retained for historical branches. Do not use it for new development or mirror refs.
 
-## Public distribution boundary
+Before starting work, check `git remote -v`; old clones may still call Cursor Origin `origin` and GitHub `github`. Rename the former to `cursor`, then the latter to `origin`, and set `remote.pushDefault` to `origin`. Git remote renaming preserves upstream associations. Review any branch still tracking `cursor` before continuing it through a GitHub PR; do not overwrite its worktree.
 
-Moving development to Origin does not by itself move app distribution. The current `SUFeedURL`, release script, README download link, and `responsay.com` redirects still depend on unauthenticated access to GitHub raw files and release assets. Making `semantic-craft/responsay-macos` private before replacing and testing those public endpoints would break Sparkle updates and the public DMG download.
-
-The GitHub visibility change is therefore the final distribution gate: first move the feed and DMG to an explicitly selected public host, update the tracked URLs, and prove both old-client and current-client download paths. Do not treat an authenticated maintainer request as public acceptance.
-
-Until that cutover, publish the reviewed state with one explicit fast-forward of the exact Origin merge object: fetch both remotes, prove `github/main` is an ancestor of `origin/main`, push only `origin/main:main` to `github`, and then compare the two remote object IDs. This is a bounded archival/distribution sync, not development on GitHub and never a mirror. If the ancestry check fails, stop rather than merge or force-push.
+At the return-to-GitHub audit on 2026-09-07, both main branches were `e51bd89d016b49feb4be646a9bfa617f07de29bf`, and Cursor Origin had no open PRs. Its `codex/r2-joint-release` and `codex/tts-configured-default` branches were absent from GitHub and were preserved in place. GitHub PR #101 was already open. These are audit facts, not instructions to resume or merge those tasks; recheck live state when handling them.
 
 ## CI ownership
 
-| Service | File | Responsibility |
+GitHub Actions owns the development gates in `.github/workflows/ci.yml`:
+
+| Required check | Runner | Responsibility |
 | --- | --- | --- |
-| Depot CI | `.depot/workflows/ci.yml` | Fast Linux-safe source, publication-policy, privacy, and deterministic credential-pattern guards |
-| Buildkite | `.buildkite/pipeline.yml` | Authoritative Apple Silicon macOS secret scan, `ResponsayCore` tests, generated Xcode project, app test build, and executed `ResponsayMac` tests |
+| Static policy and privacy guards | `ubuntu-24.04` | Public-source allowlist, deterministic credential patterns, and source/privacy lint tests |
+| Privacy, tests, and macOS build | `macos-26` (Apple Silicon) | Full Gitleaks/TruffleHog scans, ResponsayCore tests, generated Xcode project, app test build, and executed ResponsayMac tests |
 
-Responsay is a macOS application. Depot must not run Linux Swift compilation as a substitute for AppKit, AVFoundation, Xcode, or native framework validation. The portable Depot job is deliberately small:
+The macOS job asserts `Darwin` and `arm64`. Linux checks do not substitute for AppKit, AVFoundation, Xcode, or native tests. All action references are pinned to commit SHAs. Dependabot maintains GitHub Actions updates. The external Swift packages are pinned in `project.yml`; review and update those pins in ordinary PRs because Dependabot does not manage the XcodeGen manifest. CodeQL runs separately in `.github/workflows/codeql.yml`.
 
-```bash
-depot ci run --repo xianwei/responsay-macos \
-  --org 2wztpgtn69 \
-  --workflow .depot/workflows/ci.yml --job guard
-```
+Use `gh pr checks --repo semantic-craft/responsay-macos <number>` and `gh run view --repo semantic-craft/responsay-macos <run-id> --log-failed` to diagnose failures. A missing, queued, skipped, or running required check is not a pass. No signing, notarization, release, or provider credentials belong in CI. Microphone, accessibility, hotkey, insertion, Keychain, and screen-recording acceptance still requires a real Mac.
 
-The explicit repository and organization are required because the retained GitHub archive is not Depot's execution source and the account belongs to more than one Depot organization.
+## Pull requests and main protection
 
-Cursor agents may use `/fix-ci` for the same bounded run-status-diagnose-logs loop. No signing, notarization, release, or provider credentials belong in Depot or Buildkite.
+All changes land through a GitHub PR with a merge commit. Require an up-to-date branch, resolved review threads, and both exact checks above from GitHub Actions. Block force pushes and deletion of `main`; do not use administrative bypass to evade checks. Before merge, fetch GitHub and confirm `origin/main` is an ancestor of the PR branch, complete the relevant local gates, and review the complete diff. After merge, verify the remote merge object and its ancestry.
 
-Buildkite uses the hosted `macos-medium` queue and asserts both `Darwin` and `arm64` before doing any work. Its native contract is the repository's existing sequence:
+## Public distribution
 
-```bash
-scripts/ci/public-source-gate.sh
-scripts/ci/scan-secrets.sh
-scripts/fetch-sherpa-onnx.sh
-swift test --package-path Packages/ResponsayCore
-xcodegen generate
-xcodebuild build-for-testing -scheme ResponsayMac -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-xcodebuild test -scheme ResponsayMac -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-```
-
-The hosted macOS queue must not be purchased or renewed automatically. If Buildkite requires a paid plan, keep the pipeline unactivated and report the payment boundary.
-
-## Pull requests and default-branch rules
-
-Everything lands through an Origin pull request. `main` is configured for merge commits only, an up-to-date branch, automatic deletion of the merged source branch, and the exact required checks reported by Depot and Buildkite. Force pushes and branch deletion are blocked.
-
-Cursor Origin Early Beta can report its own server-created merge commit as a direct push. The repository rules therefore enforce the PR and required-check path without enabling a rule that rejects Origin's merge commit itself. This implementation detail does not authorize users or agents to push directly to `main`.
-
-After the first real run, add the exact reported check names to the ruleset; a missing or skipped check is never green. Before merging, re-fetch and confirm `origin/main` is an ancestor of the branch, every local and remote gate is green, and review threads are resolved. Merge with a merge commit, then verify the resulting remote `main` object and ancestry rather than trusting only the web UI.
+The Sparkle feed, DMG, README links, and `responsay.com` redirects continue using GitHub. Keep their public access intact. Publishing remains the maintainer procedure in `docs/RELEASING.md`; CI does not sign or publish releases. Appcast updates land through GitHub PRs with no archival sync to another forge.

@@ -73,13 +73,13 @@ Local dictation, local OCR, local read-aloud, settings, usage metrics, and saved
 
 Before sharing a bug report, remove transcript text, selected content, file paths, account identifiers, and credentials from logs or screenshots.
 
-Every Origin pull request and merge to `main` runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and an Apple Silicon macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, and Sparkle credentials stay outside this repository.
+Every GitHub pull request and merge to `main` runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and an Apple Silicon macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, and Sparkle credentials stay outside this repository.
 
 ## For contributors
 
 Responsay is a native Swift 6 and SwiftUI app targeting macOS 14+. `ResponsayCore` contains the platform-independent capture, provider, OCR, skill, and writing logic. XcodeGen keeps the Xcode project reproducible.
 
-Cursor Origin [`xianwei/responsay-macos`](https://origin.cursor.com/xianwei/responsay-macos) is the only development forge for the macOS app, `ResponsayCore`, and their tests. New branches, code reviews, and pull requests live on Origin; GitHub remains the archival repository and issue tracker, temporarily public while it serves the existing update and download URLs. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/operations/ci.md](docs/operations/ci.md) for the contribution, CI, and cross-repository rules.
+GitHub [`semantic-craft/responsay-macos`](https://github.com/semantic-craft/responsay-macos) is the primary development repository for the macOS app, `ResponsayCore`, and their tests. Branches, code reviews, pull requests, issues, CI, and public releases live on GitHub. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/operations/ci.md](docs/operations/ci.md) for the contribution, CI, and cross-repository rules.
 
 ```text
 macOS/                         macOS UI and system integration
