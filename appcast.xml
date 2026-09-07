@@ -16,7 +16,7 @@
             <sparkle:version>157</sparkle:version>
             <sparkle:shortVersionString>1.9.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://updates.responsay.com/releases/v1.9.2/Responsay.dmg" length="38254114" type="application/octet-stream" sparkle:edSignature="RKd5IdiUopCaNIprsm8LNdoSTWS8UEn9uKcTyAtN9yIfipJPMDemzwNz9tav6tfIKIYYcDA6KC2vbhjNJgI0Ag=="/>
+            <enclosure url="https://github.com/semantic-craft/responsay-macos/releases/download/v1.9.2/Responsay.dmg" length="38254114" type="application/octet-stream" sparkle:edSignature="RKd5IdiUopCaNIprsm8LNdoSTWS8UEn9uKcTyAtN9yIfipJPMDemzwNz9tav6tfIKIYYcDA6KC2vbhjNJgI0Ag=="/>
         </item>
         <item>
             <title>1.9.1</title>
