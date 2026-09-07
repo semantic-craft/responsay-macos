@@ -140,9 +140,10 @@ xcrun stapler validate "${DMG_PATH}"
 /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "${DMG_PATH}"
 
 # Publish immutable artifacts first. A tag may be retried with the exact same bytes, but it
-# may never be repointed at a different DMG.
+# may never be repointed at a different DMG. Probe with a separate cache key so a
+# missing response cannot poison the real download URL before its first upload.
 EXISTING_DMG="${VERIFY_DIR}/existing-Responsay.dmg"
-if ! EXISTING_STATUS="$(curl -sS -o "${EXISTING_DMG}" -w '%{http_code}' "${EXPECTED_URL}")"; then
+if ! EXISTING_STATUS="$(curl -sS -o "${EXISTING_DMG}" -w '%{http_code}' "${EXPECTED_URL}?preflight=${TAG}&at=$(date +%s)")"; then
   fail "could not determine whether ${EXPECTED_URL} already exists"
 fi
 case "${EXISTING_STATUS}" in
