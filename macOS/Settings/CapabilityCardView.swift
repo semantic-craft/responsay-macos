@@ -49,8 +49,8 @@ struct CapabilityCardView: View {
             })
     }
 
-    /// Loading a card projects persisted/default configuration into the machine. Only a Picker
-    /// setter represents user intent, so hydration must never switch the active ASR/TTS route.
+    /// Choose the connection profile to edit. The route picker owns explicit engine changes;
+    /// configuring another provider must preserve an already-selected voice.
     private var providerSelection: Binding<String> {
         Binding(
             get: { machine.providerId },
@@ -58,13 +58,6 @@ struct CapabilityCardView: View {
                 guard providerId != machine.providerId else { return }
                 machine.providerId = providerId
                 machine.selectProvider()
-                guard capability == .tts,
-                      let engine = TTSEngine.selectableCases.first(where: {
-                          $0.providerID == providerId
-                      }) else { return }
-                ModelRouteSelectionActions.applyTTSSelection(
-                    engine.rawValue,
-                    defaults: machine.defaults)
             })
     }
 
@@ -249,6 +242,14 @@ struct CapabilityCardView: View {
         }
         .onAppear {
             machine.load()
+        }
+        .onChange(of: preferredProviderId) { _, providerId in
+            // Keep the card (and focused credential field) alive when automatic activation
+            // selects the very profile being edited. Explicit route changes can show another.
+            guard capability == .tts, let providerId,
+                  providerId != machine.providerId else { return }
+            machine.providerId = providerId
+            machine.selectProvider()
         }
         .onChange(of: machine.regionRaw) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
         .onChange(of: machine.planRaw) { old, new in

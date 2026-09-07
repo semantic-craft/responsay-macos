@@ -217,7 +217,14 @@ final class ProviderConfigMachine {
         if showsWorkspaceIDField {
             setScoped(workspaceID.trimmingCharacters(in: .whitespacesAndNewlines), suffix: "workspaceId")
         }
+        activateDefaultTTSIfConfigured()
         ModelConfigurationEvents.post()
+    }
+
+    private func activateDefaultTTSIfConfigured() {
+        guard capability == .tts else { return }
+        TTSDefaultSelection.activateConfiguredDefault(
+            defaults: defaults, keyReader: keyReader, preferredProviderID: providerId)
     }
 
     func setScoped(_ value: Any, suffix: String) {
@@ -233,6 +240,7 @@ final class ProviderConfigMachine {
             apiKey,
             CapabilityCredentialAccount.apiKeyAccount(
                 providerId: providerId, capability: capability, plan: plan))
+        activateDefaultTTSIfConfigured()
     }
 
     func writeAppId() {
