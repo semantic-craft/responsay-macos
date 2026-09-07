@@ -33,8 +33,10 @@ enum ModelRouteSelectionActions {
 
     static func applyTTSSelection(_ id: String, defaults: UserDefaults = .standard) {
         defer { ModelConfigurationEvents.post() }
-        defaults.set(id, forKey: TTSEngine.defaultsKey)
-        if let providerId = TTSEngine(rawValue: id)?.providerID {
+        guard let engine = TTSEngine(rawValue: id) else { return }
+        defaults.set(engine.rawValue, forKey: TTSEngine.defaultsKey)
+        defaults.set(engine.isLocal, forKey: TTSDefaultSelection.explicitLocalKey)
+        if let providerId = engine.providerID {
             ProviderConfigDispatcher(defaults: defaults, keyReader: { _ in nil })
                 .selectProvider(providerId, capability: .tts)
         }

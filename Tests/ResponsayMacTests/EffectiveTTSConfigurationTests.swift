@@ -37,6 +37,59 @@ private final class TTSEffectiveCredentialStore: @unchecked Sendable {
 /// Issue #76 — Settings, quick selection, and synthesis consume one effective TTS state.
 final class EffectiveTTSConfigurationTests: XCTestCase {
     @MainActor
+    func testFirstConfiguredTTSBecomesTheCurrentRouteAndStaysSelected() throws {
+        let defaults = freshDefaults("automatic-route")
+        defaults.set(TTSEngine.sherpaKokoroLocal.rawValue, forKey: TTSEngine.defaultsKey)
+        let credentials = TTSEffectiveCredentialStore()
+        func configure(_ provider: String) {
+            let settings = ProviderConfigMachine(
+                capability: .tts, preferredProviderId: provider, defaults: defaults,
+                keyReader: { credentials.read($0) },
+                keyWriter: { credentials.write($0, account: $1) })
+            settings.load()
+            settings.providerId = provider
+            settings.selectProvider()
+            settings.persist()
+            settings.apiKey = "synthetic-tts-test-key"
+            settings.writeApiKey()
+        }
+
+        configure("gemini")
+
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudGemini)
+        XCTAssertEqual(ModelRouteCatalog.currentTTSId(defaults: defaults), TTSEngine.cloudGemini.rawValue)
+        let readiness = ModelLaneReadinessResolver(dispatcher: ProviderConfigDispatcher(
+            defaults: defaults, keyReader: { credentials.read($0) }))
+        let lane = try XCTUnwrap(ModelLaneDisplay(defaults: defaults, readiness: readiness)
+            .lanes().first { $0.lane == .tts })
+        XCTAssertEqual(lane.currentTitle, TTSEngine.cloudGemini.title)
+        XCTAssertEqual(lane.readiness, .cloudReady)
+
+        configure("qwen")
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .cloudGemini)
+    }
+
+    @MainActor
+    func testConfiguringAnotherProfilePreservesExplicitLocalSelection() {
+        let defaults = freshDefaults("explicit-local-profile")
+        ModelRouteSelectionActions.applyTTSSelection(TTSEngine.sherpaKokoroLocal.rawValue, defaults: defaults)
+        let credentials = TTSEffectiveCredentialStore()
+        let settings = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: "qwen", defaults: defaults,
+            keyReader: { credentials.read($0) },
+            keyWriter: { credentials.write($0, account: $1) })
+        settings.load()
+        settings.providerId = "gemini"
+        settings.selectProvider()
+        settings.persist()
+        settings.apiKey = "synthetic-gemini-key"
+        settings.writeApiKey()
+
+        XCTAssertEqual(TTSEngine.selected(defaults: defaults), .sherpaKokoroLocal)
+        XCTAssertTrue(defaults.bool(forKey: TTSDefaultSelection.explicitLocalKey))
+    }
+
+    @MainActor
     func testQwenSettingsAndRuntimeShareEffectiveProviderRules() throws {
         let defaults = freshDefaults("qwen-provider-rules")
         defaults.set("qwen", forKey: "byok.tts.provider")

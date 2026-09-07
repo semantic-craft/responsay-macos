@@ -21,7 +21,7 @@ final class VoiceAssistantPanel {
         observe()
     }
     
-    /// Track ONLY phase + selectionContext — the things that decide which panel is shown. We must
+    /// Track ONLY phase + selectionContext + errorMessage — the things that decide which panel is shown. We must
     /// NOT track partialTranscript / level / messages.count here: those tick dozens of times a
     /// second (every spoken word, every waveform frame, every streamed token) and re-running the
     /// show/resize logic that often resizes the window in a loop → "needs another Update Constraints
@@ -31,6 +31,7 @@ final class VoiceAssistantPanel {
         withObservationTracking {
             _ = vm.phase
             _ = vm.selectionContext
+            _ = vm.errorMessage
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -56,8 +57,9 @@ final class VoiceAssistantPanel {
             showResult(screen: screen)
         case .idle:
             // Show the panel when there's a conversation OR a freshly seeded
-            // 任意提问 selection waiting for its first push-to-talk question.
-            if !vm.messages.isEmpty || vm.selectionContext != nil {
+            // 任意提问 selection waiting for its first push-to-talk question, or an error.
+            // In particular, a first-turn timeout has no messages/selection to show.
+            if !vm.messages.isEmpty || vm.selectionContext != nil || vm.errorMessage != nil {
                 hideCapsule()
                 showResult(screen: screen)
             } else {

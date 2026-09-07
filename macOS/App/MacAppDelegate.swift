@@ -36,6 +36,9 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         // 退役 provider（智谱）遗留的选择与钥匙串密钥一次性清理；带完成标记，正常只跑一次。
         if !underTest { RetiredProviderCleanup.run() }
 
+        // Upgrade an old Kokoro default when a cloud TTS is already configured.
+        if !underTest { TTSDefaultSelection.activateConfiguredDefault() }
+
         // #55: persistent Qwen ASR Context is opt-in and privacy-bounded. Enforce its two-hour
         // expiry at real application startup; when the switch is off, remove any stale store.
         if !underTest { PersistentASRContextSettings.prepareAtLaunch() }

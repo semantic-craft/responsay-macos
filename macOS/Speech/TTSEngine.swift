@@ -3,7 +3,7 @@ import ResponsayCore
 import ResponsaySpeech
 
 /// Which engine speaks for 朗读 / 复读 (issue 193). Mirrors `ASREngine`: on-device
-/// Kokoro is the default; wired cloud providers go direct-to-provider with BYOK.
+/// Kokoro is the unconfigured baseline; TTSDefaultSelection activates configured cloud BYOK.
 enum TTSEngine: String, CaseIterable {
     /// In-process offline TTS via sherpa-onnx + Kokoro (no backend, no Python).
     case sherpaKokoroLocal = "local-kokoro"
