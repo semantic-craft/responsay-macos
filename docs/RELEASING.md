@@ -5,21 +5,35 @@ It signs with the `Developer ID Application` certificate already in the login ke
 signs the Sparkle feed with the EdDSA key `generate_keys` stored there. Nothing is
 exported, and no signing material exists outside that machine.
 
-Development, review, and version-bump pull requests live on GitHub. The public download and Sparkle feed also live there; keep the repository publicly readable so installed-client updates and downloads continue to work. See `docs/operations/ci.md`.
+Development, review, and version-bump pull requests live on GitHub. GitHub Actions checks are required before merging; see `docs/operations/ci.md`.
 
-This repository's root `appcast.xml` is the canonical Sparkle feed. New builds read it from
-the repository's stable raw `main` URL. The old `https://responsay.com/appcast.xml` URL is a
-compatibility redirect for already-installed builds; cutting a release does not require a
-site-repository change or deployment.
+This document describes the R2 distribution workflow. Complete the migration checks below when changing the installed update URL. GitHub remains the primary source repository.
 
-A GitHub-hosted release path used to exist alongside this one. It was removed: it had never
-completed a release, and it had no step that updated the live Sparkle feed, so following it
-produced a GitHub Release that no installed copy would ever learn about.
+This repository's root `appcast.xml` is the canonical Sparkle feed. New builds read
+the deployed copy from `https://updates.responsay.com/appcast.xml`. Signed and notarized
+artifacts live in the `responsay-updates` Cloudflare R2 bucket; source code and signing keys
+never go there. `https://responsay.com/Responsay.dmg` and the legacy
+`https://responsay.com/appcast.xml` path must redirect to the R2 custom domain before
+cutover is complete.
 
-The steps below are the whole procedure, in order. **Until step 6's appcast pull request
-is merged into GitHub `main`, no installed copy knows an update exists.**
+The steps below are ordered: upload and verify immutable artifacts before merging the
+appcast, then activate the R2 feed. Merging the root appcast immediately advertises the
+release to older clients that still poll GitHub Raw.
 
 ## Before you start
+
+One-time R2 setup:
+
+1. Create the `responsay-updates` bucket in the Cloudflare account that owns
+   `responsay.com`.
+2. Connect `updates.responsay.com` as the bucket's production custom domain. Do not enable
+   Cloudflare Access on this hostname: Sparkle needs anonymous HTTPS reads.
+3. Authenticate Wrangler with an account that can write this bucket. The publisher invokes
+   the pinned official CLI through `npx`; keep its OAuth token in Wrangler's credential store
+   and never add it to this repository.
+
+The public bucket contains only DMGs, checksums, and the appcast. The Sparkle EdDSA private
+key remains in the maintainer Mac's login keychain.
 
 `notarytool` splits its traffic: status queries go to `appstoreconnect.apple.com`, but the
 upload itself goes to **Amazon S3**. Behind a proxy that routes `amazonaws.com` poorly, the
@@ -67,7 +81,7 @@ xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 GitHub Actions must report both `build-for-testing` and executed `ResponsayMac` tests green. A
 queued, skipped, missing, or still-running hosted-macOS check is not release evidence.
 
-## 2. Tag the merge commit
+## 2. Tag the merge commit on GitHub
 
 ```bash
 git tag -a v1.5.10 -m "Responsay 1.5.10 (build 143)" <merge-sha>
@@ -75,7 +89,7 @@ git push origin v1.5.10
 ```
 
 The tag must match `MARKETING_VERSION`; the script refuses otherwise. Confirm the tag is on
-GitHub `origin/main` before continuing.
+GitHub `origin/main` before continuing. R2 stores release artifacts, not source code.
 
 ## 3. Build, sign, and notarize
 
@@ -105,69 +119,79 @@ holding the single new `<item>`.
 It refuses to start if any of those three already exist. Clear `build/release/` between
 attempts rather than working around the check.
 
-**The DMG filename is fixed on purpose.** The site's download button is a permanent
-redirect to `releases/latest/download/Responsay.dmg`, which GitHub resolves by filename; a
-versioned name 404s that link.
+**The local DMG filename is fixed on purpose.** The publisher stores it twice: an immutable
+`releases/<tag>/Responsay.dmg` object for Sparkle and a short-cache `Responsay.dmg` object
+for the website's stable download URL.
 
-## 4. Create the GitHub Release
-
-In **this repository**, for that tag, with the DMG and its `.sha256` attached. Releases used
-to be published from `responsay-releases`; that repository is gone and nothing new goes
-there.
-
-Match the existing release-note convention: a one-line summary of what changed, then a
-`SHA-256:` line carrying the checksum.
-
-## 5. Verify what you published
-
-```bash
-curl -sSL -o /tmp/verify.dmg https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg
-shasum -a 256 /tmp/verify.dmg
-spctl --assess --type open --context context:primary-signature --verbose=2 /tmp/verify.dmg
-```
-
-The checksum must match the published `.sha256`, and Gatekeeper must report
-`accepted` / `source=Notarized Developer ID`. The `releases/latest/download/` form must
-resolve — the site's redirect depends on it.
-
-## 6. Add the appcast item
+## 4. Add the appcast item
 
 Copy the `<item>` block from `build/release/appcast.xml` into this repository's root
 `appcast.xml`, **inserted above the existing items**, and merge it through a GitHub pull
-request after the required checks pass. Fetch `origin/main` and verify that it contains the
-reviewed merge commit before checking the public feed. No cross-forge push is needed.
+request only after its immutable DMG and checksum are publicly available and verified.
+Prepare the complete appcast locally and run the artifacts-only phase before merging:
+
+```bash
+scripts/publish-update-r2.sh artifacts v1.5.10
+```
+
+This verifies metadata, checksum, notarization, Gatekeeper, and the public versioned DMG
+and checksum. It leaves stable download objects and both public feeds unchanged. Only
+then merge the appcast PR. Keep the generated release files in this workspace for activation.
 
 Do not re-run `generate_appcast` against that file: it prunes entries whose DMG is not in
 the working directory, which silently drops the published history. Confirm the diff is pure
 insertion — `git diff --numstat` should show zero deletions — and that the item count grew
 by exactly one.
 
-## 7. Confirm both feed URLs moved
+## 5. Activate the verified release
+
+From the verified release workspace after its root `appcast.xml` includes the reviewed new
+item:
 
 ```bash
-curl -sSL -o /dev/null -w "%{http_code} %{size_download}\n" https://responsay.com/Responsay.dmg
-curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://responsay.com/appcast.xml
-curl -fsSL -o /tmp/appcast-canonical.xml \
-  https://raw.githubusercontent.com/semantic-craft/responsay-macos/main/appcast.xml
-curl -fsSL -o /tmp/appcast-legacy.xml https://responsay.com/appcast.xml
-cmp appcast.xml /tmp/appcast-canonical.xml
-cmp appcast.xml /tmp/appcast-legacy.xml
-grep -m1 -A2 '<item>' /tmp/appcast-canonical.xml
+scripts/publish-update-r2.sh activate v1.5.10
 ```
 
-The download must return `200` with the DMG's real byte count, and the newest appcast item
-must be the version you just cut. Both `cmp` commands must be silent: new builds fetch the
-canonical URL, while versions through 1.7.0 keep polling the legacy redirect. GitHub's raw
-endpoint currently advertises a five-minute cache lifetime, so allow for that edge-cache
-window before treating a just-merged stale response as a failure. Once both paths expose
-the same newest item, installed copies can learn about the update.
+The publisher validates the local checksum, notarization ticket, and Gatekeeper assessment;
+requires the immutable DMG and checksum to exist and match; downloads the DMG and validates
+it again; refreshes the stable website download objects; and uploads `appcast.xml` last. It
+then verifies that the live feed exactly matches this repository.
+
+The default bucket is `responsay-updates`. Staging may override
+`RESPONSAY_R2_BUCKET`, `RESPONSAY_UPDATE_BASE_URL`, or `RESPONSAY_WRANGLER`; production
+releases use the defaults.
+
+## 6. Confirm the public and compatibility URLs
+
+```bash
+curl -sSL -o /dev/null -w "%{http_code} %{size_download}\n" https://updates.responsay.com/Responsay.dmg
+curl -fsSL https://updates.responsay.com/appcast.xml | grep -m1 -A3 '<item>'
+curl -sSIL https://responsay.com/Responsay.dmg | grep -i '^location:'
+curl -sSIL https://responsay.com/appcast.xml | grep -i '^location:'
+```
+
+Both Responsay URLs must redirect to `updates.responsay.com`; the update host must return
+the real DMG and the new feed item. Versions that already use the Responsay compatibility
+feed therefore continue to update through the new distribution host.
+
+## GitHub-to-R2 migration gate
+
+Versions pointing directly at GitHub Raw need a transition release through the existing
+GitHub feed. Verify the current public release updates to the transition release through the legacy
+feed, then check that the installed transition app requests the R2 feed. The next real
+release must also verify an installed R2-to-R2 update; do not publish a dummy production
+version only to exercise that second installation. Verify the R2 custom domain, signed DMG, feed, and website
+redirects before completing the cutover. Keep the GitHub repository and legacy feed public;
+R2 distribution does not change GitHub's role as the primary source repository. Publish the
+reviewed transition appcast through a GitHub PR. No source mirror or privacy change is needed.
 
 ## If something fails
 
-Signature, notarization, stapling, and Gatekeeper failures all stop the script before it
-writes anything publishable. Fix the source or the credential state and run it again; do
-not work around a check. Sanitized diagnostics are printed on failure — the script redacts
-home paths, signing identity hashes, and team IDs.
+Signature, notarization, stapling, and Gatekeeper failures stop the build before it writes
+anything publishable. Upload or live-download verification failures stop publication before
+the appcast is uploaded. Fix the source, credential, DNS, or object state and rerun the
+failed phase; do not work around a check. Build diagnostics redact home paths, signing
+identity hashes, and team IDs.
 
 A notarization submission that stalls at `In Progress` with no log is almost always the
 proxy problem described above, not an Apple queue delay.

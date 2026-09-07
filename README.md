@@ -8,7 +8,7 @@
     ·
     <a href="https://responsay.com/">Website</a>
     ·
-    <a href="https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg"><strong>Download for macOS</strong></a>
+    <a href="https://responsay.com/Responsay.dmg"><strong>Download for macOS</strong></a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+">
@@ -52,7 +52,7 @@ Only the capability you invoke receives the relevant audio, text, or image. Prov
 
 ## Get started
 
-1. **[Download the latest DMG](https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg)** and move Responsay to Applications.
+1. **[Download the latest DMG](https://responsay.com/Responsay.dmg)** and move Responsay to Applications.
 2. Open the app and follow the first-run guide. Microphone access is needed for dictation; Accessibility access lets Responsay insert text into the active app.
 3. Start with Apple dictation, download the offline foundation models, or add your own provider keys in Settings.
 4. Press your dictation shortcut and say a sentence. Configure additional shortcuts for translation, Ask Anything, screenshot translation, and the selection menu when you need them.
@@ -73,7 +73,7 @@ Local dictation, local OCR, local read-aloud, settings, usage metrics, and saved
 
 Before sharing a bug report, remove transcript text, selected content, file paths, account identifiers, and credentials from logs or screenshots.
 
-Every GitHub pull request and merge to `main` runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and an Apple Silicon macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, and Sparkle credentials stay outside this repository.
+Every GitHub pull request and merge to `main` runs a fixed public-source allowlist, Gitleaks, TruffleHog, deterministic privacy checks, tests, and an Apple Silicon macOS build. Raw secret-scanner reports remain in temporary runner storage and are not uploaded as artifacts. Maintainer signing, notarization, Sparkle, and R2 credentials stay outside this repository.
 
 ## For contributors
 

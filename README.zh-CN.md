@@ -8,7 +8,7 @@
     ·
     <a href="https://responsay.com/">官方网站</a>
     ·
-    <a href="https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg"><strong>下载 macOS 版</strong></a>
+    <a href="https://responsay.com/Responsay.dmg"><strong>下载 macOS 版</strong></a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple" alt="macOS 14+">
@@ -52,7 +52,7 @@
 
 ## 四步开始使用
 
-1. **[下载最新版 DMG](https://github.com/semantic-craft/responsay-macos/releases/latest/download/Responsay.dmg)**，把 Responsay 移入“应用程序”。
+1. **[下载最新版 DMG](https://responsay.com/Responsay.dmg)**，把 Responsay 移入“应用程序”。
 2. 打开应用并完成首次引导。听写需要麦克风权限；把结果写入当前应用需要辅助功能权限。
 3. 先用 Apple 系统听写、下载离线基础模型，或在设置中加入自己的服务商 API Key。
 4. 按下听写快捷键说一句话。需要时，再为听写翻译、任意提问、截图翻译和划词菜单设置快捷键。
@@ -73,7 +73,7 @@
 
 提交 bug 前，请删除日志或截图中的转写文本、选区内容、文件路径、账户标识和凭证。
 
-每个 GitHub pull request 和 `main` 合并都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 Apple Silicon macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证和 Sparkle 凭证始终位于仓库之外。
+每个 GitHub pull request 和 `main` 合并都会运行固定路径白名单、Gitleaks、TruffleHog、补充的确定性隐私检查、测试和 Apple Silicon macOS 构建。秘密扫描原始报告只存在于 runner 临时目录，不上传为 artifact。维护者的签名、公证、Sparkle 与 R2 凭证始终位于仓库之外。
 
 ## 参与开发
 

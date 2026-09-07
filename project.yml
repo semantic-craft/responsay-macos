@@ -5,8 +5,8 @@ options:
   developmentLanguage: zh-Hans
 settings:
   base:
-    MARKETING_VERSION: "1.9.3"
-    CURRENT_PROJECT_VERSION: "158"
+    MARKETING_VERSION: "1.9.4"
+    CURRENT_PROJECT_VERSION: "159"
     SWIFT_VERSION: "6.0"
 packages:
   ResponsayCore:
@@ -52,7 +52,7 @@ targets:
               - responsay
         NSMicrophoneUsageDescription: "法言需要访问麦克风，以把语音转换为文字。"
         NSSpeechRecognitionUsageDescription: "法言需要使用语音识别，将语音转换为文字。"
-        SUFeedURL: "https://raw.githubusercontent.com/semantic-craft/responsay-macos/main/appcast.xml"
+        SUFeedURL: "https://updates.responsay.com/appcast.xml"
         SUPublicEDKey: "3Ze0A+sHbvkQ8CLlDUIcYvm7BJS4IJLU1rNEX66F9R4=" # gitleaks:allow -- public Sparkle verification key
         SUEnableAutomaticChecks: true
         CFBundleLocalizations:
