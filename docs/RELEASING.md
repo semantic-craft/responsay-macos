@@ -7,7 +7,7 @@ exported, and no signing material exists outside that machine.
 
 Development, review, and version-bump pull requests live on GitHub. GitHub Actions checks are required before merging; see `docs/operations/ci.md`.
 
-This document describes the proposed R2 distribution workflow. Complete the migration gate below before releasing a build that changes the installed update URL. GitHub remains the primary source repository.
+This document describes the R2 distribution workflow. Complete the migration checks below when changing the installed update URL. GitHub remains the primary source repository.
 
 This repository's root `appcast.xml` is the canonical Sparkle feed. New builds read
 the deployed copy from `https://updates.responsay.com/appcast.xml`. Signed and notarized
@@ -16,17 +16,9 @@ never go there. `https://responsay.com/Responsay.dmg` and the legacy
 `https://responsay.com/appcast.xml` path must redirect to the R2 custom domain before
 cutover is complete.
 
-The steps below are the whole procedure, in order. **Until the final appcast upload in step
-5 succeeds, no installed copy knows an update exists.**
-
-## Draft implementation blocker
-
-Do not execute this proposed cutover sequence yet. Existing clients still poll GitHub Raw,
-so merging a new root appcast item publishes it to those clients immediately. The current
-publisher uploads artifacts and the R2 feed in one invocation; before activation, provide and
-test an artifacts-only phase, verify its immutable DMG URL, then merge the transition item on
-GitHub, and only then publish the R2 feed. The numbered steps below require that split before
-they can be used for a real transition release.
+The steps below are ordered: upload and verify immutable artifacts before merging the
+appcast, then activate the R2 feed. Merging the root appcast immediately advertises the
+release to older clients that still poll GitHub Raw.
 
 ## Before you start
 
@@ -136,25 +128,32 @@ for the website's stable download URL.
 Copy the `<item>` block from `build/release/appcast.xml` into this repository's root
 `appcast.xml`, **inserted above the existing items**, and merge it through a GitHub pull
 request only after its immutable DMG and checksum are publicly available and verified.
-This merge immediately advertises the update to clients polling GitHub Raw; the unsplit
-publisher below is not yet sufficient to implement that ordering.
+Prepare the complete appcast locally and run the artifacts-only phase before merging:
+
+```bash
+scripts/publish-update-r2.sh artifacts v1.5.10
+```
+
+This verifies metadata, checksum, notarization, Gatekeeper, and the public versioned DMG
+and checksum. It leaves stable download objects and both public feeds unchanged. Only
+then merge the appcast PR. Keep the generated release files in this workspace for activation.
 
 Do not re-run `generate_appcast` against that file: it prunes entries whose DMG is not in
 the working directory, which silently drops the published history. Confirm the diff is pure
 insertion — `git diff --numstat` should show zero deletions — and that the item count grew
 by exactly one.
 
-## 5. Publish the verified artifacts and feed
+## 5. Activate the verified release
 
 From the verified release workspace after its root `appcast.xml` includes the reviewed new
 item:
 
 ```bash
-scripts/publish-update-r2.sh v1.5.10
+scripts/publish-update-r2.sh activate v1.5.10
 ```
 
 The publisher validates the local checksum, notarization ticket, and Gatekeeper assessment;
-uploads the immutable versioned DMG and checksum; downloads the versioned DMG and validates
+requires the immutable DMG and checksum to exist and match; downloads the DMG and validates
 it again; refreshes the stable website download objects; and uploads `appcast.xml` last. It
 then verifies that the live feed exactly matches this repository.
 
@@ -178,8 +177,10 @@ feed therefore continue to update through the new distribution host.
 ## GitHub-to-R2 migration gate
 
 Versions pointing directly at GitHub Raw need a transition release through the existing
-GitHub feed. Prove two hops on a real installed app: current public release → transition
-release → R2-hosted test release. Verify the R2 custom domain, signed DMG, feed, and website
+GitHub feed. Verify the current public release updates to the transition release through the legacy
+feed, then check that the installed transition app requests the R2 feed. The next real
+release must also verify an installed R2-to-R2 update; do not publish a dummy production
+version only to exercise that second installation. Verify the R2 custom domain, signed DMG, feed, and website
 redirects before completing the cutover. Keep the GitHub repository and legacy feed public;
 R2 distribution does not change GitHub's role as the primary source repository. Publish the
 reviewed transition appcast through a GitHub PR. No source mirror or privacy change is needed.

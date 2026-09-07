@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-GitHub [`semantic-craft/responsay-macos`](https://github.com/semantic-craft/responsay-macos) is the canonical development repository for code, branches, reviews, pull requests, and issues. Configure `origin` to point there. The former Cursor Origin repository is retained as `cursor` for historical work.
+GitHub [`semantic-craft/responsay-macos`](https://github.com/semantic-craft/responsay-macos) is the canonical development repository for code, branches, reviews, pull requests, and issues. Configure `origin` to point there. The former Cursor Origin repository has been archived locally and deleted; do not configure a `cursor` remote.
 
 This repository is the canonical development repository for:
 

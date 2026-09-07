@@ -13,7 +13,7 @@ GitHub is the code and issue repository; `origin` points to GitHub. Set `GH_REPO
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Confirm `origin` points to `semantic-craft/responsay-macos` on GitHub. A retained `cursor` remote is historical and is not the issue repository.
+Confirm `origin` points to `semantic-craft/responsay-macos` on GitHub. Cursor Origin has been retired; GitHub is the only development forge.
 
 ## Pull requests as a triage surface
 

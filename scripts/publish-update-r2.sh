@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
-TAG="${1:-}"
+PHASE="${1:-}"
+TAG="${2:-}"
 OUTPUT_DIR="${ROOT}/build/release"
 DMG_PATH="${OUTPUT_DIR}/Responsay.dmg"
 SHA_PATH="${DMG_PATH}.sha256"
@@ -54,6 +55,7 @@ put_object() {
     --remote
 }
 
+[[ "${PHASE}" == artifacts || "${PHASE}" == activate ]] || fail "usage: publish-update-r2.sh artifacts|activate v1.2.3"
 [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "release tag must look like v1.2.3"
 for tool in curl shasum xcrun python3; do
   command -v "${tool}" >/dev/null 2>&1 || fail "required tool is missing: ${tool}"
@@ -151,6 +153,7 @@ case "${EXISTING_STATUS}" in
     printf 'publish: immutable %s already matches; keeping it.\n' "${TAG}"
     ;;
   404)
+    [[ "${PHASE}" == artifacts ]] || fail "immutable DMG is missing; run artifacts before activating"
     unlink "${EXISTING_DMG}"
     put_object "releases/${TAG}/Responsay.dmg" "${DMG_PATH}" \
       "application/x-apple-diskimage" "public, max-age=31536000, immutable"
@@ -169,6 +172,7 @@ fi
 case "${SHA_STATUS}" in
   200) cmp "${SHA_PATH}" "${VERSIONED_SHA}" >/dev/null || fail "versioned checksum differs" ;;
   404)
+    [[ "${PHASE}" == artifacts ]] || fail "immutable checksum is missing; run artifacts before activating"
     put_object "releases/${TAG}/Responsay.dmg.sha256" "${SHA_PATH}" \
       "text/plain; charset=utf-8" "public, max-age=31536000, immutable"
     ;;
@@ -184,6 +188,11 @@ DOWNLOADED_SHA="$(shasum -a 256 "${DOWNLOADED_DMG}" | awk '{print $1}')"
 [[ "${DOWNLOADED_SHA}" == "${EXPECTED_SHA}" ]] || fail "downloaded versioned DMG hash does not match"
 xcrun stapler validate "${DOWNLOADED_DMG}"
 /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "${DOWNLOADED_DMG}"
+
+if [[ "${PHASE}" == artifacts ]]; then
+  printf 'publish: immutable %s verified; stable downloads and feeds are unchanged.\n' "${TAG}"
+  exit 0
+fi
 
 # Refresh the stable manual-download objects only after the immutable artifact is proven.
 put_object "Responsay.dmg" "${DMG_PATH}" \

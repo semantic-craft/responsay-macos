@@ -47,7 +47,7 @@ src=next(a.split('=',1)[1] for a in args if a.startswith('--file=')); shutil.cop
 with open(os.environ['FIXTURE_UPLOADS'],'a') as f: f.write(key+'\\n')
 `);
   return { root, remote, output, bytes, checksum, feed,
-    run: () => spawnSync('bash', ['scripts/publish-update-r2.sh', 'v1.9.3'], {
+    run: (phase = 'artifacts') => spawnSync('bash', ['scripts/publish-update-r2.sh', phase, 'v1.9.3'], {
       cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
         RESPONSAY_WRANGLER: join(bin, 'wrangler'), RESPONSAY_R2_BUCKET: 'fixture',
         RESPONSAY_UPDATE_BASE_URL: 'https://updates.responsay.com',
@@ -57,9 +57,11 @@ with open(os.environ['FIXTURE_UPLOADS'],'a') as f: f.write(key+'\\n')
 }
 
 test('publishes the verified feed last', t => {
-  const f = fixture(t); const result = f.run();
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  const result = f.run('activate');
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(readFileSync(join(f.root, 'uploads'), 'utf8').trim().split('\n').at(-1), 'appcast.xml');
+  assert.deepEqual(readFileSync(join(f.root, 'uploads'), 'utf8').trim().split('\n'), ['releases/v1.9.3/Responsay.dmg', 'releases/v1.9.3/Responsay.dmg.sha256', 'Responsay.dmg', 'Responsay.dmg.sha256', 'appcast.xml']);
 });
 
 test('rejects same-build feed with a different enclosure before any upload', t => {
@@ -110,6 +112,33 @@ test('rejects conflicting metadata for an already live build', t => {
 test('allows an exact retry of the current live build', t => {
   const f = fixture(t);
   assert.equal(f.run().status, 0);
-  const result = f.run();
+  assert.equal(f.run('activate').status, 0);
+  const result = f.run('activate');
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
+
+
+test('artifacts phase leaves stable downloads and feeds untouched', t => {
+  const f = fixture(t);
+  writeFileSync(join(f.remote, 'appcast.xml'), f.feed(157));
+  writeFileSync(join(f.remote, 'Responsay.dmg'), 'old stable download');
+  const result = f.run();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(readFileSync(join(f.remote, 'appcast.xml'), 'utf8'), f.feed(157));
+  assert.equal(readFileSync(join(f.remote, 'Responsay.dmg'), 'utf8'), 'old stable download');
+  assert.deepEqual(readFileSync(join(f.root, 'uploads'), 'utf8').trim().split('\n'), ['releases/v1.9.3/Responsay.dmg', 'releases/v1.9.3/Responsay.dmg.sha256']);
+});
+
+for (const missing of ['DMG', 'checksum']) {
+  test(`activation refuses a missing immutable ${missing} before any write`, t => {
+    const f = fixture(t);
+    if (missing === 'checksum') {
+      const dir = join(f.remote, 'releases/v1.9.3'); mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'Responsay.dmg'), f.bytes);
+    }
+    const result = f.run('activate');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /is missing; run artifacts before activating/);
+    assert.equal(existsSync(join(f.root, 'uploads')), false);
+  });
+}
