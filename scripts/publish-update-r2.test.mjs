@@ -35,9 +35,9 @@ import os, sys, pathlib, urllib.parse
 args=sys.argv[1:]; url=next(a for a in args if a.startswith('https://'))
 p=pathlib.Path(os.environ['FIXTURE_REMOTE']) / urllib.parse.urlparse(url).path.lstrip('/')
 found=p.is_file()
-# Model the edge caching a bare missing DMG URL even after an upload.
-negative=pathlib.Path(os.environ['FIXTURE_REMOTE'])/'.cached-missing-dmg'
-if p.suffix == '.dmg' and not urllib.parse.urlparse(url).query:
+# Model the edge caching a bare missing artifact URL even after an upload.
+negative=pathlib.Path(os.environ['FIXTURE_REMOTE'])/('.cached-missing-'+p.name)
+if p.suffix in ('.dmg', '.sha256') and not urllib.parse.urlparse(url).query:
     if negative.exists(): found=False
     elif not found: negative.touch()
 if '-o' in args: pathlib.Path(args[args.index('-o')+1]).write_bytes(p.read_bytes() if found else b'not found')

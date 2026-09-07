@@ -167,7 +167,7 @@ esac
 # A prior attempt may have uploaded the DMG but failed before its checksum. Repair only
 # a missing checksum, never overwrite conflicting versioned metadata.
 VERSIONED_SHA="${VERIFY_DIR}/versioned.sha256"
-if ! SHA_STATUS="$(curl -sS -o "${VERSIONED_SHA}" -w '%{http_code}' "${EXPECTED_URL}.sha256")"; then
+if ! SHA_STATUS="$(curl -sS -o "${VERSIONED_SHA}" -w '%{http_code}' "${EXPECTED_URL}.sha256?preflight=${TAG}&at=$(date +%s)")"; then
   fail "could not read the versioned checksum"
 fi
 case "${SHA_STATUS}" in
