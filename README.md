@@ -2,7 +2,7 @@
   <img src="macOS/Assets.xcassets/AppIcon.appiconset/MacIcon-512.png" width="112" alt="Responsay app icon">
   <h1>Responsay for macOS</h1>
   <p><strong>Speak naturally. Get writing that is ready to use.</strong></p>
-  <p>A native, local-first voice input and writing assistant that works wherever you type on your Mac.</p>
+  <p>A native, open-source voice input and writing assistant that works wherever you type on your Mac.</p>
   <p>
     <a href="README.zh-CN.md">简体中文</a>
     ·
@@ -65,7 +65,7 @@ Only the capability you invoke receives the relevant audio, text, or image. Prov
 - **It keeps you in control.** Transformations that modify text are explicit; answers, source checks, and legal results remain reviewable before use.
 - **It learns your vocabulary locally.** Corrected names and specialist terms can improve later recognition and remain on your Mac.
 - **It supports real writing workflows.** Dictation, translation, OCR, source verification, style packs, and read-aloud share one native interface.
-- **It stays close to your work.** Local models, vocabulary, settings, and history remain on your Mac unless you explicitly invoke a cloud provider.
+- **It is inspectable.** The macOS app and its cross-platform Swift core are public under the MIT License.
 
 ## Privacy and security
 
@@ -87,7 +87,7 @@ Packages/ResponsayCore/       Cross-platform Swift modules and unit tests
 Tests/ResponsayMacTests/      macOS application tests
 project.yml                   XcodeGen project definition
 scripts/fetch-sherpa-onnx.sh  Fetches local inference dependencies not stored in Git
-scripts/ci/                    Publication-boundary and secret-scanning gates
+scripts/ci/                    Public-source and secret-scanning gates
 scripts/release-macos.sh       Maintainer release driver
 docs/RELEASING.md             Maintainer release guide
 ```
@@ -123,4 +123,4 @@ This repository is the canonical source for the macOS app and `ResponsayCore`. T
 
 ## License
 
-The source repository is currently private. The source files retain the [MIT License](LICENSE).
+Responsay is open source under the [MIT License](LICENSE).

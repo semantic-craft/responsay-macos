@@ -2,7 +2,7 @@
   <img src="macOS/Assets.xcassets/AppIcon.appiconset/MacIcon-512.png" width="112" alt="法言应用图标">
   <h1>法言 · Responsay for macOS</h1>
   <p><strong>自然开口，落字成文。</strong></p>
-  <p>一款原生、本地优先、能在 Mac 任意输入位置工作的 AI 语音输入与写作助手。</p>
+  <p>一款原生、开源、能在 Mac 任意输入位置工作的 AI 语音输入与写作助手。</p>
   <p>
     <a href="README.md">English</a>
     ·
@@ -65,7 +65,7 @@
 - **是否改动文字由你决定。**会替换正文的操作是明确的；回答、来源核验和法律技能结果先供你审阅。
 - **它能在本机记住你的词。**被纠正的人名、术语和专有词可以改善后续识别，并留在当前 Mac。
 - **它围绕完整工作流设计。**听写、翻译、OCR、来源核验、文风技能和朗读共享一套原生交互。
-- **数据尽量贴近你的工作现场。**本机模型、词汇、设置与历史留在 Mac；只有主动调用云端服务时才会连接相应服务商。
+- **它的实现可检查。**macOS 应用与跨平台 Swift 核心均以 MIT License 公开。
 
 ## 隐私与安全
 
@@ -87,7 +87,7 @@ Packages/ResponsayCore/       跨平台 Swift 模块与单元测试
 Tests/ResponsayMacTests/      macOS 应用测试
 project.yml                   XcodeGen 工程定义
 scripts/fetch-sherpa-onnx.sh  获取未纳入 Git 的本地推理依赖
-scripts/ci/                    发布边界与秘密扫描门
+scripts/ci/                    公开源码边界与秘密扫描门
 scripts/release-macos.sh       维护者发布驱动
 docs/RELEASING.md             维护者发布手册
 ```
@@ -123,4 +123,4 @@ xcodebuild test -scheme ResponsayMac -destination 'platform=macOS'
 
 ## 许可证
 
-源码仓目前保持私有；仓内源码文件继续适用 [MIT License](LICENSE)。
+法言以 [MIT License](LICENSE) 开源。
