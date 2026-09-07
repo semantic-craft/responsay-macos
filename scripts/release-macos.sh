@@ -305,7 +305,7 @@ xcrun stapler validate "${DMG_PATH}"
 )
 
 # Sparkle downloads immutable, versioned artifacts from Responsay's update host. Keeping the
-# URL on our own domain lets the source repository remain private. Override only for staging.
+# URL on our own domain separates distribution from GitHub development. Override only for staging.
 DEFAULT_URL_PREFIX="https://updates.responsay.com/releases/${TAG}/"
 DOWNLOAD_URL_PREFIX="${RESPONSAY_DOWNLOAD_URL_PREFIX:-${DEFAULT_URL_PREFIX}}"
 
