@@ -45,7 +45,9 @@ import Testing
         #expect(vm.maxListeningDuration == .seconds(900))
         vm.maxListeningDuration = .milliseconds(10)
         vm.startCapture()
-        let deadline = ContinuousClock.now + .seconds(2)
+        // This checks expiry behavior, not scheduler latency: the full CI suite can
+        // occupy MainActor for several seconds before the 10 ms timer resumes.
+        let deadline = ContinuousClock.now + .seconds(30)
         while vm.phase != .idle, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }

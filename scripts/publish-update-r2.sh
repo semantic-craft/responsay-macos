@@ -140,9 +140,10 @@ xcrun stapler validate "${DMG_PATH}"
 /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "${DMG_PATH}"
 
 # Publish immutable artifacts first. A tag may be retried with the exact same bytes, but it
-# may never be repointed at a different DMG.
+# may never be repointed at a different DMG. Probe with a separate cache key so a
+# missing response cannot poison the real download URL before its first upload.
 EXISTING_DMG="${VERIFY_DIR}/existing-Responsay.dmg"
-if ! EXISTING_STATUS="$(curl -sS -o "${EXISTING_DMG}" -w '%{http_code}' "${EXPECTED_URL}")"; then
+if ! EXISTING_STATUS="$(curl -sS -o "${EXISTING_DMG}" -w '%{http_code}' "${EXPECTED_URL}?preflight=${TAG}&at=$(date +%s)")"; then
   fail "could not determine whether ${EXPECTED_URL} already exists"
 fi
 case "${EXISTING_STATUS}" in
@@ -166,7 +167,7 @@ esac
 # A prior attempt may have uploaded the DMG but failed before its checksum. Repair only
 # a missing checksum, never overwrite conflicting versioned metadata.
 VERSIONED_SHA="${VERIFY_DIR}/versioned.sha256"
-if ! SHA_STATUS="$(curl -sS -o "${VERSIONED_SHA}" -w '%{http_code}' "${EXPECTED_URL}.sha256")"; then
+if ! SHA_STATUS="$(curl -sS -o "${VERSIONED_SHA}" -w '%{http_code}' "${EXPECTED_URL}.sha256?preflight=${TAG}&at=$(date +%s)")"; then
   fail "could not read the versioned checksum"
 fi
 case "${SHA_STATUS}" in

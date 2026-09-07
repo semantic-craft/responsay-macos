@@ -157,6 +157,11 @@ requires the immutable DMG and checksum to exist and match; downloads the DMG an
 it again; refreshes the stable website download objects; and uploads `appcast.xml` last. It
 then verifies that the live feed exactly matches this repository.
 
+Existence probes use a separate query cache key so a pre-upload 404 does not poison the
+canonical download URL. Final verification always downloads the canonical URL. If an older
+probe or external request cached a 404, purge that exact URL in Cloudflare and rerun the
+artifacts phase; do not activate while the canonical download still fails.
+
 The default bucket is `responsay-updates`. Staging may override
 `RESPONSAY_R2_BUCKET`, `RESPONSAY_UPDATE_BASE_URL`, or `RESPONSAY_WRANGLER`; production
 releases use the defaults.
