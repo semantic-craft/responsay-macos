@@ -17,7 +17,7 @@ struct VoiceAssistantResultPanel: View {
     var vm: VoiceAssistantViewModel
     /// Dismiss the card. The owning `VoiceAssistantPanel` actually orders the window out —
     /// clearing the conversation alone can't hide it, because the panel's show/hide observer
-    /// tracks only `phase` / `selectionContext`, not `messages` (see VoiceAssistantPanel.observe).
+    /// tracks `phase` / `selectionContext` / `errorMessage`, not `messages` (see VoiceAssistantPanel.observe).
     var onClose: () -> Void = {}
     @State private var reader = ReadAloudController()
 
@@ -60,7 +60,7 @@ struct VoiceAssistantResultPanel: View {
                         if let selection = vm.selectionContext {
                             SelectionSourceChip(text: selection, chip: chip)
                         }
-                        if vm.messages.isEmpty {
+                        if vm.messages.isEmpty && vm.errorMessage == nil {
                             emptyHint
                         }
                         ForEach(Array(vm.messages.enumerated()), id: \.element.id) { index, message in
