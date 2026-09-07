@@ -19,6 +19,15 @@ cutover is complete.
 The steps below are the whole procedure, in order. **Until the final appcast upload in step
 5 succeeds, no installed copy knows an update exists.**
 
+## Draft implementation blocker
+
+Do not execute this proposed cutover sequence yet. Existing clients still poll GitHub Raw,
+so merging a new root appcast item publishes it to those clients immediately. The current
+publisher uploads artifacts and the R2 feed in one invocation; before activation, provide and
+test an artifacts-only phase, verify its immutable DMG URL, then merge the transition item on
+GitHub, and only then publish the R2 feed. The numbered steps below require that split before
+they can be used for a real transition release.
+
 ## Before you start
 
 One-time R2 setup:
@@ -126,7 +135,9 @@ for the website's stable download URL.
 
 Copy the `<item>` block from `build/release/appcast.xml` into this repository's root
 `appcast.xml`, **inserted above the existing items**, and merge it through a GitHub pull
-request. This changes the canonical record but does not publish the update yet.
+request only after its immutable DMG and checksum are publicly available and verified.
+This merge immediately advertises the update to clients polling GitHub Raw; the unsplit
+publisher below is not yet sufficient to implement that ordering.
 
 Do not re-run `generate_appcast` against that file: it prunes entries whose DMG is not in
 the working directory, which silently drops the published history. Confirm the diff is pure
