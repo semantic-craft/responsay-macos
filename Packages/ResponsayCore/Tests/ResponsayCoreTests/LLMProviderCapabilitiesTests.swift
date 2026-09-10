@@ -29,6 +29,10 @@ struct LLMProviderCapabilitiesTests {
 
         #expect(LLMProviderCapabilities.prefersResponses(
             providerId: "deepseek", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
+        for model in ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"] {
+            #expect(LLMProviderCapabilities.prefersResponses(
+                providerId: "deepseek", model: model, baseURLHost: "api.deepseek.com"))
+        }
         #expect(!LLMProviderCapabilities.prefersResponses(
             providerId: "deepseek", model: "deepseek-v4-pro", baseURLHost: "api.deepseek.com"))
         #expect(!LLMProviderCapabilities.prefersResponses(

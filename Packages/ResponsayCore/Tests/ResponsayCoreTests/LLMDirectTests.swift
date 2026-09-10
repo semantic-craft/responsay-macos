@@ -278,15 +278,16 @@ struct LLMChatRequestBuilderTests {
 
     /// DeepSeek `deepseek-flash` 的完整 Responses 线形：命中不带 `/v1` 的 `/responses`、
     /// 用 `input` 而不是 `messages`、并用 `reasoning.effort:"none"` 关掉默认开着的思考。
-    @Test func buildsDeepSeekV4FlashResponsesShapeBody() throws {
+    @Test(arguments: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"])
+    func buildsDeepSeekV4FlashResponsesShapeBody(model: String) throws {
         let ep = LLMEndpoint(providerId: "deepseek", baseURL: "https://api.deepseek.com/v1",
-                             model: "deepseek-flash", apiKey: "sk-ds", thinkingEnabled: false)
+                             model: model, apiKey: "sk-ds", thinkingEnabled: false)
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: ep, system: "SYS", user: "USR")
 
         #expect(req.url?.absoluteString == "https://api.deepseek.com/responses")
         #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer sk-ds")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        #expect(body?["model"] as? String == "deepseek-flash")
+        #expect(body?["model"] as? String == model)
         #expect(body?["stream"] as? Bool == false)
         let input = body?["input"] as? [[String: String]]
         #expect(input?.first?["role"] == "system")

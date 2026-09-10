@@ -216,7 +216,10 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
 
     /// DeepSeek V4.1 Flash uses the official rolling model ID and native Responses API.
     private static func deepSeekSupportsResponses(_ model: String) -> Bool {
-        model.trimmingCharacters(in: .whitespaces).lowercased() == "deepseek-flash"
+        // The provider still serves these aliases as V4.1; existing saved selections keep
+        // their Responses wire format until the provider retires the aliases.
+        ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]
+            .contains(model.trimmingCharacters(in: .whitespaces).lowercased())
     }
 
     private enum Channel { case qwen, mimo, doubao, gemini, openai, openrouter, ollama, deepseek, otherKnown, unknown }
