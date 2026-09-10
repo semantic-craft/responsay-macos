@@ -27,26 +27,48 @@ public enum TTSProviderCatalogPresets {
                 supportsStreaming: true,
                 supportsRealtimeWS: true,
                 maxCharsPerRequest: 20_000),
+            TTSModelSpec(
+                id: "qwen-audio-3.0-tts-plus",
+                displayName: "qwen-audio-3.0-tts-plus",
+                supportsStreaming: true,
+                supportsRealtimeWS: true,
+                maxCharsPerRequest: 20_000),
         ],
         voices: [
             TTSVoiceSpec(
                 id: "loongeva_v3.6",
                 displayName: "loongeva (女·精品英文)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-flash"],
                 languageHints: ["en"],
                 genderHint: "female"),
             TTSVoiceSpec(
                 id: "loongjohn",
                 displayName: "loongJohn (男·沉稳美音)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-flash"],
                 languageHints: ["en"],
                 genderHint: "male"),
             TTSVoiceSpec(
                 id: "longanhuan_v3.6",
                 displayName: "龙安欢 (女·中英双语)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-flash"],
                 languageHints: ["zh", "en"],
                 genderHint: "female"),
             TTSVoiceSpec(
                 id: "longjielidou_v3.6",
                 displayName: "龙杰力豆 (男童·中英双语)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-flash"],
+                languageHints: ["zh", "en"],
+                genderHint: "male"),
+            TTSVoiceSpec(
+                id: "longanlingxin",
+                displayName: "龙安灵心 (女·温暖·中英双语)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-plus"],
+                languageHints: ["zh", "en"],
+                genderHint: "female"),
+            TTSVoiceSpec(
+                id: "longanlufeng",
+                displayName: "龙安鲁风 (男·明朗·中英双语)",
+                supportedModelIDs: ["qwen-audio-3.0-tts-plus"],
                 languageHints: ["zh", "en"],
                 genderHint: "male"),
         ],

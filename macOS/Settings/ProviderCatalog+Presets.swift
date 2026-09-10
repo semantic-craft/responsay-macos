@@ -24,22 +24,19 @@ extension ProviderCatalog {
                 .init(.japan, .payg, "", note: "百炼 Responses · 日本（东京，需 Workspace ID）"),
             ],
         ],
-        defaultModels: [.llm: "qwen3.7-flash", .tts: "qwen-audio-3.0-tts-flash"],
+        defaultModels: [.llm: "qwen3.8-flash", .tts: "qwen-audio-3.0-tts-flash"],
         keyLabel: "通义千问 API Key", keyFormatHint: "sk-…",
         capabilityKeyFormatHints: [.llm: "百炼 API Key（sk-…）"],
         builtinSearch: true, isCustom: false, isLocal: false,
         presetModels: [
-            // qwen3.7-max 面向技能平台工作流（听写默认仍是 flash）；不列入会被
+            // qwen3.8-max 面向技能平台工作流（听写默认仍是 flash）；不列入会被
             // LLMModelPresetFilter 从拉取结果中过滤掉，导致技能模型选不到 Max。
-            .llm: ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
-            .tts: ["qwen-audio-3.0-tts-flash"],
+            .llm: ["qwen3.8-flash", "qwen3.8-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"],
+            .tts: TTSProviderCatalogPresets.qwen.models.map(\.id),
         ],
-        presetVoices: [
-            PresetVoice(id: "loongeva_v3.6", displayName: "loongeva (女·精品英文)"),
-            PresetVoice(id: "loongjohn", displayName: "loongJohn (男·沉稳美音)"),
-            PresetVoice(id: "longanhuan_v3.6", displayName: "龙安欢 (女·中英双语)"),
-            PresetVoice(id: "longjielidou_v3.6", displayName: "龙杰力豆 (男童·中英双语)")
-        ])
+        presetVoices: TTSProviderCatalogPresets.qwen.voices.map {
+            PresetVoice(id: $0.id, displayName: $0.displayName)
+        })
 
     // id 仍用 "qwen-asr-flash"（历史 id，避免 keychain/选择迁移）；这张卡承载的是百炼**实时语音识别**
     // 的 run-task WSS 协议（/api-ws/v1/inference）：按住说话边传边识别，松手 finish-task 出整段。
@@ -213,11 +210,11 @@ extension ProviderCatalog {
         id: "deepseek", displayName: "DeepSeek",
         capabilities: [.llm], credentialShape: .apiKey,
         endpoints: [.init(.global, .payg, "https://api.deepseek.com/v1")],
-        defaultModels: [.llm: "deepseek-v4-flash"],
+        defaultModels: [.llm: "deepseek-flash"],
         keyLabel: "DeepSeek API Key", keyFormatHint: "sk-…",
-        // 联网靠 Responses 的服务端 web_search 工具，只有 deepseek-v4-flash 走那条路由。
-        builtinSearch: true, isCustom: false, isLocal: false,
-        presetModels: [.llm: ["deepseek-v4-flash"]])
+        // V4.1 Flash ignores built-in web_search tools.
+        builtinSearch: false, isCustom: false, isLocal: false,
+        presetModels: [.llm: ["deepseek-flash"]])
 
     static let openAI = ProviderPreset(
         id: "openai", displayName: "OpenAI",
@@ -250,7 +247,7 @@ extension ProviderCatalog {
             .asr: [.init(.global, .payg, "https://generativelanguage.googleapis.com/v1beta/")],
             .tts: [.init(.global, .payg, "https://generativelanguage.googleapis.com/v1beta/")],
         ],
-        defaultModels: [.asr: "gemini-3.1-flash-lite", .llm: "gemini-3.5-flash-lite",
+        defaultModels: [.asr: "gemini-3.1-flash-lite", .llm: "gemini-3.8-flash",
                         .tts: "gemini-3.1-flash-tts-preview"],
         keyLabel: "Gemini API Key", keyFormatHint: "AIza…",
         builtinSearch: false, isCustom: false, isLocal: false,
@@ -273,9 +270,10 @@ extension ProviderCatalog {
                 "gemini-flash-latest",     // flash 别名 — 永远指向最新一代 flash
             ],
             .llm: [
-                "gemini-3.5-flash-lite",   // default — 2026-07-21 stable, cheapest/fastest 3.5 (1M ctx, thinking)
+                "gemini-3.8-flash",        // stable Flash, September 2026
+                "gemini-3.5-flash-lite",   // lower-cost Lite option
                 "gemini-3.1-flash-lite",   // prior default — fast / low-cost, fits the IME
-                "gemini-3.5-flash",        // newest stable flash (1M ctx, thinking)
+                "gemini-3.5-flash",        // earlier Flash option
                 "gemini-3-flash-preview",  // Gemini 3 flash (preview)
                 "gemini-3.1-pro-preview",  // Gemini 3 Pro (text)
                 "gemini-2.5-flash",

@@ -53,6 +53,10 @@ enum LLMThinkingControl {
             // leaks into inserted text (openless polish.rs).
             return ["reasoning": ["effort": enabled ? "medium" : "none", "exclude": true]]
         case .geminiCompat:
+            // 3.8 Flash cannot disable thinking; use its lowest supported effort for fast tasks.
+            if model == "gemini-3.8-flash" {
+                return ["reasoning_effort": enabled ? "medium" : "low"]
+            }
             // Gemini's OpenAI-compat layer accepts `reasoning_effort`, but only the older
             // non-pro 2.x/1.x flash-class models accept `"none"` to disable thinking. The 3.5
             // generation — AND the `*-latest` aliases that now resolve to it — HTTP-400 on

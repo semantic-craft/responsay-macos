@@ -207,11 +207,11 @@ final class NamingCanonTests: XCTestCase {
 
     func testLLMPresetsDefaultToLatestFastModelOnly() {
         let expectedDefaults: [String: String] = [
-            "qwen": "qwen3.7-flash",
+            "qwen": "qwen3.8-flash",
             "doubao": "doubao-seed-2-1-turbo-260628",
             "mimo": "mimo-v2.5",
-            "deepseek": "deepseek-v4-flash",
-            "gemini": "gemini-3.5-flash-lite",
+            "deepseek": "deepseek-flash",
+            "gemini": "gemini-3.8-flash",
             "openai": "chat-latest",   // 7d02e454 改为 chat-latest（曾误期望 gpt-5.5）
             // (minimax 无此行：1.5.1 起 TTS-only，LLM 档下架。)
         ]

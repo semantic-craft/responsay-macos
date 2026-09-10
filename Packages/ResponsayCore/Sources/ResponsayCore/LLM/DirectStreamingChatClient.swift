@@ -9,7 +9,7 @@ public protocol StreamingChatClient: Sendable {
 }
 
 /// A generic streaming text client that accepts a raw array of messages. Qwen and DeepSeek
-/// `deepseek-v4-flash` use the Responses request/event shape; remaining providers retain Chat
+/// `deepseek-flash` use the Responses request/event shape; remaining providers retain Chat
 /// Completions. The SSE byte loop, HTTP gate, and cancellation live in `SSEStreamTransport`.
 public final class DirectStreamingChatClient: StreamingChatClient {
     private let endpoint: LLMEndpoint

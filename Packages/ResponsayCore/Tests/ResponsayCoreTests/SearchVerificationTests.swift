@@ -125,11 +125,10 @@ struct SearchVerificationTests {
             baseURLHost: "ark.cn-beijing.volces.com"))
     }
 
-    /// DeepSeek 迁到 Responses 后带上了服务端 web_search，因此 v4-flash 可以喂核验；
-    /// 仍走 /chat/completions 的模型不行。
-    @Test func supportsSearch_deepSeekOnlyOnResponsesModel() {
-        #expect(SearchVerificationService.supportsSearch(
-            providerId: "deepseek", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+    /// V4.1 cannot supply built-in search verification.
+    @Test func supportsSearch_deepSeekUnsupported() {
+        #expect(!SearchVerificationService.supportsSearch(
+            providerId: "deepseek", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
         #expect(!SearchVerificationService.supportsSearch(
             providerId: "deepseek", model: "deepseek-chat", baseURLHost: "api.deepseek.com"))
     }

@@ -28,7 +28,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
 
     private func selectQwenWithSkillMax() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        SkillPlatformModelSettings.setExplicitModel("qwen3.7-max", providerId: "qwen", defaults: defaults)
+        SkillPlatformModelSettings.setExplicitModel("qwen3.8-max", providerId: "qwen", defaults: defaults)
     }
 
     // 1. 听写 Flash + 技能 Max：两条真实 resolver 返回不同 model。
@@ -36,8 +36,8 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         selectQwenWithSkillMax()
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
         let skill = LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())
-        XCTAssertEqual(dictation?.model, "qwen3.7-flash")   // provider default stays the dictation model
-        XCTAssertEqual(skill?.model, "qwen3.7-max")
+        XCTAssertEqual(dictation?.model, "qwen3.8-flash")   // provider default stays the dictation model
+        XCTAssertEqual(skill?.model, "qwen3.8-max")
     }
 
     // 2. 两条 resolver 共享 provider / Base URL / Workspace 派生 / 凭据。
@@ -58,11 +58,11 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
     // 3. 改技能模型不动听写模型。
     func test_settingSkillModel_doesNotTouchDictationModel() {
         defaults.set("qwen", forKey: "byok.llm.provider")
-        defaults.set("qwen3.7-flash", forKey: "byok.llm.qwen.model")
-        SkillPlatformModelSettings.setExplicitModel("qwen3.7-max", providerId: "qwen", defaults: defaults)
-        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.model"), "qwen3.7-flash")
+        defaults.set("qwen3.8-flash", forKey: "byok.llm.qwen.model")
+        SkillPlatformModelSettings.setExplicitModel("qwen3.8-max", providerId: "qwen", defaults: defaults)
+        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.model"), "qwen3.8-flash")
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
-        XCTAssertEqual(dictation?.model, "qwen3.7-flash")
+        XCTAssertEqual(dictation?.model, "qwen3.8-flash")
     }
 
     // 4. 改听写模型不覆盖显式技能模型。
@@ -72,7 +72,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
         let skill = LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())
         XCTAssertEqual(dictation?.model, "qwen3.6-flash")
-        XCTAssertEqual(skill?.model, "qwen3.7-max")
+        XCTAssertEqual(skill?.model, "qwen3.8-max")
     }
 
     // 5. 「跟随」状态下听写模型变化会正确反映到技能 lane。
@@ -81,7 +81,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         XCTAssertNil(SkillPlatformModelSettings.explicitModel(providerId: "qwen", defaults: defaults))
         XCTAssertEqual(
             LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())?.model,
-            "qwen3.7-flash")
+            "qwen3.8-flash")
         defaults.set("qwen3.7-plus", forKey: "byok.llm.qwen.model")
         XCTAssertEqual(
             LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())?.model,
@@ -95,7 +95,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         XCTAssertNil(SkillPlatformModelSettings.explicitModel(providerId: "qwen", defaults: defaults))
         XCTAssertEqual(
             LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())?.model,
-            "qwen3.7-flash")
+            "qwen3.8-flash")
     }
 
     // 6. 未设置技能字段时，两条 lane 完全一致。
@@ -115,7 +115,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
     func testStaleActiveSkillModelCannotLeakIntoCurrentProvider() {
         defaults.set("qwen", forKey: "byok.llm.provider")
         defaults.set("qwen3.7-plus", forKey: "byok.llm.qwen.model")
-        defaults.set("deepseek-v4-flash", forKey: "byok.llm.skillModel")
+        defaults.set("deepseek-flash", forKey: "byok.llm.skillModel")
 
         let dictation = LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher())
         let skill = LLMEndpointResolver.resolveSkill(defaults: defaults, dispatcher: dispatcher())
@@ -138,7 +138,7 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
             forKey: "byok.llm.qwen.baseURL")
         defaults.set("   ", forKey: "byok.llm.qwen.model")
         defaults.set("ws-abc123.evil.example", forKey: "byok.llm.qwen.workspaceId")
-        defaults.set("deepseek-v4-flash", forKey: "byok.llm.skillModel")
+        defaults.set("deepseek-flash", forKey: "byok.llm.skillModel")
         let keyReader: (String) -> String? = { _ in "sk-effective" }
         let machine = ProviderConfigMachine(
             capability: .llm,
@@ -234,16 +234,16 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
             "https://token-plan-cn.xiaomimimo.com/v1")
     }
 
-    // 7. Qwen 技能模型列表包含 qwen3.7-max（否则 LLMModelPresetFilter 会把拉取结果过滤掉）。
+    // 7. Qwen 技能模型列表包含 qwen3.8-max（否则 LLMModelPresetFilter 会把拉取结果过滤掉）。
     func test_qwenPresetModels_includeMax_forSkillPicker() {
         let qwen = ProviderCatalog.presets(for: .llm).first { $0.id == "qwen" }
         let models = qwen?.presetModels[.llm] ?? []
-        XCTAssertTrue(models.contains("qwen3.7-max"))
-        XCTAssertEqual(qwen?.defaultModels[.llm], "qwen3.7-flash")   // 产品默认不变
+        XCTAssertTrue(models.contains("qwen3.8-max"))
+        XCTAssertEqual(qwen?.defaultModels[.llm], "qwen3.8-flash")   // 产品默认不变
         // 过滤器不吞 Max：/models 返回包含 Max 时保留。
         let filtered = LLMModelPresetFilter.models(
-            from: ["qwen3.7-flash", "qwen3.7-max", "unrelated-asr"], preset: qwen!, capability: .llm)
-        XCTAssertTrue(filtered.contains("qwen3.7-max"))
+            from: ["qwen3.8-flash", "qwen3.8-max", "unrelated-asr"], preset: qwen!, capability: .llm)
+        XCTAssertTrue(filtered.contains("qwen3.8-max"))
     }
 
     // 11. readiness / 设置快照区分两个模型选择。
@@ -260,13 +260,13 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
                 ttsLocalInstalled: { true },
                 ocrLocalInstalled: { false }))
         let llm = display.lanes().first { $0.lane == .llm }!
-        XCTAssertEqual(llm.modelId, "qwen3.7-flash · 技能 qwen3.7-max")
+        XCTAssertEqual(llm.modelId, "qwen3.8-flash · 技能 qwen3.8-max")
         XCTAssertTrue(llm.readiness.isReady)   // 同一密钥，两个选择同享 readiness
 
         // 跟随时保持单模型显示，不引入噪音。
         SkillPlatformModelSettings.setExplicitModel(nil, providerId: "qwen", defaults: defaults)
         let followed = display.lanes().first { $0.lane == .llm }!
-        XCTAssertEqual(followed.modelId, "qwen3.7-flash")
+        XCTAssertEqual(followed.modelId, "qwen3.8-flash")
     }
 
     // 12. 不影响 ASR / TTS / OCR：技能模型键只存在于 llm 能力下。
@@ -280,9 +280,9 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
         ModelRouteSelectionActions.applyLLMSelection("deepseek", defaults: defaults)
         XCTAssertNil(defaults.string(forKey: "byok.llm.skillModel"))
         XCTAssertNil(SkillPlatformModelSettings.explicitModel(providerId: "deepseek", defaults: defaults))
-        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.skillModel"), "qwen3.7-max")
+        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.skillModel"), "qwen3.8-max")
         ModelRouteSelectionActions.applyLLMSelection("qwen", defaults: defaults)
-        XCTAssertEqual(SkillPlatformModelSettings.explicitModel(providerId: "qwen", defaults: defaults), "qwen3.7-max")
+        XCTAssertEqual(SkillPlatformModelSettings.explicitModel(providerId: "qwen", defaults: defaults), "qwen3.8-max")
     }
 
     // ProviderConfigMachine：卡片状态与持久化（跟随语义 + llm-only 写入）。
@@ -296,9 +296,9 @@ final class SkillPlatformModelRoutingTests: XCTestCase {
             keyReader: { _ in nil })
         machine.load()
         XCTAssertEqual(machine.skillModel, "")               // 默认跟随
-        machine.skillModel = "qwen3.7-max"
+        machine.skillModel = "qwen3.8-max"
         machine.persist()
-        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.skillModel"), "qwen3.7-max")
+        XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.skillModel"), "qwen3.8-max")
         XCTAssertEqual(defaults.string(forKey: "byok.llm.qwen.model"), machine.model)   // 听写模型未被牵动
 
         let asrMachine = ProviderConfigMachine(

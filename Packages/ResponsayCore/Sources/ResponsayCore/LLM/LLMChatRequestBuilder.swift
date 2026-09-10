@@ -1,7 +1,7 @@
 import Foundation
 
 /// Builds the provider's preferred OpenAI-compatible text request for the App-direct path
-/// (epic 238): Qwen and DeepSeek `deepseek-v4-flash` use `/responses`; the remaining providers
+/// (epic 238): Qwen and DeepSeek `deepseek-flash` use `/responses`; the remaining providers
 /// (and DeepSeek's other models) keep `/chat/completions`.
 /// Pure + synchronous: the whole `[String: Any]` body is assembled and serialized here, before
 /// any `await`, so nothing non-Sendable crosses an async boundary.

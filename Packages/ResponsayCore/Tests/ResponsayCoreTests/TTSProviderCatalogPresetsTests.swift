@@ -4,6 +4,15 @@ import Foundation
 
 /// 196 — cloud TTS provider catalog data. Test standard T1.
 struct TTSProviderCatalogPresetsTests {
+    @Test func qwenModelsHaveSeparateOfficialVoiceRosters() {
+        let catalog = TTSProviderCatalogPresets.qwen
+        let flash = catalog.voices(forModel: "qwen-audio-3.0-tts-flash")
+        let plus = catalog.voices(forModel: "qwen-audio-3.0-tts-plus")
+        #expect(catalog.model(id: "qwen-audio-3.0-tts-plus")?.supportsRealtimeWS == true)
+        #expect(plus.map(\.id) == ["longanlingxin", "longanlufeng"])
+        #expect(Set(flash.map(\.id)).isDisjoint(with: Set(plus.map(\.id))))
+    }
+
     @Test func everyCatalogResolvesItsDefaults() {
         for catalog in TTSProviderCatalogPresets.all {
             #expect(!catalog.voices.isEmpty)
@@ -28,11 +37,11 @@ struct TTSProviderCatalogPresetsTests {
         #expect(decoded == catalog)
     }
 
-    @Test func qwenExposesOnlyAudio3FlashAndItsCurrentVoices() {
+    @Test func qwenExposesAudio3FlashAndPlusWithFlashDefault() {
         let catalog = TTSProviderCatalogPresets.qwen
         let ids = Set(catalog.voices.map(\.id))
 
-        #expect(catalog.models.map(\.id) == ["qwen-audio-3.0-tts-flash"])
+        #expect(catalog.models.map(\.id) == ["qwen-audio-3.0-tts-flash", "qwen-audio-3.0-tts-plus"])
         #expect(catalog.defaults.modelID == "qwen-audio-3.0-tts-flash")
         #expect(catalog.defaults.voiceID == "loongeva_v3.6")
         #expect(catalog.defaultModel?.supportsRealtimeWS == true)

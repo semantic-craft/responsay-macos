@@ -14,7 +14,7 @@ final class ModelRouteSelectionSectionTests: XCTestCase {
         ModelRouteSelectionActions.applyLLMSelection("deepseek", defaults: defaults)
 
         XCTAssertEqual(defaults.string(forKey: "byok.llm.provider"), "deepseek")
-        XCTAssertEqual(defaults.string(forKey: "byok.llm.deepseek.model"), "deepseek-v4-flash")
+        XCTAssertEqual(defaults.string(forKey: "byok.llm.deepseek.model"), "deepseek-flash")
         XCTAssertEqual(
             defaults.string(forKey: "byok.llm.deepseek.baseURL"),
             "https://api.deepseek.com/v1")

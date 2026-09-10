@@ -176,7 +176,10 @@ struct ProviderConfigDispatcher {
         let fixedProviderSurface = fixedVolcengineASR || fixedQwenAudioTTS
         let catalogModel = preset.defaultModel(for: capability, plan: plan) ?? ""
         let model: String
-        if fixedProviderSurface {
+        if fixedQwenAudioTTS {
+            let selected = nonEmpty(storedModel) ?? catalogModel
+            model = TTSProviderCatalogPresets.qwen.model(id: selected) != nil ? selected : catalogModel
+        } else if fixedVolcengineASR {
             model = catalogModel
         } else if isQwenASRFlash {
             model = QwenASRFlashRouting.normalizedModel(stored: storedModel, fallback: catalogModel)
@@ -187,6 +190,7 @@ struct ProviderConfigDispatcher {
             capability: capability,
             providerId: providerId,
             preset: preset,
+            model: model,
             storedVoice: storedVoice)
         let catalogBaseURL = endpoint?.baseURL ?? ""
         let normalizedBaseURL = nonEmpty(storedBaseURL) ?? catalogBaseURL
@@ -318,14 +322,17 @@ struct ProviderConfigDispatcher {
         capability: ModelCapability,
         providerId: String,
         preset: ProviderPreset,
+        model: String,
         storedVoice: String?
     ) -> String? {
         guard capability == .tts else { return nil }
         let catalog = TTSProviderCatalogPresets.catalog(for: providerId)
-        let fallback = catalog?.defaults.voiceID ?? preset.presetVoices.first?.id
+        let voices = catalog?.voices(forModel: model) ?? []
+        let fallback = voices.first { $0.id == catalog?.defaults.voiceID }?.id
+            ?? voices.first?.id ?? preset.presetVoices.first?.id
         guard let voice = nonEmpty(storedVoice) else { return fallback }
         guard providerId == "qwen" else { return voice }
-        return catalog?.voices.contains(where: { $0.id == voice }) == true ? voice : fallback
+        return voices.contains(where: { $0.id == voice }) ? voice : fallback
     }
 
     private static func defaultProviderId(_ presets: [ProviderPreset]) -> String {

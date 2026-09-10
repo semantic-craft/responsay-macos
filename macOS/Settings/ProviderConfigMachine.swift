@@ -81,6 +81,8 @@ final class ProviderConfigMachine {
         capability == .asr && providerId == "volcengine-flash"
     }
 
+    var isQwenTTS: Bool { capability == .tts && providerId == "qwen" }
+
     var isQwenLLM: Bool { capability == .llm && providerId == "qwen" }
 
     /// 百炼 非实时语音识别 card — same 业务空间专属域名 story as the LLM card, different path.

@@ -88,9 +88,9 @@ private func env(_ key: String) -> String? {
 private func providersUnderTest() -> [ProviderUnderTest] {
     var providers = [ProviderUnderTest]()
     if let key = env("DEEPSEEK_KEY") {
-        providers.append(.init(name: "deepseek-v4-flash", endpoint: LLMEndpoint(
+        providers.append(.init(name: "deepseek-flash", endpoint: LLMEndpoint(
             providerId: "deepseek", baseURL: "https://api.deepseek.com/v1",
-            model: "deepseek-v4-flash", apiKey: key)))
+            model: "deepseek-flash", apiKey: key)))
     }
     if let key = env("QWEN_KEY") {
         providers.append(.init(name: "qwen3.7-flash", endpoint: LLMEndpoint(
