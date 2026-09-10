@@ -19,9 +19,8 @@ struct LLMProviderCapabilitiesTests {
             baseURLHost: "dashscope.aliyuncs.com"))
     }
 
-    /// DeepSeek 只把 `deepseek-v4-flash` 迁到了 Responses；v4-pro 官方称 2026 年 8 月初才支持，
-    /// 在那之前把它一起切过去会让自定义卡片直接打不通，所以按模型分流。
-    @Test func deepSeekPrefersResponsesOnlyForV4Flash() {
+    /// The current Flash preset uses Responses, including custom endpoints on the official host.
+    @Test func deepSeekPrefersResponsesForFlash() {
         let caps = LLMProviderCapabilities.resolve(providerId: "deepseek", baseURLHost: "api.deepseek.com")
         #expect(caps.supportsChatCompletions)
         #expect(caps.supportsResponses)
@@ -29,17 +28,17 @@ struct LLMProviderCapabilitiesTests {
         #expect(caps.authHeaderStyle == .bearer)
 
         #expect(LLMProviderCapabilities.prefersResponses(
-            providerId: "deepseek", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+            providerId: "deepseek", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
         #expect(!LLMProviderCapabilities.prefersResponses(
             providerId: "deepseek", model: "deepseek-v4-pro", baseURLHost: "api.deepseek.com"))
         #expect(!LLMProviderCapabilities.prefersResponses(
             providerId: "deepseek", model: "deepseek-chat", baseURLHost: "api.deepseek.com"))
         // 自定义卡片指到 DeepSeek 时按 host 归并到同一通道。
         #expect(LLMProviderCapabilities.prefersResponses(
-            providerId: "custom", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+            providerId: "custom", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
         // 其他 provider 不因为模型名沾边就改道。
         #expect(!LLMProviderCapabilities.prefersResponses(
-            providerId: "openrouter", model: "deepseek-v4-flash", baseURLHost: "openrouter.ai"))
+            providerId: "openrouter", model: "deepseek-flash", baseURLHost: "openrouter.ai"))
     }
 
     @Test func mimoCapabilitiesUseApiKeyAuthAndDisableResponsesOnlyFeatures() {

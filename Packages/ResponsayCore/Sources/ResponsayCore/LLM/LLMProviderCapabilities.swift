@@ -165,9 +165,7 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
                 supportsPartialMode: false,
                 supportsContextCache: false,
                 supportsBatch: false,
-                // web_search 是 Responses 上的服务端工具，因此只对 v4-flash 生效 ——
-                // 逐模型收窄在 `LLMSearchControl.channel`。
-                builtinTools: [.webSearch],
+                builtinTools: [],
                 authHeaderStyle: .bearer,
                 // v4-flash 走 Responses → reasoning.effort；其余模型仍走 Chat Completions 的
                 // thinking.type，逐模型分支在 `LLMThinkingControl`。
@@ -216,11 +214,9 @@ public struct LLMProviderCapabilities: Sendable, Equatable {
         }
     }
 
-    /// DeepSeek 的 Responses API 目前只支持 `deepseek-v4-flash`（官方称 2026 年 8 月初再加
-    /// `deepseek-v4-pro`）。其余模型 —— v4-pro、deepseek-chat 等 —— 必须留在
-    /// `/chat/completions`，否则自定义卡片指到 DeepSeek 的用户会被整条打断。
+    /// DeepSeek V4.1 Flash uses the official rolling model ID and native Responses API.
     private static func deepSeekSupportsResponses(_ model: String) -> Bool {
-        model.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("deepseek-v4-flash")
+        model.trimmingCharacters(in: .whitespaces).lowercased() == "deepseek-flash"
     }
 
     private enum Channel { case qwen, mimo, doubao, gemini, openai, openrouter, ollama, deepseek, otherKnown, unknown }

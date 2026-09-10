@@ -34,7 +34,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.region, .china)
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.7-flash")
+        XCTAssertEqual(config.model, "qwen3.8-flash")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 
@@ -111,7 +111,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "deepseek")
         XCTAssertEqual(config.region, .global)
         XCTAssertEqual(config.baseURL, "https://api.deepseek.com/v1")
-        XCTAssertEqual(config.model, "deepseek-v4-flash")
+        XCTAssertEqual(config.model, "deepseek-flash")
     }
 
     func testStoredRegionPicksTheRegionEndpoint() {
@@ -177,7 +177,7 @@ final class ProviderConfigDispatcherTests: XCTestCase {
         XCTAssertEqual(config.providerId, "qwen")
         XCTAssertEqual(config.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
         XCTAssertEqual(config.plan, .payg)
-        XCTAssertEqual(config.model, "qwen3.7-flash")
+        XCTAssertEqual(config.model, "qwen3.8-flash")
     }
 
     func testQwenWorkspaceIDOverridesBaseURLWithRegionalDedicatedResponsesEndpoint() {
@@ -230,10 +230,10 @@ final class ProviderConfigDispatcherTests: XCTestCase {
     func testExplicitBaseURLAndModelWinOverCatalog() {
         defaults.set("qwen", forKey: "byok.llm.provider")
         defaults.set("https://my-proxy.internal/v1", forKey: "byok.llm.qwen.baseURL")
-        defaults.set("qwen3.7-max", forKey: "byok.llm.qwen.model")
+        defaults.set("qwen3.8-max", forKey: "byok.llm.qwen.model")
         let config = dispatcher().resolve(.llm)
         XCTAssertEqual(config.baseURL, "https://my-proxy.internal/v1")
-        XCTAssertEqual(config.model, "qwen3.7-max")
+        XCTAssertEqual(config.model, "qwen3.8-max")
     }
 
     func testProviderScopedConfigCanBePreparedWithoutSelectingThatProvider() {

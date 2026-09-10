@@ -4,26 +4,26 @@ import ResponsayCore
 
 final class LLMModelPresetFilterTests: XCTestCase {
     /// A fetch is narrowed to qwen's curated LLM set, dropping the other ids its `/models`
-    /// endpoint returns. qwen3.7-max is curated now (技能平台模型可选)，所以保留。
+    /// endpoint returns. qwen3.8-max is curated now (技能平台模型可选)，所以保留。
     /// Curated order is preserved.
     func testQwenLLMFetchNarrowsToCuratedModels() {
         let models = LLMModelPresetFilter.models(
-            from: ["qwen3.6-flash", "qwen3.7-flash", "qwen3.7-max", "qwen-mt-turbo", "qwen3.6-plus", "qwen3.7-plus"],
+            from: ["qwen3.6-flash", "qwen3.8-flash", "qwen3.8-max", "qwen-mt-turbo", "qwen3.6-plus", "qwen3.7-plus"],
             preset: ProviderCatalog.qwen,
             capability: .llm)
 
-        XCTAssertEqual(models, ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"])
+        XCTAssertEqual(models, ["qwen3.8-flash", "qwen3.8-max", "qwen3.6-flash", "qwen3.6-plus", "qwen3.7-plus"])
     }
 
     /// The Qwen PAYG default is part of the curated set, so it survives a fetch alongside the
     /// other curated ids that the provider list happens to include.
     func testQwenDefaultFlashStaysCuratedWhenFetched() {
         let models = LLMModelPresetFilter.models(
-            from: ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash", "qwen3.7-flash"],
+            from: ["qwen3.8-max", "qwen3.7-plus", "qwen3.6-flash", "qwen3.8-flash"],
             preset: ProviderCatalog.qwen,
             capability: .llm)
 
-        XCTAssertEqual(models, ["qwen3.7-flash", "qwen3.7-max", "qwen3.6-flash", "qwen3.7-plus"])
+        XCTAssertEqual(models, ["qwen3.8-flash", "qwen3.8-max", "qwen3.6-flash", "qwen3.7-plus"])
     }
 
     func testLLMFetchFallsBackToCuratedDefaultWhenProviderListOmitsIt() {
@@ -32,7 +32,7 @@ final class LLMModelPresetFilterTests: XCTestCase {
             preset: ProviderCatalog.deepseek,
             capability: .llm)
 
-        XCTAssertEqual(models, ["deepseek-v4-flash"])
+        XCTAssertEqual(models, ["deepseek-flash"])
     }
 
     func testMiMoLLMDefaultAndPresetListStayOnV25NotLegacyFlash() {
@@ -51,10 +51,10 @@ final class LLMModelPresetFilterTests: XCTestCase {
     /// no TTS/image/embedding/live id leaks in — Gemini TTS is a SEPARATE catalog, and the curated
     /// LLM list is the whitelist that keeps a /models fetch from mixing the two. Also a fetch that
     /// returns Gemini's full mixed catalog narrows to the curated text models.
-    func testGeminiLLMListIsTextOnlyWithFlashLiteDefaultFirst() {
+    func testGeminiLLMListIsTextOnlyWithFlashDefaultFirst() {
         let llm = ProviderCatalog.gemini.presetModels[.llm] ?? []
-        XCTAssertEqual(llm.first, "gemini-3.5-flash-lite")
-        XCTAssertEqual(ProviderCatalog.gemini.defaultModels[.llm], "gemini-3.5-flash-lite")
+        XCTAssertEqual(llm.first, "gemini-3.8-flash")
+        XCTAssertEqual(ProviderCatalog.gemini.defaultModels[.llm], "gemini-3.8-flash")
         XCTAssertTrue(llm.contains("gemini-3.5-flash"))
         XCTAssertTrue(llm.contains("gemini-3.1-flash-lite"))
         XCTAssertGreaterThan(llm.count, 1)
@@ -129,14 +129,14 @@ final class LLMModelPresetFilterTests: XCTestCase {
     /// 「拉取模型」就能选到，不用等 App 更新。新的排在最前，越新越靠前；预设列表本身顺序不变。
     func testGeminiFetchSurfacesNewerFlashGenerationAheadOfCuratedList() {
         let models = LLMModelPresetFilter.models(
-            from: ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash",
-                   "gemini-3.7-flash-lite", "gemini-4-flash-preview", "gemini-2.5-pro"],
+            from: ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.9-flash",
+                   "gemini-3.9-flash-lite", "gemini-4-flash-preview", "gemini-2.5-pro"],
             preset: ProviderCatalog.gemini,
             capability: .llm)
 
         XCTAssertEqual(models, [
-            "gemini-4-flash-preview", "gemini-3.7-flash", "gemini-3.7-flash-lite",
-            "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-pro",
+            "gemini-4-flash-preview", "gemini-3.9-flash", "gemini-3.9-flash-lite",
+            "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-pro",
         ])
     }
 
@@ -145,9 +145,9 @@ final class LLMModelPresetFilterTests: XCTestCase {
     /// curation still decides those).
     func testGeminiFetchKeepsNonTextAndOtherFamilyModelsOutEvenWhenNewer() {
         let models = LLMModelPresetFilter.models(
-            from: ["gemini-3.5-flash-lite", "gemini-3.7-flash-image", "gemini-3.7-flash-tts-preview",
-                   "gemini-live-3.7-flash-preview", "gemini-3.7-flash-preview-native-audio-dialog",
-                   "gemini-3.7-pro-preview", "gemini-embedding-002"],
+            from: ["gemini-3.5-flash-lite", "gemini-3.9-flash-image", "gemini-3.9-flash-tts-preview",
+                   "gemini-live-3.9-flash-preview", "gemini-3.9-flash-preview-native-audio-dialog",
+                   "gemini-3.9-pro-preview", "gemini-embedding-002"],
             preset: ProviderCatalog.gemini,
             capability: .llm)
 
@@ -164,7 +164,7 @@ final class LLMModelPresetFilterTests: XCTestCase {
             preset: ProviderCatalog.gemini,
             capability: .llm)
 
-        XCTAssertEqual(models, ["gemini-3.6-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"])
+        XCTAssertEqual(models, ["gemini-3.1-flash-lite", "gemini-flash-latest"])
     }
 
     /// The `*-latest` aliases are curated on both lanes, so 「一直用最新一代」 works even without a
@@ -185,11 +185,11 @@ final class LLMModelPresetFilterTests: XCTestCase {
     /// even when the endpoint offers a newer flash-shaped id.
     func testProviderWithoutOpenFamilyStaysCurated() {
         let models = LLMModelPresetFilter.models(
-            from: ["qwen3.7-flash", "qwen3.9-flash"],
+            from: ["qwen3.8-flash", "qwen3.9-flash"],
             preset: ProviderCatalog.qwen,
             capability: .llm)
 
-        XCTAssertEqual(models, ["qwen3.7-flash"])
+        XCTAssertEqual(models, ["qwen3.8-flash"])
     }
 
     /// A custom OpenAI-compatible ASR endpoint has no curation, so its fetched list passes

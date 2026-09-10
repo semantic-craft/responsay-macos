@@ -80,8 +80,16 @@ enum TTSEngine: String, CaseIterable {
         providerID.flatMap(TTSProviderCatalogPresets.catalog(for:))
     }
 
+    /// Only offer voices supported by the currently selected synthesis model.
+    var availableVoices: [TTSVoiceSpec] {
+        guard let providerID, let catalog else { return [] }
+        let model = ProviderConfigDispatcher(keyReader: { _ in nil })
+            .resolve(.tts, providerId: providerID).model
+        return catalog.voices(forModel: model)
+    }
+
     /// The selected voice id from the provider-scoped TTS configuration shared by Settings and
-    /// the reader. Invalid ids on a closed roster resolve to the catalog default.
+    /// the reader. Invalid ids on a closed roster resolve to the model's default voice.
     var selectedVoiceID: String? {
         selectedVoiceID(defaults: .standard)
     }

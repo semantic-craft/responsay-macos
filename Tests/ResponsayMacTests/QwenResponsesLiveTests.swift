@@ -24,7 +24,7 @@ final class QwenResponsesLiveTests: XCTestCase {
         let apiKey = try XCTUnwrap(BYOKKeychain.read("byok.qwen"))
         let model = environment["QWEN_MODEL"]
             ?? ProviderCatalog.qwen.defaultModels[.llm]
-            ?? "qwen3.7-flash"
+            ?? "qwen3.8-flash"
         let endpoint = LLMEndpoint(
             providerId: "qwen",
             baseURL: baseURL,

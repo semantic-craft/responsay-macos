@@ -160,7 +160,7 @@ struct CapabilityCardView: View {
                 LabeledRow(label: "Base URL") {
                     // 千问实时 derives its socket from 接入点 + Workspace ID (the run-task path is
                     // fixed), so it is shown read-only rather than offering an edit with no effect.
-                    if machine.usesQwenWorkspaceEndpoint || machine.isQwenASRFlash {
+                    if machine.usesQwenWorkspaceEndpoint || machine.isQwenASRFlash || machine.isQwenTTS {
                         Text(machine.baseURL)
                             .font(SettingsTheme.mono)
                             .foregroundStyle(SettingsTheme.ink2)
@@ -172,24 +172,35 @@ struct CapabilityCardView: View {
                 }
                 LabeledRow(label: capability == .llm ? "听写模型" : "模型 ID") {
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            WarmField(placeholder: "model-name", text: $machine.model)
-                            if !menuModels.isEmpty {
-                                Menu(machine.fetchedModels.isEmpty ? "可选 \(menuModels.count)" : "拉取 \(machine.fetchedModels.count)") {
-                                    ForEach(menuModels, id: \.self) { name in
-                                        Button(name) { machine.model = name }
-                                    }
-                                }
-                                .frame(width: 110)
+                        if machine.isQwenTTS {
+                            Picker("朗读模型", selection: $machine.model) {
+                                Text("Flash · 响应优先").tag("qwen-audio-3.0-tts-flash")
+                                Text("Plus · 音质优先").tag("qwen-audio-3.0-tts-plus")
                             }
+                            .labelsHidden()
+                            Text("Flash 适合快速朗读，Plus 更注重音质与表现力；音色列表随模型切换。")
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
+                        } else {
+                            HStack(spacing: 8) {
+                                WarmField(placeholder: "model-name", text: $machine.model)
+                                if !menuModels.isEmpty {
+                                    Menu(machine.fetchedModels.isEmpty ? "可选 \(menuModels.count)" : "拉取 \(machine.fetchedModels.count)") {
+                                        ForEach(menuModels, id: \.self) { name in
+                                            Button(name) { machine.model = name }
+                                        }
+                                    }
+                                    .frame(width: 110)
+                                }
+                            }
+                            // 兜底：列表只是便捷选项，运行时用的就是这个文本框里的值。任何该服务支持的
+                            // 模型 ID 直接手输即可调用，不必出现在预设或「拉取」结果里。
+                            Text(capability == .llm
+                                 ? "用于听写整理、改写、翻译等日常文字处理。不在列表里也行：直接输入该服务支持的任意模型 ID。"
+                                 : "不在列表里也行：直接输入该服务支持的任意模型 ID 即可调用。")
+                                .font(SettingsTheme.footnote)
+                                .foregroundStyle(SettingsTheme.ink3)
                         }
-                        // 兜底：列表只是便捷选项，运行时用的就是这个文本框里的值。任何该服务支持的
-                        // 模型 ID 直接手输即可调用，不必出现在预设或「拉取」结果里。
-                        Text(capability == .llm
-                             ? "用于听写整理、改写、翻译等日常文字处理。不在列表里也行：直接输入该服务支持的任意模型 ID。"
-                             : "不在列表里也行：直接输入该服务支持的任意模型 ID 即可调用。")
-                            .font(SettingsTheme.footnote)
-                            .foregroundStyle(SettingsTheme.ink3)
                     }
                 }
                 if capability == .llm {
@@ -204,7 +215,7 @@ struct CapabilityCardView: View {
                                     Button(name) { machine.skillModel = name }
                                 }
                             }
-                            Text("用于法律/学术技能卡片。默认跟随听写模型；想让技能用更强的模型（如 qwen3.7-max）就单独选一个，密钥与接入点两者共用。")
+                            Text("用于法律/学术技能卡片。默认跟随听写模型；想让技能用更强的模型（如 qwen3.8-max）就单独选一个，密钥与接入点两者共用。")
                                 .font(SettingsTheme.footnote)
                                 .foregroundStyle(SettingsTheme.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -216,7 +227,7 @@ struct CapabilityCardView: View {
                 LabeledRow(label: "音色") {
                     HStack(spacing: 8) {
                         WarmField(placeholder: "输入或选择音色 ID", text: $machine.voice)
-                        let presetList = machine.current.presetVoices
+                        let presetList = machine.availableTTSVoices
                         if !presetList.isEmpty {
                             Menu("可选 \(presetList.count)") {
                                 ForEach(presetList) { v in
@@ -259,7 +270,10 @@ struct CapabilityCardView: View {
             machine.persist()
         }
         .onChange(of: machine.workspaceID) { _, _ in machine.refreshBaseURLForSelection(); machine.persist() }
-        .onChange(of: machine.model) { _, _ in machine.persist() }
+        .onChange(of: machine.model) { _, _ in
+            machine.persist()
+            machine.refreshVoiceFromDefaults()
+        }
         .onChange(of: machine.skillModel) { _, _ in machine.persist() }
         .onChange(of: machine.voice) { _, _ in machine.persist() }
         .onChange(of: machine.baseURL) { _, _ in machine.persist() }

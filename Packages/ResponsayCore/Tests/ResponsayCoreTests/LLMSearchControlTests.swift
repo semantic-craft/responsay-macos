@@ -22,23 +22,22 @@ struct LLMSearchControlTests {
         #expect(LLMSearchControl.supportsSearch(providerId: "mimo", model: "mimo-v2.5", baseURLHost: "token-plan-cn.xiaomimimo.com"))
     }
 
-    /// DeepSeek 的 web_search 是 Responses 上的服务端工具，所以联网能力跟着路由按模型收窄：
-    /// 只有走 Responses 的 v4-flash 能搜，其余模型仍在 /chat/completions 上、发工具会 400。
-    @Test func deepseek_supportsSearchOnlyOnResponsesModel() {
-        #expect(LLMSearchControl.supportsSearch(
-            providerId: "deepseek", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+    /// V4.1 ignores built-in search tools, including on Responses.
+    @Test func deepseek_doesNotSupportBuiltinSearch() {
+        #expect(!LLMSearchControl.supportsSearch(
+            providerId: "deepseek", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
         #expect(!LLMSearchControl.supportsSearch(
             providerId: "deepseek", model: "deepseek-v4-pro", baseURLHost: "api.deepseek.com"))
         #expect(!LLMSearchControl.supportsSearch(
             providerId: "deepseek", model: "deepseek-chat", baseURLHost: "api.deepseek.com"))
         // 自定义卡片指到 DeepSeek 也一样按 host + 模型归并。
-        #expect(LLMSearchControl.supportsSearch(
-            providerId: "custom", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+        #expect(!LLMSearchControl.supportsSearch(
+            providerId: "custom", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
     }
 
-    @Test func deepseek_supportsSourceResultsOnlyOnResponsesModel() {
-        #expect(LLMSearchControl.supportsSourceResults(
-            providerId: "deepseek", model: "deepseek-v4-flash", baseURLHost: "api.deepseek.com"))
+    @Test func deepseek_doesNotSupportSourceResults() {
+        #expect(!LLMSearchControl.supportsSourceResults(
+            providerId: "deepseek", model: "deepseek-flash", baseURLHost: "api.deepseek.com"))
         #expect(!LLMSearchControl.supportsSourceResults(
             providerId: "deepseek", model: "deepseek-chat", baseURLHost: "api.deepseek.com"))
     }
@@ -116,17 +115,11 @@ struct LLMSearchControlTests {
 
     // MARK: - DeepSeek Responses: server-side web_search tool
 
-    @Test func deepseek_v4Flash_searchEnabled_returnsResponsesWebSearchTool() throws {
+    @Test func deepseek_flash_searchEnabled_returnsEmpty() throws {
         let params = LLMSearchControl.extraBody(
-            providerId: "deepseek", model: "deepseek-v4-flash",
+            providerId: "deepseek", model: "deepseek-flash",
             baseURLHost: "api.deepseek.com", searchEnabled: true)
-        let tools = try #require(params["tools"] as? [[String: Any]])
-        #expect(tools.count == 1)
-        #expect(tools.first?["type"] as? String == "web_search")
-        #expect(params["tool_choice"] as? String == "auto")
-        // 官方明说 max_tool_calls 被忽略 —— 不发，免得看起来像在封顶（百炼那边它是真生效的）。
-        #expect(params["max_tool_calls"] == nil)
-        #expect(params["enable_search"] == nil)
+        #expect(params.isEmpty)
     }
 
     /// 非 Responses 的 DeepSeek 模型一个搜索字段都不能发：它们仍在 /chat/completions 上，

@@ -38,7 +38,7 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "SenseVoice ASR + Qwen LLM + Qwen TTS",
                 asr: .local(.sensevoiceLocal),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.8-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "Qwen3 local ASR + MiMo LLM + local Kokoro TTS",
@@ -48,17 +48,17 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
             Scenario(
                 name: "MiMo ASR + Qwen LLM + Qwen TTS",
                 asr: .cloud(.cloudMimo, providerId: "mimo", keyAccount: "byok.mimo.package", expectedModel: "mimo-v2.5-asr"),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.8-flash"),
                 tts: .cloud(.cloudQwen, keyAccount: "byok.tts.qwen", expectedModel: "qwen-audio-3.0-tts-flash")),
             Scenario(
                 name: "千问实时 ASR + Qwen LLM + local Kokoro TTS",
                 asr: .cloud(.cloudQwenASRFlashRealtime, providerId: "qwen-asr-flash", keyAccount: "byok.qwen-asr-flash", expectedModel: "qwen-audio-3.0-asr-flash-streaming"),
-                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.7-flash"),
+                llm: .cloud("qwen", keyAccount: "byok.qwen", expectedModel: "qwen3.8-flash"),
                 tts: .local(.sherpaKokoroLocal)),
             Scenario(
                 name: "OpenAI ASR + DeepSeek LLM + OpenAI TTS",
                 asr: .cloud(.cloudOpenAI, providerId: "openai", keyAccount: "byok.openai", expectedModel: "gpt-4o-transcribe"),
-                llm: .cloud("deepseek", keyAccount: "byok.deepseek", expectedModel: "deepseek-v4-flash"),
+                llm: .cloud("deepseek", keyAccount: "byok.deepseek", expectedModel: "deepseek-flash"),
                 tts: .cloud(.cloudOpenAI, keyAccount: "byok.tts.openai", expectedModel: "gpt-4o-mini-tts")),
         ]
 
@@ -134,7 +134,7 @@ final class CrossCapabilityRoutingMatrixTests: XCTestCase {
         let llm = try XCTUnwrap(
             LLMEndpointResolver.resolveText(defaults: defaults, dispatcher: dispatcher))
         XCTAssertEqual(llm.providerId, "deepseek")
-        XCTAssertEqual(llm.model, "deepseek-v4-flash")
+        XCTAssertEqual(llm.model, "deepseek-flash")
         XCTAssertEqual(llm.apiKey, "llm-deepseek-key")
 
         let tts = try XCTUnwrap(

@@ -259,7 +259,7 @@ struct DirectActionsE2ETests {
 
     // 表达升级's bundled skill (`expression_upgrade.cn`) instructs PLAIN-TEXT output ("直接输出
     // 最终正文…纯文本…不加代码围栏"), which fights the {text,changes} envelope the assembler
-    // forces. A fast model (e.g. deepseek-v4-flash) that obeys the skill returns plain text;
+    // forces. A fast model (e.g. deepseek-flash) that obeys the skill returns plain text;
     // rewrite must accept it (same fallback as 轻改写) instead of throwing badJSON and dropping
     // the whole rewrite — that would silently fail 表达升级 and keep the verbatim transcript.
     @Test func rewrite_toleratesPlainTextReply() async throws {

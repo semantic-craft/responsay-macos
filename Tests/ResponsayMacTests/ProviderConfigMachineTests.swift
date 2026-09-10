@@ -41,7 +41,7 @@ struct ProviderConfigMachineTests {
         #expect(m.providerId == "qwen")
         #expect(m.region == .china)
         #expect(m.plan == .payg)
-        #expect(m.model == "qwen3.7-flash")
+        #expect(m.model == "qwen3.8-flash")
         #expect(m.baseURL == "https://dashscope.aliyuncs.com/compatible-mode/v1")
     }
 

@@ -113,17 +113,17 @@ struct LLMThinkingControlTests {
         #expect((body("doubao", "doubao-seed-2-0-lite-260428", false, host: "ark.cn-beijing.volces.com")["thinking"] as? [String: String])?["type"] == "disabled")
     }
 
-    /// DeepSeek 思考默认是开的，而两种 API 的开关不同名：Responses 的 `deepseek-v4-flash` 只认
+    /// DeepSeek 思考默认是开的，而两种 API 的开关不同名：Responses 的 `deepseek-flash` 只认
     /// `reasoning.effort:"none"`，Chat Completions 的其余模型只认 `thinking.type:"disabled"`。
     /// 发错那一边会被静默忽略 → 模型照常思考，输入法每次改写都白等一段思维链。
     @Test func deepseekV4Flash_disablesThinkingViaResponsesReasoningEffort() {
-        let off = body("deepseek", "deepseek-v4-flash", false, host: "api.deepseek.com")
+        let off = body("deepseek", "deepseek-flash", false, host: "api.deepseek.com")
         #expect((off["reasoning"] as? [String: String])?["effort"] == "none")
         #expect(off["thinking"] == nil)                     // chat-only 字段不会漏发
-        let on = body("deepseek", "deepseek-v4-flash", true, host: "api.deepseek.com")
+        let on = body("deepseek", "deepseek-flash", true, host: "api.deepseek.com")
         #expect((on["reasoning"] as? [String: String])?["effort"] == "high")
         // 流式与非流式同形。
-        let streamed = body("deepseek", "deepseek-v4-flash", false, host: "api.deepseek.com", streaming: true)
+        let streamed = body("deepseek", "deepseek-flash", false, host: "api.deepseek.com", streaming: true)
         #expect((streamed["reasoning"] as? [String: String])?["effort"] == "none")
         // 仍走 Chat Completions 的模型保持旧开关，不能被改成 reasoning.effort。
         let pro = body("deepseek", "deepseek-v4-pro", false, host: "api.deepseek.com")
@@ -146,6 +146,8 @@ struct LLMThinkingControlTests {
 
     @Test func gemini_sendsNoneOnlyForOlderNonProFamilies_omitsRestWhenOff() {
         // Older non-pro 2.x/1.x flash-class ids accept `reasoning_effort:"none"` to disable thinking.
+        #expect(body("gemini", "gemini-3.8-flash", false)["reasoning_effort"] as? String == "low")
+        #expect(body("gemini", "gemini-3.8-flash", true)["reasoning_effort"] as? String == "medium")
         #expect(body("gemini", "gemini-2.5-flash", false)["reasoning_effort"] as? String == "none")
         #expect(body("gemini", "gemini-2.5-flash", true)["reasoning_effort"] as? String == "medium")
         // Pro can't fully disable thinking — emit nothing rather than an ineffective/invalid "none".
@@ -274,17 +276,17 @@ struct LLMChatRequestBuilderTests {
         }
     }
 
-    /// DeepSeek `deepseek-v4-flash` 的完整 Responses 线形：命中不带 `/v1` 的 `/responses`、
+    /// DeepSeek `deepseek-flash` 的完整 Responses 线形：命中不带 `/v1` 的 `/responses`、
     /// 用 `input` 而不是 `messages`、并用 `reasoning.effort:"none"` 关掉默认开着的思考。
     @Test func buildsDeepSeekV4FlashResponsesShapeBody() throws {
         let ep = LLMEndpoint(providerId: "deepseek", baseURL: "https://api.deepseek.com/v1",
-                             model: "deepseek-v4-flash", apiKey: "sk-ds", thinkingEnabled: false)
+                             model: "deepseek-flash", apiKey: "sk-ds", thinkingEnabled: false)
         let req = try LLMChatRequestBuilder.makeRequest(endpoint: ep, system: "SYS", user: "USR")
 
         #expect(req.url?.absoluteString == "https://api.deepseek.com/responses")
         #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer sk-ds")
         let body = try JSONSerialization.jsonObject(with: req.httpBody!) as? [String: Any]
-        #expect(body?["model"] as? String == "deepseek-v4-flash")
+        #expect(body?["model"] as? String == "deepseek-flash")
         #expect(body?["stream"] as? Bool == false)
         let input = body?["input"] as? [[String: String]]
         #expect(input?.first?["role"] == "system")

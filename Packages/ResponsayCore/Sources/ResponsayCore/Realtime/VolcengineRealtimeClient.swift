@@ -10,42 +10,38 @@ import Foundation
 /// `send*`/`receive` touch the live socket (mic + network) and are the HITL boundary;
 /// the fold in `handleEvent` and the wire codec are unit-tested offline.
 public actor VolcengineRealtimeClient {
-    private let transport: URLSessionWebSocketTask
+    private let transport: any VolcengineRealtimeTransport
     /// Volcengine resends the whole transcript each packet, so state is a single
     /// cumulative string (no per-sentence map like Fun-ASR).
     private var cumulativeText = ""
 
     public init(transport: URLSessionWebSocketTask) {
+        self.transport = VolcengineURLSessionTransport(task: transport)
+    }
+
+    init(transport: any VolcengineRealtimeTransport) {
         self.transport = transport
     }
 
     // MARK: - Client → server
 
     public func sendFullClientRequest(config: VolcengineRealtimeConfig) async throws {
-        try await transport.send(.data(VolcengineRealtimeProtocol.fullClientRequest(config: config)))
+        try await transport.send(VolcengineRealtimeProtocol.fullClientRequest(config: config))
     }
 
     public func sendAudio(_ pcm: Data) async throws {
-        try await transport.send(.data(VolcengineRealtimeProtocol.audioFrame(pcm, isLast: false)))
+        try await transport.send(VolcengineRealtimeProtocol.audioFrame(pcm, isLast: false))
     }
 
     /// End-of-input: an empty audio frame with the LAST_PACKET flag.
     public func sendFinish() async throws {
-        try await transport.send(.data(VolcengineRealtimeProtocol.audioFrame(Data(), isLast: true)))
+        try await transport.send(VolcengineRealtimeProtocol.audioFrame(Data(), isLast: true))
     }
 
     // MARK: - Server → client
 
     public func receive() async throws -> VolcengineRealtimeProtocol.ServerMessage {
-        let message = try await transport.receive()
-        switch message {
-        case let .data(data):
-            return try VolcengineRealtimeProtocol.parse(data)
-        case let .string(text):
-            return try VolcengineRealtimeProtocol.parse(Data(text.utf8))
-        @unknown default:
-            throw VolcengineRealtimeProtocol.Failure.badPayload
-        }
+        try await VolcengineRealtimeProtocol.parse(transport.receive())
     }
 
     /// Fold a decoded frame into a `TranscriptUpdate`. Cumulative text → replace.

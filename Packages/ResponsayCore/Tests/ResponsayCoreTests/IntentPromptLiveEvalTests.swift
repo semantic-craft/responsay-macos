@@ -84,10 +84,10 @@ private func providersUnderTest() -> [ProviderUnderTest] {
             apiKey: key)))
     }
     if let key = env("DEEPSEEK_KEY") {
-        providers.append(.init(name: "deepseek-v4-flash", endpoint: LLMEndpoint(
+        providers.append(.init(name: "deepseek-flash", endpoint: LLMEndpoint(
             providerId: "deepseek",
             baseURL: env("DEEPSEEK_BASEURL") ?? "https://api.deepseek.com/v1",
-            model: env("DEEPSEEK_MODEL") ?? "deepseek-v4-flash",
+            model: env("DEEPSEEK_MODEL") ?? "deepseek-flash",
             apiKey: key)))
     }
     if let key = env("DOUBAO_KEY") {

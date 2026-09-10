@@ -1,24 +1,13 @@
 import Foundation
 
-/// Whole-clip transcription over the Volcengine 大模型流式 (`bigmodel_nostream`) socket:
-/// on `stop()` the recorded clip is replayed as audio frames at full speed and the
-/// cumulative final is returned — lower stop-to-final latency than the async
-/// submit/query 录音文件 path, and the groundwork for true live-mic streaming.
-///
-/// Conforms to `TranscriptionAPI` (final-only), NOT `StreamingTranscriptionAPI`:
-/// Volcengine resends the *cumulative* transcript each packet, which does not map to
-/// the delta-accumulating capsule-preview consumer without lossy diffing. Live
-/// typewriter preview (and live-mic push) are the follow-up — same deliberate
-/// final-only stance as qwen-asr-flash (`usesPostUploadStreamingPreview`).
-///
-/// The socket drive touches mic-recorded audio + network and is the HITL boundary;
-/// the WAV→PCM framing (`pcmFrames`) and the wire codec/fold are unit-tested offline.
-public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
+/// Live PCM upload over the whole-utterance `bigmodel_nostream` endpoint.
+/// Intermediate cumulative responses are drained but never exposed to insertion.
+public struct VolcengineRealtimeTranscriptionAPI: Sendable {
     let endpoint: VolcengineRealtimeEndpoint
     let config: VolcengineRealtimeConfig
     let hotwordsProvider: @Sendable () async -> [String]
-    let webSocketTaskProvider: @Sendable (URLRequest) -> URLSessionWebSocketTask
-    /// ~1s of 16 kHz/16-bit/mono PCM per frame; a recorded clip is pumped as a burst.
+    var transportProvider: @Sendable (URLRequest) -> any VolcengineRealtimeTransport
+    /// 200 ms of 16 kHz mono Int16 PCM, as recommended by the provider.
     let frameBytes: Int
 
     public init(
@@ -27,39 +16,59 @@ public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
         hotwordsProvider: (@Sendable () async -> [String])? = nil,
         session: URLSession = .shared,
         webSocketTaskProvider: (@Sendable (URLRequest) -> URLSessionWebSocketTask)? = nil,
-        frameBytes: Int = 32_000
+        frameBytes: Int = 6_400
     ) {
         self.endpoint = endpoint
         self.config = config
         self.hotwordsProvider = hotwordsProvider ?? { config.hotwords }
-        self.webSocketTaskProvider = webSocketTaskProvider ?? { session.webSocketTask(with: $0) }
-        self.frameBytes = frameBytes
+        let makeTask = webSocketTaskProvider ?? { session.webSocketTask(with: $0) }
+        self.transportProvider = { VolcengineURLSessionTransport(task: makeTask($0)) }
+        self.frameBytes = max(2, frameBytes)
     }
 
-    public func transcribe(audio: Data, mimeType: String, language: String) async throws -> TranscriptionResult {
+    public func transcribe(audio: AsyncStream<Data>) async throws -> String {
         guard !endpoint.apiKey.isEmpty else {
             throw CoachAPIError.message("未配置火山引擎 API Key。请在设置中配置。")
         }
         let requestConfig = await resolvedRequestConfig()
         try Task.checkCancellation()
-        let socket = webSocketTaskProvider(endpoint.makeRequest(connectID: UUID().uuidString))
-        socket.resume()
+        let socket = transportProvider(endpoint.makeRequest(connectID: UUID().uuidString))
+        socket.start()
+        defer { socket.cancel() }
         let client = VolcengineRealtimeClient(transport: socket)
-        do {
+        return try await withTaskCancellationHandler {
             try await client.sendFullClientRequest(config: requestConfig)
-            // ponytail: sequential send-then-drain is fine for short dictation clips; a
-            // long clip may need concurrent send/receive to avoid socket backpressure.
-            for frame in Self.pcmFrames(fromWAV: audio, frameBytes: frameBytes) {
-                try await client.sendAudio(frame)
+            return try await withThrowingTaskGroup(of: String?.self) { group in
+                group.addTask {
+                    var pending = Data()
+                    for await chunk in audio {
+                        try Task.checkCancellation()
+                        pending.append(chunk)
+                        while pending.count >= frameBytes {
+                            try await client.sendAudio(Data(pending.prefix(frameBytes)))
+                            pending.removeFirst(frameBytes)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    if !pending.isEmpty { try await client.sendAudio(pending) }
+                    try await client.sendFinish()
+                    return nil
+                }
+                group.addTask { try await Self.drainFinal(from: client) }
+                defer { group.cancelAll() }
+                do {
+                    while let result = try await group.next() {
+                        if let result { return result }
+                    }
+                    throw CoachAPIError.message("豆包未返回最终识别结果。")
+                } catch {
+                    socket.cancel()
+                    if Task.isCancelled { throw CancellationError() }
+                    throw error
+                }
             }
-            try await client.sendFinish()   // empty LAST_PACKET frame = end of input
-            let text = try await Self.drainFinal(from: client)
-            socket.cancel(with: .normalClosure, reason: nil)
-            return TranscriptionResult(
-                text: text, model: "bigmodel", language: "auto", provider: "volcengine-realtime")
-        } catch {
-            socket.cancel(with: .abnormalClosure, reason: nil)
-            throw error
+        } onCancel: {
+            socket.cancel()
         }
     }
 
@@ -87,31 +96,4 @@ public struct VolcengineRealtimeTranscriptionAPI: TranscriptionAPI {
         }
     }
 
-    /// Strip the WAV header (the capture layer sends a 16 kHz/mono/16-bit PCM WAV) and
-    /// chunk the raw PCM into frames. Falls back to treating the whole input as PCM if
-    /// no `data` subchunk is found.
-    public static func pcmFrames(fromWAV wav: Data, frameBytes: Int) -> [Data] {
-        let pcm = stripWAVHeader(wav)
-        guard frameBytes > 0, !pcm.isEmpty else { return pcm.isEmpty ? [] : [pcm] }
-        var frames: [Data] = []
-        var index = pcm.startIndex
-        while index < pcm.endIndex {
-            let end = pcm.index(index, offsetBy: frameBytes, limitedBy: pcm.endIndex) ?? pcm.endIndex
-            frames.append(Data(pcm[index..<end]))
-            index = end
-        }
-        return frames
-    }
-
-    private static func stripWAVHeader(_ wav: Data) -> Data {
-        // PCM begins 8 bytes after the "data" tag (4 tag + 4 size).
-        let dataTag: [UInt8] = [0x64, 0x61, 0x74, 0x61]
-        let bytes = [UInt8](wav)
-        guard bytes.count >= dataTag.count else { return wav }
-        for start in 0...(bytes.count - dataTag.count) where Array(bytes[start..<start + 4]) == dataTag {
-            let pcmStart = start + 8
-            return pcmStart <= bytes.count ? Data(bytes[pcmStart...]) : Data()
-        }
-        return wav   // not a recognizable WAV → treat as raw PCM
-    }
 }

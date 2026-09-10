@@ -133,14 +133,29 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                 return apple
             case .cloudQwenASRFlashRealtime:
                 return qwenASRFlashRealtime
-            case .cloudOpenAI, .cloudMimo, .cloudGemini, .cloudVolcengineRealtime,
-                    .customOpenAI:
+            case .cloudVolcengineRealtime:
+                return VolcengineStreamingCaptureService(
+                    transcriber: {
+                        let effective = dispatcher.resolve(.asr, providerId: "volcengine-flash")
+                        let api = VolcengineRealtimeTranscriptionAPI(
+                            endpoint: VolcengineRealtimeEndpoint(apiKey: effective.apiKey ?? ""),
+                            hotwordsProvider: {
+                                let transient = await screenTerms.awaitCurrentHarvest()
+                                return requestEchoTerms.freeze(
+                                    ContextHotwordSettings.biasingSets(defaults: sendableDefaults.value)
+                                        .weakPrompt(augmentedWith: transient))
+                            },
+                            session: batchSession,
+                            webSocketTaskProvider: batchWebSocketTask)
+                        return { audio in try await api.transcribe(audio: audio) }
+                    },
+                    audioRecorder: batchAudioRecorder,
+                    requireMicPermission: { try requireBatchMicPermission(.cloudVolcengineRealtime) })
+            case .cloudOpenAI, .cloudMimo, .cloudGemini, .customOpenAI:
                 guard let providerID = engine.associatedProviderId else {
                     preconditionFailure("Cloud engine \(engine) has no provider ID")
                 }
-                let provider = engine == .cloudVolcengineRealtime
-                    ? "volcengine-realtime"
-                    : providerID
+                let provider = providerID
                 return CloudQwenSpeechCaptureService(
                     provider: provider,
                     requireMicPermission: {
@@ -152,7 +167,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                             for: engine,
                             defaults: defaults,
                             session: batchSession,
-                            webSocketTaskProvider: batchWebSocketTask,
                             profileProvider: profile,
                             keyReader: keyReader,
                             requestEchoTerms: requestEchoTerms,
@@ -295,7 +309,6 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         for engine: ASREngine,
         defaults: UserDefaults,
         session: URLSession = .shared,
-        webSocketTaskProvider: (@Sendable (URLRequest) -> URLSessionWebSocketTask)?,
         profileProvider: @escaping @Sendable () -> SpeechCaptureProfile,
         keyReader: @escaping ASRKeyReader,
         requestEchoTerms: CaptureRequestEchoTerms,
@@ -345,19 +358,7 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                 profileProvider: profileProvider,
                 modelProvider: { effective.model },
                 apiKeyProvider: { effective.apiKey ?? "" })
-        case .cloudVolcengineRealtime:
-            return VolcengineRealtimeTranscriptionAPI(
-                endpoint: VolcengineRealtimeEndpoint(apiKey: effective.apiKey ?? ""),
-                config: VolcengineRealtimeConfig(),
-                hotwordsProvider: {
-                    let transient = await screenTerms.awaitCurrentHarvest()
-                    return requestEchoTerms.freeze(
-                        ContextHotwordSettings.biasingSets(defaults: sendableDefaults.value)
-                            .weakPrompt(augmentedWith: transient))
-                },
-                session: session,
-                webSocketTaskProvider: webSocketTaskProvider)
-        case .apple, .cloudQwenASRFlashRealtime, .sensevoiceLocal, .qwen3LocalASR,
+        case .apple, .cloudQwenASRFlashRealtime, .cloudVolcengineRealtime, .sensevoiceLocal, .qwen3LocalASR,
                 .funAsrNanoLocal:
             preconditionFailure("Engine \(engine) does not use batch cloud transcription")
         }

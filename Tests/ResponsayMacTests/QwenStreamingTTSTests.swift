@@ -28,6 +28,51 @@ final class QwenStreamingTTSTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testPlusSelectionPersistsThroughSettingsAndBothFactories() throws {
+        let suite = "test.qwenTTSPlusSelection"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("qwen", forKey: "byok.tts.provider")
+        defaults.set("loongeva_v3.6", forKey: "byok.tts.qwen.voice")
+        let keyReader: (String) -> String? = { _ in "synthetic-tts-key" }
+        let machine = ProviderConfigMachine(
+            capability: .tts, preferredProviderId: "qwen", defaults: defaults,
+            keyReader: keyReader, keyWriter: { _, _ in })
+        machine.load()
+        machine.model = "qwen-audio-3.0-tts-plus"
+        machine.persist()
+        machine.refreshVoiceFromDefaults()
+        XCTAssertEqual(machine.voice, "longanlingxin")
+        XCTAssertEqual(machine.availableTTSVoices.map(\.id), ["longanlingxin", "longanlufeng"])
+        machine.voice = "longanlufeng"
+        machine.persist()
+
+        let engines = [
+            try TTSEngine.cloudQwen.makeStreamingSynthesizer(defaults: defaults, keyReader: keyReader)
+                as? QwenStreamingTTSEngine,
+            try TTSEngine.cloudQwen.makeSynthesizer(defaults: defaults, keyReader: keyReader)
+                as? QwenStreamingTTSEngine,
+        ]
+        for candidate in engines {
+            let engine = try XCTUnwrap(candidate)
+            XCTAssertEqual(engine.model, "qwen-audio-3.0-tts-plus")
+            XCTAssertEqual(engine.voice, "longanlufeng")
+            let data = QwenAudioTTSProtocol.runTask(
+                taskID: taskID, model: engine.model, voice: engine.voice, speed: 1, instruction: nil)
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let payload = try XCTUnwrap(object["payload"] as? [String: Any])
+            XCTAssertEqual(payload["model"] as? String, "qwen-audio-3.0-tts-plus")
+            XCTAssertEqual((payload["parameters"] as? [String: Any])?["voice"] as? String, "longanlufeng")
+        }
+        machine.model = "qwen-audio-3.0-tts-flash"
+        machine.persist()
+        machine.refreshVoiceFromDefaults()
+        XCTAssertEqual(machine.voice, "loongeva_v3.6")
+        XCTAssertFalse(machine.availableTTSVoices.map(\.id).contains("longanlufeng"))
+    }
+
     func testDecodeNativeEventsAndBinaryAudio() {
         XCTAssertEqual(QwenAudioTTSProtocol.decode(event("task-started")), .started)
         XCTAssertEqual(QwenAudioTTSProtocol.decode(event("task-finished")), .done)

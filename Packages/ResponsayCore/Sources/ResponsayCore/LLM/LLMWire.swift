@@ -2,7 +2,7 @@ import Foundation
 
 /// Pure URL and auth helpers for OpenAI-compatible text-generation routes. Most BYOK providers
 /// use `/chat/completions`; Qwen uses `/responses` while keeping the same compatible-mode base,
-/// and DeepSeek `deepseek-v4-flash` uses `/responses` off the un-prefixed base.
+/// and DeepSeek `deepseek-flash` uses `/responses` off the un-prefixed base.
 enum LLMWire {
     /// Mirror backend `chatCompletionsUrl`: trim trailing slashes; reuse if it already ends in
     /// /chat/completions; otherwise append.

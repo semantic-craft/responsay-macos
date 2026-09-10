@@ -17,7 +17,7 @@ struct ReadAloudReaderControlBar: View {
     @State private var voiceID: String? = TTSEngine.selected.selectedVoiceID
 
     private var palette: SkinPalette { appearanceStore.palette }
-    private var voices: [TTSVoiceSpec] { engine.catalog?.voices ?? [] }
+    private var voices: [TTSVoiceSpec] { engine.availableVoices }
 
     var body: some View {
         HStack(spacing: 13) {
