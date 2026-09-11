@@ -7,7 +7,6 @@ import ResponsayCore
 final class ReadAloudController: ReadAloudStoppable {
     enum Mode: Equatable { case idle, reading, repeating }
 
-    // internal(set): the +Playback extension (sibling file) updates these during playback.
     var activeIndex: Int?
     var isPlaying = false
     var isPreparing = false
@@ -60,13 +59,16 @@ final class ReadAloudController: ReadAloudStoppable {
     static let log = Logger(   // internal: used by the +Playback extension
         subsystem: "com.semanticcraft.responsay.mac", category: "ReadAloud")
 
-    /// Engine playback-anchor deadline (197 / P0-08). internal: used by the +Playback extension.
     static let anchorTimeout: TimeInterval = 0.35
     static let playbackFailedMessage = "朗读失败：音频播放没有启动。"
     static let noPlayableSpeechMessage = "朗读失败：没有生成可播放的语音。"
 
     init(player: any ReadAloudAudioPlaying = AudioReadAloudPlayer()) {
         self.player = player
+        player.onPlaybackFailure = { [weak self] error in
+            self?.stop()
+            self?.failVisible((error as? ReadAloudPlaybackFailure)?.localizedDescription ?? Self.playbackFailedMessage)
+        }
     }
 
     func toggleRead(_ analysis: ProsodyAnalysis) {
@@ -136,6 +138,7 @@ final class ReadAloudController: ReadAloudStoppable {
         highlightTask?.cancel()
         highlightTask = nil
         source?.stop()
+        player.stop()
         source = nil
         isPreparing = false
         isPlaying = false
@@ -348,6 +351,7 @@ final class ReadAloudController: ReadAloudStoppable {
 
     private func pause() {
         task?.cancel(); task = nil
+        player.endStreaming()
         highlightTask?.cancel(); highlightTask = nil
         source?.pause()
         isPreparing = false

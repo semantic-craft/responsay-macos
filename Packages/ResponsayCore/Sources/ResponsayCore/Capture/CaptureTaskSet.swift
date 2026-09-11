@@ -9,7 +9,7 @@ import Foundation
 /// cancellation live here.
 @MainActor
 final class CaptureTaskSet {
-    enum Slot { case level, partial, failsafe, errorDismiss, revertExpiry, correctionExpiry, intentUndoExpiry }
+    enum Slot { case failure, level, partial, failsafe, errorDismiss, revertExpiry, correctionExpiry, intentUndoExpiry }
 
     private var tasks: [Slot: Task<Void, Never>] = [:]
 

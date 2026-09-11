@@ -8,7 +8,7 @@ import ResponsayCore
 /// Mirrors `CapsulePanel`'s indicator: a non-activating, borderless `NSPanel` at
 /// `.screenSaver` level, click-through except while the pointer is over the pill (so the
 /// buttons stay clickable without stealing focus). Observes the `@Observable`
-/// `ReadAloudController` and shows while a read is preparing/playing/paused, hides when idle.
+/// `ReadAloudDocumentReader`; retains a failed read for retry or dismissal.
 @MainActor
 final class ReadAloudControlPanel {
     private let reader: ReadAloudDocumentReader
@@ -29,7 +29,7 @@ final class ReadAloudControlPanel {
 
     private func observe() {
         withObservationTracking {
-            _ = reader.isActive
+            _ = reader.shouldShowControls
             _ = reader.phase
         } onChange: { [weak self] in
             DispatchQueue.main.async {
@@ -41,7 +41,7 @@ final class ReadAloudControlPanel {
     }
 
     private func apply() {
-        if reader.isActive { show() } else { hide() }
+        if reader.shouldShowControls { show() } else { hide() }
     }
 
     private func show() {

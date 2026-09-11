@@ -100,7 +100,11 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
     }
     #endif
 
+    private let failureState = SpeechCaptureFailureState()
+    public var captureFailures: AsyncStream<String> { failureState.stream }
+
     public func start(locale: CaptureLocale) throws {
+        let generation = failureState.begin()
         // Re-resolve the client from current settings so a provider/region/plan change since
         // construction (→ Base URL, model, key) takes effect without an app restart.
         client = clientBuilder({ [profileStore] in profileStore.profile })
@@ -129,15 +133,16 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
         let recorder = audioRecorder()
         self.recorder = recorder
         do {
-            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in
+            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID, onBuffer: { @Sendable buffer in
                 recording.append(buffer)
-            }
+            }, onFailure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.failureState.fail(message, generation: generation) { self.captureFailed() }
+                }
+            })
         } catch {
-            recording.finish()
-            self.recording = nil
-            self.recorder = nil
-            partialContinuation.finish()
-            self.partialContinuation = nil
+            captureFailed()
             throw error
         }
         #else
@@ -171,14 +176,33 @@ public final class CloudQwenSpeechCaptureService: SpeechCaptureService {
         log.info("Backend ASR capture started for \(locale.rawValue, privacy: .public) via \(self.providerName, privacy: .public); profile \(profile.rawValue, privacy: .public)")
     }
 
+    #if os(macOS)
+    public func cancel() async {
+        try? failureState.end()
+        captureFailed()
+    }
+
+    private func captureFailed() {
+        try? recorder?.stop(); recorder = nil
+        recording?.finish()
+        if let recording { try? FileManager.default.removeItem(at: recording.fileURL) }
+        recording = nil
+        partialContinuation?.finish(); partialContinuation = nil
+    }
+    #endif
+
     public func stop() async throws -> String {
         #if os(macOS)
-        recorder?.stop()
+        do { try recorder?.stop() } catch {
+            await cancel()
+            throw error
+        }
         recorder = nil
         #else
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         #endif
+        try failureState.end()
 
         defer {
             partialContinuation?.finish()

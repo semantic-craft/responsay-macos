@@ -87,7 +87,11 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
         self.requireMicPermission = requireMicPermission
     }
 
+    private let failureState = SpeechCaptureFailureState()
+    public var captureFailures: AsyncStream<String> { failureState.stream }
+
     public func start(locale: CaptureLocale) throws {
+        let generation = failureState.begin()
         try requireMicPermission()
         var baseConfig = configProvider()
         guard !baseConfig.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -124,10 +128,20 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 })
         }
 
+        if let task = transcriptionTask {
+            Task { [weak self] in
+                _ = await task.result
+                guard let self else { return }
+                self.failureState.fail("语音识别连接已结束，请重新录音。", generation: generation) {
+                    self.captureFailed()
+                }
+            }
+        }
+
         let recorder = audioRecorder()
         self.recorder = recorder
         do {
-            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in
+            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID, onBuffer: { @Sendable buffer in
                 guard let channel = buffer.floatChannelData, buffer.frameLength > 0 else { return }
                 let count = Int(buffer.frameLength)
                 let floats = Array(UnsafeBufferPointer(start: channel[0], count: count))
@@ -137,19 +151,41 @@ public final class QwenRunTaskStreamingCaptureService: SpeechCaptureService {
                 let pcm = QwenRealtimePCM.int16LE(from: floats)
                 progress.addBytes(pcm.count)
                 audioContinuation.yield(pcm)
-            }
+            }, onFailure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.failureState.fail(message, generation: generation) { self.captureFailed() }
+                }
+            })
         } catch {
-            audioContinuation.finish()
-            transcriptionTask?.cancel()
-            cleanupTaskState()
+            captureFailed()
             throw error
         }
         log.info("qwen run-task capture started (\(locale.rawValue, privacy: .public), model \(baseConfig.model, privacy: .public), dedicated host \(baseConfig.endpoint.usesDedicatedHost, privacy: .public))")
     }
 
+    #if os(macOS)
+    public func cancel() async {
+        try? failureState.end()
+        captureFailed()
+    }
+
+    private func captureFailed() {
+        try? recorder?.stop(); recorder = nil
+        levelContinuation?.finish(); levelContinuation = nil
+        transcriptionTask?.cancel()
+        audioContinuation?.finish()
+        cleanupTaskState()
+    }
+    #endif
+
     public func stop() async throws -> String {
-        recorder?.stop()
+        do { try recorder?.stop() } catch {
+            await cancel()
+            throw error
+        }
         recorder = nil
+        try failureState.end()
         levelContinuation?.finish()
         levelContinuation = nil
         audioContinuation?.finish()

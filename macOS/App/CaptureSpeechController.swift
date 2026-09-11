@@ -1,9 +1,11 @@
 import AppKit
+import Combine
 import OSLog
 import ResponsayCore
 
 @MainActor
 final class CaptureSpeechController {
+    private var muteSettingsObservation: AnyCancellable?
     private let vm: QuickCaptureViewModel
     private let targetTracker: TargetAppTracker
     private let log: Logger
@@ -31,13 +33,17 @@ final class CaptureSpeechController {
         self.textModelPreflight = textModelPreflight
         AudioOutputMuter.shared.recoverStuckMuteIfNeeded()
         startMuteObservation()
+        muteSettingsObservation = RecordingMuteSettings.changes()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.syncMuteWithPhase() }
+            }
     }
 
     // MARK: - Mute other audio while the mic is live
 
-    /// Invariant: the output device is muted iff (phase == .listening && the user
-    /// enabled it). Driving this off `phase` covers every exit — user stop, auto
-    /// finalize, or error — so the system can't get stuck muted.
+    /// Phase and setting changes drive the mute request. Hardware failures retain
+    /// device-specific recovery records; user overrides take precedence.
     private func startMuteObservation() {
         withObservationTracking {
             _ = vm.phase
@@ -60,7 +66,7 @@ final class CaptureSpeechController {
     }
 
     private var muteWhileRecordingEnabled: Bool {
-        UserDefaults.standard.object(forKey: "muteWhileRecording") as? Bool ?? true
+        RecordingMuteSettings.enabled()
     }
 
     // Always forward key-up to the controller so it can release ownership. Ordinary Fn / right

@@ -15,68 +15,76 @@ extension ReadAloudController {
         tx: ReadAloudTransaction,
         diag: ReadAloudDiagnosticContext
     ) async throws {
+        guard isCurrent(tx, phase: "streamingStart"), !Task.isCancelled else { return }
         activeIndex = nil
         try player.beginStreaming(sampleRate: Double(TTSAudio.defaultSampleRate))
         Diag.tts(.info, "streaming begin", fields: diag.fields(
             mode: "reading", phase: "streaming", attempt: 0,
             provider: TTSEngine.selected.title, fallback: "nonStreaming", result: "started"))
-        var chunkCount = 0
-        var anchored = false
-        let text = analysis.text
-        let rate = speed
-        let streamStart = Date()           // 485: time-to-first-audio observability
-        var firstChunkLatencyMs = 0
-        do {
-            for try await chunk in streamer.stream(text, speed: rate) {
-                guard isCurrent(tx, phase: "streamingChunk"), !Task.isCancelled else { return }
-                if chunkCount == 0 { firstChunkLatencyMs = Int(Date().timeIntervalSince(streamStart) * 1000) }
-                player.appendStreaming(chunk)
-                chunkCount += 1
-                if !anchored {
-                    anchored = await player.waitForPlaybackAnchor(timeout: Self.anchorTimeout)
-                    guard isCurrent(tx, phase: "streamingAnchor") else { return }
-                    guard anchored else { throw TTSError.synthesisFailed("语音播放未启动，请重试或换一个引擎。") }
-                    source = PlayerReadAloudSource(
-                        timeline: ReadAloudTimeline.build(analysis), player: player)
-                    play(tx)
+        let subscription = ReadAloudStreamSubscription(streamer: streamer, text: analysis.text, speed: speed)
+        defer { subscription.cancel() }
+        try await withTaskCancellationHandler {
+            var chunkCount = 0
+            var anchored = false
+            let streamStart = Date()           // 485: time-to-first-audio observability
+            var firstChunkLatencyMs = 0
+            do {
+                for try await chunk in subscription.chunks {
+                    guard isCurrent(tx, phase: "streamingChunk"), !Task.isCancelled else { return }
+                    if chunkCount == 0 { firstChunkLatencyMs = Int(Date().timeIntervalSince(streamStart) * 1000) }
+                    player.appendStreaming(chunk)
+                    chunkCount += 1
+                    if !anchored {
+                        anchored = await player.waitForPlaybackAnchor(timeout: Self.anchorTimeout)
+                        guard isCurrent(tx, phase: "streamingAnchor"), !Task.isCancelled else { return }
+                        guard anchored else { throw TTSError.synthesisFailed("语音播放未启动，请重试或换一个引擎。") }
+                        source = PlayerReadAloudSource(
+                            timeline: ReadAloudTimeline.build(analysis), player: player)
+                        play(tx)
+                    }
                 }
+                guard isCurrent(tx, phase: "streamingEnd"), !Task.isCancelled else { return }
+                player.endStreaming()
+                guard chunkCount > 0 else {
+                    throw TTSError.providerReturnedNoAudio(provider: TTSEngine.selected.title)
+                }
+                Diag.tts(.info, "streaming done", fields: diag.fields(
+                    mode: "reading", phase: "streaming", attempt: 0,
+                    provider: TTSEngine.selected.title, fallback: "none", result: "success",
+                    extra: [
+                        "chunks": String(chunkCount),
+                        "firstChunkLatencyMs": String(firstChunkLatencyMs),
+                    ]))
+            } catch {
+                guard isCurrent(tx, phase: "streamingFailed"), !Task.isCancelled else { return }
+                player.endStreaming()
+                player.stop()
+                source = nil
+                highlightTask?.cancel()
+                highlightTask = nil
+                isPlaying = false
+                isPreparing = true
+                activeIndex = nil
+                let code = ReadAloudDiagnostics.errorCode(error)
+                Diag.tts(.error, "streaming failed", fields: diag.fields(
+                    mode: "reading", phase: "streaming", attempt: 0,
+                    provider: TTSEngine.selected.title, fallback: "nonStreaming", result: "failed",
+                    extra: ["chunks": String(chunkCount), "errorCode": code]), error: code)
+                Self.log.error("streaming failed: \(code, privacy: .public)")
+                throw error
             }
-            player.endStreaming()
-            guard chunkCount > 0 else {
-                throw TTSError.providerReturnedNoAudio(provider: TTSEngine.selected.title)
-            }
-            Diag.tts(.info, "streaming done", fields: diag.fields(
-                mode: "reading", phase: "streaming", attempt: 0,
-                provider: TTSEngine.selected.title, fallback: "none", result: "success",
-                extra: [
-                    "chunks": String(chunkCount),
-                    "firstChunkLatencyMs": String(firstChunkLatencyMs),
-                ]))
-        } catch {
-            player.endStreaming()
-            player.stop()
-            source = nil
-            highlightTask?.cancel()
-            highlightTask = nil
-            isPlaying = false
-            isPreparing = true
-            activeIndex = nil
-            guard isCurrent(tx, phase: "streamingFailed") else { return }
-            let code = ReadAloudDiagnostics.errorCode(error)
-            Diag.tts(.error, "streaming failed", fields: diag.fields(
-                mode: "reading", phase: "streaming", attempt: 0,
-                provider: TTSEngine.selected.title, fallback: "nonStreaming", result: "failed",
-                extra: ["chunks": String(chunkCount), "errorCode": code]), error: code)
-            Self.log.error("streaming failed: \(code, privacy: .public)")
-            throw error
+        } onCancel: {
+            subscription.cancel()
         }
     }
 
     func startAnchoredPlayback(_ composed: ComposedReadAloud) async throws {
         for attempt in 1...2 {
+            try Task.checkCancellation()
             try player.play(composed)
             let waitStart = Date()                                        // 485
             let ok = await player.waitForPlaybackAnchor(timeout: Self.anchorTimeout)
+            try Task.checkCancellation()
             let anchorWaitMs = Int(Date().timeIntervalSince(waitStart) * 1000)
             if ok {
                 Self.log.notice("playback anchored attempt=\(attempt, privacy: .public) anchorWaitMs=\(anchorWaitMs, privacy: .public)")

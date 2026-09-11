@@ -29,8 +29,12 @@ public final class VolcengineStreamingCaptureService: SpeechCaptureService {
         self.requireMicPermission = requireMicPermission
     }
 
+    private let failureState = SpeechCaptureFailureState()
+    public var captureFailures: AsyncStream<String> { failureState.stream }
+
     public func start(locale: CaptureLocale) throws {
         guard transcriptionTask == nil else { throw CoachAPIError.message("已有语音采集正在进行。") }
+        let generation = failureState.begin()
         try requireMicPermission()
         let transcribe = try transcriber()
         let (audio, audioCont) = AsyncStream.makeStream(of: Data.self)
@@ -43,18 +47,33 @@ public final class VolcengineStreamingCaptureService: SpeechCaptureService {
             return try await transcribe(audio)
         }
         transcriptionTask = task
+        if let task = transcriptionTask {
+            Task { [weak self] in
+                _ = await task.result
+                guard let self else { return }
+                self.failureState.fail("语音识别连接已结束，请重新录音。", generation: generation) {
+                    self.captureFailed()
+                }
+            }
+        }
+
         let recorder = audioRecorder()
         self.recorder = recorder
         do {
-            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { buffer in
+            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID, onBuffer: { buffer in
                 guard let channel = buffer.floatChannelData, buffer.frameLength > 0 else { return }
                 let floats = Array(UnsafeBufferPointer(start: channel[0], count: Int(buffer.frameLength)))
                 let power = floats.reduce(Float(0)) { $0 + $1 * $1 } / Float(floats.count)
                 levelCont.yield(min(1, power.squareRoot() * 8))
                 audioCont.yield(QwenRealtimePCM.int16LE(from: floats))
-            }
+            }, onFailure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.failureState.fail(message, generation: generation) { self.captureFailed() }
+                }
+            })
         } catch {
-            recorder.stop()
+            try? recorder.stop()
             audioCont.finish()
             levelCont.finish()
             task.cancel()
@@ -63,9 +82,28 @@ public final class VolcengineStreamingCaptureService: SpeechCaptureService {
         }
     }
 
+    #if os(macOS)
+    public func cancel() async {
+        try? failureState.end()
+        captureFailed()
+    }
+
+    private func captureFailed() {
+        try? recorder?.stop()
+        levelContinuation?.finish()
+        transcriptionTask?.cancel()
+        audioContinuation?.finish()
+        cleanup()
+    }
+    #endif
+
     public func stop() async throws -> String {
-        recorder?.stop()
+        do { try recorder?.stop() } catch {
+            await cancel()
+            throw error
+        }
         recorder = nil
+        try failureState.end()
         levelContinuation?.finish()
         audioContinuation?.finish()
         guard let task = transcriptionTask else { return "" }

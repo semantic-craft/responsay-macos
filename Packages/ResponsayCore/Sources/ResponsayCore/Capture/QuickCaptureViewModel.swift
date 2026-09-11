@@ -398,7 +398,8 @@ public final class QuickCaptureViewModel {
         tasks.cancel(.level); level = 0
         tasks.cancel(.partial)
         tasks.cancel(.failsafe)
-        _ = try? await speech.stop()
+        phase = .thinking
+        await speech.cancel()
         reset()
         phase = .idle
     }

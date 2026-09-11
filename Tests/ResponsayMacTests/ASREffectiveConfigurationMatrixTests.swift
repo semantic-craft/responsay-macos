@@ -112,7 +112,8 @@ private final class EffectiveASRLocalAudioRecorder: @unchecked Sendable, SpeechA
 
     func start(
         preferredUID _: String,
-        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure: @escaping @Sendable (String) -> Void
     ) throws {
         lock.withLock { self.onBuffer = onBuffer }
     }

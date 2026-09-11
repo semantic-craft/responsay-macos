@@ -47,6 +47,12 @@ struct SettingsGeneralPane: View {
                             desc: "录音期间静音系统输出（音乐 / 视频等其他应用的声音），结束自动恢复。") {
                     Toggle("", isOn: $muteWhileRecording).labelsHidden().toggleStyle(.switch)
                 }
+                if let notice = AudioOutputMuter.shared.recoveryNotice {
+                    Text(notice)
+                        .font(SettingsTheme.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 WarmDivider()
                 SettingsRow(title: "录音开始 / 结束提示音", desc: "开始与结束录音时播放轻提示音。") {
                     HStack(spacing: 10) {

@@ -35,6 +35,8 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
     private(set) var speed: Double = 1.0
 
     var isActive: Bool { phase != .idle }
+    /// Keep the selection controls available for retry/dismiss after playback fails.
+    var shouldShowControls: Bool { isActive || errorMessage != nil }
     var hasText: Bool { !script.isEmpty }
 
     /// Called when the document finishes on its own (not on `stop()`).
@@ -76,6 +78,11 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
 
     init(player: any ReadAloudAudioPlaying = AudioReadAloudPlayer()) {
         self.player = player
+        player.onPlaybackFailure = { [weak self] error in
+            guard let self, self.phase != .idle else { return }
+            self.fail((error as? ReadAloudPlaybackFailure)?.localizedDescription
+                      ?? ReadAloudController.playbackFailedMessage)
+        }
     }
 
     // MARK: - Text
@@ -135,6 +142,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
                 return
             }
             player.resume()
+            guard phase == .paused else { return } // resume may fail synchronously
             phase = .playing
             startTicker()
         case .idle:
@@ -150,6 +158,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
         player.stop()
         timeline.reset()
         phase = .idle
+        errorMessage = nil
         activeLine = nil
         lineProgress = 0
         didReachEnd = false
@@ -195,6 +204,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
     // MARK: - Pipeline
 
     private func runPipeline(generation: UInt) async {
+        guard generation == pipelineGeneration, !Task.isCancelled else { return }
         let (synth, fallbackProvider) = makeSynthesizer()
         voiceNotice = fallbackProvider.map { "已回退到可用音色朗读（\($0) 未就绪）" }
         var streamStarted = false
@@ -211,7 +221,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
             guard !Task.isCancelled, let entry = script[line] else { break }
             do {
                 let speech = try await synth.synthesize(entry.text, speed: speed)
-                guard !Task.isCancelled else { break }
+                guard generation == pipelineGeneration, !Task.isCancelled else { return }
                 if !streamStarted {
                     do {
                         try player.beginStreaming(sampleRate: Double(speech.sampleRate))
@@ -224,7 +234,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
                 player.appendStreaming(speech)
                 timeline.append(line: line, duration: speech.duration)
             } catch {
-                guard !Task.isCancelled else { break }
+                guard generation == pipelineGeneration, !Task.isCancelled else { return }
                 Self.log.error("line synth failed line=\(line, privacy: .public): \(String(describing: error), privacy: .public)")
                 // One bad line should not end the document; skip it and keep reading. Only a
                 // first line that produces nothing at all is a visible failure.
@@ -237,7 +247,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
             }
             if !anchored {
                 anchored = await player.waitForPlaybackAnchor(timeout: ReadAloudController.anchorTimeout)
-                guard !Task.isCancelled else { break }
+                guard generation == pipelineGeneration, !Task.isCancelled else { return }
                 guard anchored else {
                     fail(ReadAloudController.playbackFailedMessage)
                     return
@@ -247,7 +257,7 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
             }
             line += 1
         }
-        guard generation == pipelineGeneration else { return }
+        guard generation == pipelineGeneration, !Task.isCancelled else { return }
         player.endStreaming()
         didReachEnd = !Task.isCancelled
     }
@@ -283,6 +293,9 @@ final class ReadAloudDocumentReader: ReadAloudStoppable {
         activeLine = nil
         lineProgress = 0
         errorMessage = message
+        timeline.reset()
+        didReachEnd = false
+        needsRebuildOnResume = false
         coordinator?.resign(self)
     }
 

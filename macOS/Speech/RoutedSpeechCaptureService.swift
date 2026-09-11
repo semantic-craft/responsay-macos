@@ -250,19 +250,8 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
         beginScreenTermHarvest()
     }
 
-    /// Pick the concrete capture service from the user's explicit engine choice.
-    ///
-    /// Privacy posture (PRIV-CLOUD-001, 2026-06-14 decision — document, don't reroute): cloud
-    /// vs local here is the user's *explicit* engine selection, never a silent escalation — a
-    /// local engine failure throws and never falls back to cloud. CaptureGate separately blocks
-    /// screen-derived context and hotword harvesting for password/secure-input fields and
-    /// deny-listed apps/URLs; it does not change the user's explicit audio engine selection.
-    ///
-    /// Per-scenario auto-routing (087 item 1) was retired by decision (issue 293,
-    /// 2026-06-11): the engine roster had just been collapsed to explicit,
-    /// user-language choices, and auto-switching providers per scenario would
-    /// vary hotword behavior unpredictably. `CaptureProviderResolver` + tests
-    /// deleted; recover from git history if the idea returns.
+    /// Resolve the explicit engine choice. Only unconfigured cloud engines fall back to Apple;
+    /// missing local models report their own installation error and never escalate to cloud.
     private func resolveService(selected: ASREngine) -> SpeechCaptureService {
         // Keep the explicit cloud readiness fallback from #81. Downloadable local engines remain
         // selected even while missing so their adapter reports the model-install error; they never
@@ -275,6 +264,18 @@ final class RoutedSpeechCaptureService: SpeechCaptureService {
                      fields: ["selected": selected.title])
         }
         return adapterForEngine(resolved)
+    }
+
+    var captureFailures: AsyncStream<String> {
+        active?.captureFailures ?? AsyncStream { $0.finish() }
+    }
+
+    func cancel() async {
+        guard let active else { return }
+        await active.cancel()
+        self.active = nil
+        screenTerms.finishCapture()
+        captureRequestEchoTerms.reset()
     }
 
     func stop() async throws -> String {

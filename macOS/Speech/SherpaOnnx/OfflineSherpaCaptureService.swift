@@ -14,7 +14,10 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     // 蓝牙麦克风修复: capture via AVCaptureSession (binds a specific device up front, like
     // getUserMedia) instead of AVAudioEngine — whose inputNode keeps the BT default's stale
     // 16 kHz format and then delivers zero buffers when the built-in mic is selected.
-    private var recorder: AVCaptureAudioRecorder?
+    private var recorder: (any SpeechAudioRecording)?
+    private let audioRecorder: () -> any SpeechAudioRecording
+    private let failureState = SpeechCaptureFailureState()
+    var captureFailures: AsyncStream<String> { failureState.stream }
     private let spec: LocalModelSpec
     private let isModelInstalled: @Sendable () -> Bool
     private let makeRecognizer: @Sendable () throws -> any OfflineSherpaRecognizer
@@ -32,9 +35,11 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
 
     init(
         spec: LocalModelSpec,
+        audioRecorder: @escaping () -> any SpeechAudioRecording = { AVCaptureAudioRecorder() },
         isModelInstalled: (@Sendable () -> Bool)? = nil,
         makeRecognizer: @escaping @Sendable () throws -> any OfflineSherpaRecognizer
     ) {
+        self.audioRecorder = audioRecorder
         self.spec = spec
         self.isModelInstalled = isModelInstalled ?? { spec.isInstalled }
         self.makeRecognizer = makeRecognizer
@@ -42,6 +47,7 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
     }
 
     func start(locale: CaptureLocale) throws {
+        let generation = failureState.begin()
         guard isModelInstalled() else {
             throw CoachAPIError.message(
                 "\(spec.displayName) 模型未安装。请到 设置 › 本地模型 下载后再使用。")
@@ -62,19 +68,46 @@ final class OfflineSherpaCaptureService: SpeechCaptureService, LocalEngineReside
             inputFormat: AVCaptureAudioRecorder.deliveredFormat, targetFormat: targetFormat)
         accumulator = acc
 
-        let recorder = AVCaptureAudioRecorder()
+        let recorder = audioRecorder()
         self.recorder = recorder
-        try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in
-            acc.append(buffer) { level in levelCont.yield(level) }
+        do {
+            try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID, onBuffer: { buffer in
+                acc.append(buffer) { level in levelCont.yield(level) }
+            }, onFailure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.failureState.fail(message, generation: generation) { self.captureFailed() }
+                }
+            })
+        } catch {
+            captureFailed()
+            throw error
         }
         isCapturing = true
         log.info("offline capture started: \(self.spec.id, privacy: .public)")
     }
 
+    func cancel() async {
+        try? failureState.end()
+        captureFailed()
+    }
+
+    private func captureFailed() {
+        try? recorder?.stop(); recorder = nil
+        levelContinuation?.finish(); levelContinuation = nil
+        accumulator = nil
+        isCapturing = false
+        scheduleRelease()
+    }
+
     func stop() async throws -> String {
         defer { isCapturing = false }
-        recorder?.stop()
+        do { try recorder?.stop() } catch {
+            await cancel()
+            throw error
+        }
         recorder = nil
+        try failureState.end()
         levelContinuation?.finish()
         levelContinuation = nil
 
