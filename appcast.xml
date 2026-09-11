@@ -3,6 +3,14 @@
     <channel>
         <title>Responsay</title>
         <item>
+            <title>1.9.7</title>
+            <pubDate>Fri, 11 Sep 2026 16:17:35 +0800</pubDate>
+            <sparkle:version>162</sparkle:version>
+            <sparkle:shortVersionString>1.9.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://updates.responsay.com/releases/v1.9.7/Responsay.dmg" length="39784528" type="application/octet-stream" sparkle:edSignature="NtGce6/p3tMV6E2E+4Qk0u6PjpLi8QrZntOPY7YFVnjYQ3Mu5koGnpWK0VEocixFacbHzQ/e4baek2RGnqzlCw=="/>
+        </item>
+        <item>
             <title>1.9.5</title>
             <pubDate>Fri, 11 Sep 2026 04:02:46 +0800</pubDate>
             <sparkle:version>160</sparkle:version>
