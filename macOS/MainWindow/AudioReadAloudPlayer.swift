@@ -53,7 +53,7 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
         }
 
         outputObserver = ReadAloudOutputObserver { [weak self] in
-            guard let self, self.streamState.generation != nil else { return }
+            guard let self else { return }
             let generation = self.recovery.generation
             Task { @MainActor [weak self] in
                 self?.handleConfigurationChange(generation: generation)
