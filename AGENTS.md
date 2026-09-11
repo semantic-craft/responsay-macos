@@ -3,7 +3,7 @@
 ## Repository workflow
 
 - GitHub `semantic-craft/responsay-macos` is the primary code, branch, review, pull-request, and issue repository. The `origin` remote must point to GitHub. The former Cursor Origin repository has been retired; do not recreate its remote.
-- When starting a branch, fetch `origin/main` and verify that `origin` points to GitHub. Bounded work in an existing checkout preserves its current changes.
+- When starting a new branch, fetch `origin/main`, verify that `origin` points to GitHub, and use the freshly fetched `origin/main` as the branch base. Bounded work in an existing checkout preserves its current changes.
 - Everything lands through a GitHub pull request. Never push directly to `main`, never force-push it, and use a merge commit rather than squash or rebase merge.
 - GitHub Actions runs portable policy and privacy guards plus Apple Silicon macOS Swift and Xcode build/test gates. The exact contracts live in `docs/operations/ci.md`.
 - Before merge, run the relevant local gates from `CONTRIBUTING.md`, review the complete diff, require the remote checks documented in `docs/operations/ci.md`, update the branch from current `origin/main`, and verify the remote merge commit by object ID and ancestry.
