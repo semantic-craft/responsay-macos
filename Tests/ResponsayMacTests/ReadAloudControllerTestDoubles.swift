@@ -125,8 +125,10 @@ struct FailingStreamingSynthesizer: StreamingSpeechSynthesizer {
 
 @MainActor
 final class RecordingAudioPlayer: ReadAloudAudioPlaying {
+    var onPlaybackFailure: ((Error) -> Void)?
     var elapsed: TimeInterval = 0
     var isFinished = false
+    var anchorDelay: Duration?
     private(set) var playCalls: [ComposedReadAloud] = []
     private(set) var stopCalls = 0
     private(set) var appendStreamingCalls = 0
@@ -139,7 +141,10 @@ final class RecordingAudioPlayer: ReadAloudAudioPlaying {
         isFinished = false
     }
 
-    func waitForPlaybackAnchor(timeout: TimeInterval) async -> Bool { true }
+    func waitForPlaybackAnchor(timeout: TimeInterval) async -> Bool {
+        if let anchorDelay { try? await Task.sleep(for: anchorDelay) }
+        return true
+    }
     func playFileEmergency(_ composed: ComposedReadAloud) -> Bool { false }
     func beginStreaming(sampleRate: Double) throws {
         beginStreamingRates.append(sampleRate)
@@ -165,6 +170,7 @@ final class RecordingAudioPlayer: ReadAloudAudioPlaying {
 /// or falls back through the broken engine.
 @MainActor
 final class EmergencyLoopingAudioPlayer: ReadAloudAudioPlaying {
+    var onPlaybackFailure: ((Error) -> Void)?
     var elapsed: TimeInterval = 0
     var isFinished = false
     private(set) var playCalls = 0
@@ -187,6 +193,7 @@ final class EmergencyLoopingAudioPlayer: ReadAloudAudioPlaying {
 
 @MainActor
 final class NeverAnchoredAudioPlayer: ReadAloudAudioPlaying {
+    var onPlaybackFailure: ((Error) -> Void)?
     var elapsed: TimeInterval = 0
     var isFinished = false
     /// 484: whether the file-level emergency path "starts sound".

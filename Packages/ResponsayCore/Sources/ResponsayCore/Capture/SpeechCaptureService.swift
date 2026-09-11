@@ -21,14 +21,18 @@ public enum SpeechCaptureProfile: String, Sendable, Equatable {
 public protocol SpeechCaptureService: AnyObject {
     func start(locale: CaptureLocale) throws
     func stop() async throws -> String
+    func cancel() async
     /// 录音期间持续产出 RMS 电平(0...1)。非录音期间不产出。
     var levels: AsyncStream<Float> { get }
+    var captureFailures: AsyncStream<String> { get }
     /// What this engine can do — partials style, profile-awareness, echo risk — declared explicitly
     /// so the router dispatches per capability instead of `as?`-casting optional protocols.
     var captureCapability: SpeechCaptureCapability { get }
 }
 
 public extension SpeechCaptureService {
+    func cancel() async { _ = try? await stop() }
+    var captureFailures: AsyncStream<String> { AsyncStream { $0.finish() } }
     /// On-device / final-only default: no partials, profile-agnostic, cannot echo a biasing list.
     /// Cloud and realtime adapters override.
     var captureCapability: SpeechCaptureCapability { .init() }
@@ -52,4 +56,43 @@ public protocol SpeechActivityProviding: AnyObject {
     /// `false` when the server detects end of speech. Drives a "listening"
     /// indicator. Services without server VAD can omit this protocol.
     var speechActivity: AsyncStream<Bool> { get }
+}
+
+/// Main-actor ownership of one recording's terminal failure. Old callbacks cannot fail a new turn.
+@MainActor
+public final class SpeechCaptureFailureState {
+    public private(set) var stream: AsyncStream<String> = AsyncStream { $0.finish() }
+    private var continuation: AsyncStream<String>.Continuation?
+    private var generation: UUID?
+    private var message: String?
+
+    public init() {}
+
+    public func begin() -> UUID {
+        continuation?.finish()
+        let pair = AsyncStream.makeStream(of: String.self)
+        stream = pair.stream
+        continuation = pair.continuation
+        message = nil
+        let id = UUID()
+        generation = id
+        return id
+    }
+
+    public func fail(_ message: String, generation: UUID, cleanup: () -> Void) {
+        guard self.generation == generation else { return }
+        self.generation = nil
+        self.message = message
+        cleanup()
+        continuation?.yield(message)
+        continuation?.finish()
+        continuation = nil
+    }
+
+    public func end() throws {
+        generation = nil
+        continuation?.finish()
+        continuation = nil
+        if let message { throw CoachAPIError.message(message) }
+    }
 }

@@ -58,7 +58,8 @@ final class LocalQwenDictationAdapter: @unchecked Sendable,
 
     func start(
         preferredUID _: String,
-        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure: @escaping @Sendable (String) -> Void
     ) throws {
         withLock {
             _started = true

@@ -5,8 +5,8 @@ options:
   developmentLanguage: zh-Hans
 settings:
   base:
-    MARKETING_VERSION: "1.9.6"
-    CURRENT_PROJECT_VERSION: "161"
+    MARKETING_VERSION: "1.9.7"
+    CURRENT_PROJECT_VERSION: "162"
     SWIFT_VERSION: "6.0"
 packages:
   ResponsayCore:

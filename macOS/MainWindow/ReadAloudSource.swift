@@ -50,6 +50,7 @@ final class EstimatedReadAloudSource: ReadAloudSource {
 /// mock counting `play` calls. Streaming methods stay on the concrete player.
 @MainActor
 protocol ReadAloudAudioPlaying: AnyObject {
+    var onPlaybackFailure: ((Error) -> Void)? { get set }
     var elapsed: TimeInterval { get }
     var isFinished: Bool { get }
     func play(_ composed: ComposedReadAloud) throws

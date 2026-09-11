@@ -95,7 +95,8 @@ private struct ScriptedRunTask: QwenRunTaskTranscribing {
 private final class NoopSpeechRecorder: SpeechAudioRecording {
     func start(
         preferredUID: String,
-        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure: @escaping @Sendable (String) -> Void
     ) throws {}
 
     func stop() {}

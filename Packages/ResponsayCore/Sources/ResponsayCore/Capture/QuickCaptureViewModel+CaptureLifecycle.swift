@@ -31,6 +31,15 @@ extension QuickCaptureViewModel {
                 guard !Task.isCancelled, let self, self.phase == .listening else { return }
                 await self.release()   // process what was captured rather than record forever
             })
+            let failures = speech.captureFailures
+            tasks.set(.failure, Task { [weak self] in
+                for await message in failures {
+                    guard !Task.isCancelled, let self, self.phase == .listening else { return }
+                    await self.cancelCapture()
+                    self.enterError(message)
+                    return
+                }
+            })
             let stream = speech.levels
             tasks.set(.level, Task { [weak self] in
                 for await value in stream { self?.level = value }
@@ -51,6 +60,7 @@ extension QuickCaptureViewModel {
     func stopAndProcess(outputMode: OutputMode) async {
         guard phase == .listening else { return }
         let generation = captureGeneration
+        tasks.cancel(.failure)
         tasks.cancel(.level); level = 0
         tasks.cancel(.failsafe)
         phase = .thinking

@@ -162,6 +162,8 @@ final class ReadAloudControllerTests: XCTestCase {
     func testPlaybackAnchorTimeoutRetriesOnceAndDoesNotStartHighlight() async throws {
         let player = NeverAnchoredAudioPlayer()
         let reader = ReadAloudController(player: player)
+        reader.preflightForPlayback = { _ in (false, false) }
+        reader.coordinator = nil
         reader.makeStreamingSynthesizer = { nil }
         reader.makeFallbackAttempts = {
             [TTSFallbackAttempt(target: .selected, title: "selected") { OneShotSynthesizer() }]
@@ -207,6 +209,8 @@ final class ReadAloudControllerTests: XCTestCase {
     func testStreamingFailureBeforeFirstChunkStaysPreparingForFallback() async throws {
         let player = RecordingAudioPlayer()
         let reader = ReadAloudController(player: player)
+        reader.coordinator = nil
+        reader.preflightForPlayback = { _ in (false, false) }
         let synth = SlowRecordingSynthesizer()
         reader.makeStreamingSynthesizer = {
             FailingStreamingSynthesizer(failure: .beforeFirstChunk)
@@ -237,6 +241,8 @@ final class ReadAloudControllerTests: XCTestCase {
     func testStreamingFailureAfterAudioResetsThenReplaysWholeUtterance() async throws {
         let player = RecordingAudioPlayer()
         let reader = ReadAloudController(player: player)
+        reader.coordinator = nil
+        reader.preflightForPlayback = { _ in (false, false) }
         let synth = SlowRecordingSynthesizer()
         reader.makeStreamingSynthesizer = {
             FailingStreamingSynthesizer(failure: .afterFirstChunk)
@@ -357,6 +363,8 @@ final class ReadAloudControllerTests: XCTestCase {
     func testStreamingNormalCompletePlaysWithoutNonStreamingFallback() async throws {
         let player = RecordingAudioPlayer()
         let reader = ReadAloudController(player: player)
+        reader.coordinator = nil
+        reader.preflightForPlayback = { _ in (false, false) }
         reader.coordinator = nil
         let synth = RecordingSynthesizer()
         reader.makeStreamingSynthesizer = { FailingStreamingSynthesizer(failure: .normalComplete) }

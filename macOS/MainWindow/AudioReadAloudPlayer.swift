@@ -6,46 +6,79 @@ import ResponsayCore
 /// exposes the real playback `elapsed` time so `ReadAloudController` can drive the
 /// word highlight from the audio clock instead of an estimate (issue 194).
 ///
-/// Real audio output is **not** verifiable in the simulator / headless (CLAUDE.md);
-/// the scheduling math + elapsed clock are correct by construction and exercised on
-/// a real Mac (test standard T3). The estimated-clock path remains the fallback.
+/// Recovery math is covered without devices. Bluetooth transitions and audible
+/// continuity still require real-Mac acceptance.
 @MainActor
 final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
-    private let engine = AVAudioEngine()
+    private let engine: AVAudioEngine
     private let node = AVAudioPlayerNode()
     private var startSampleTime: AVAudioFramePosition?
     private var sampleRate: Double = 24_000
     private var totalDuration: TimeInterval = 0
-    /// 483: the composed utterance currently on the engine path, retained so a device /
-    /// sample-rate change can re-schedule it. nil for streaming / emergency / idle.
-    private var currentComposed: ComposedReadAloud?
-    /// 483: whether engine-path audio is live. We can't read `node.isPlaying` in the
-    /// config-change handler — the engine has usually already stopped by then.
-    private var isActive = false
-    // Written once in init, read once in nonisolated deinit — safe to opt out of isolation.
+    var onPlaybackFailure: ((Error) -> Void)?
+    private var clockTask: Task<Void, Never>?
+    private var outputObserver: ReadAloudOutputObserver?
+    private lazy var recovery = ReadAloudConfigChange(
+        clock: { [weak self] in self?.renderElapsed },
+        schedule: { [weak self] audio, offset, playing in
+            try self?.scheduleComposed(audio, offset: offset, playing: playing)
+        },
+        halt: { [weak self] in
+            self?.node.stop()
+            self?.engine.stop()
+            self?.startSampleTime = nil
+        })
     private nonisolated(unsafe) var configChangeObserver: NSObjectProtocol?
-    private var isReplayingForConfigChange = false
     private static let log = Logger(
         subsystem: "com.semanticcraft.responsay.mac", category: "ReadAloudAudio")
 
-    init() {
+    init(engine: AVAudioEngine = AVAudioEngine()) {
+        self.engine = engine
         engine.attach(node)
+        recovery.onFailure = { [weak self] error in
+            self?.clockTask?.cancel()
+            self?.onPlaybackFailure?(error)
+        }
         // 483: react to output-device / sample-rate changes (AirPods ↔ built-in ↔ HDMI).
         configChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.handleConfigurationChange() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let generation = self.recovery.generation
+                Task { @MainActor [weak self] in
+                    self?.handleConfigurationChange(generation: generation)
+                }
+            }
+        }
+
+        outputObserver = ReadAloudOutputObserver { [weak self] in
+            guard let self, self.streamState.generation != nil else { return }
+            let generation = self.recovery.generation
+            Task { @MainActor [weak self] in
+                self?.handleConfigurationChange(generation: generation)
+            }
         }
     }
 
     deinit {
+        clockTask?.cancel()
         if let configChangeObserver { NotificationCenter.default.removeObserver(configChangeObserver) }
     }
 
     /// Elapsed playback time in seconds (0 before start, clamped to total).
     var elapsed: TimeInterval {
         if let emergencyPlayer { return min(emergencyPlayer.currentTime, totalDuration) }  // 484
-        guard let playerTime = anchorIfAvailable() else { return 0 }
+        if recovery.composed != nil { return recovery.elapsed }
+        if streamState.generation != nil {
+            streamState.observe(renderElapsed)
+            return streamState.position
+        }
+        return renderElapsed ?? 0
+    }
+
+    private var renderElapsed: TimeInterval? {
+        guard let playerTime = anchorIfAvailable() else { return nil }
         guard let startSampleTime else { return 0 }
         let frames = playerTime.sampleTime - startSampleTime
         let seconds = Double(max(0, frames)) / sampleRate
@@ -55,13 +88,28 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
     var isFinished: Bool {
         // 484: the file emergency player reports finish via `isPlaying` going false.
         if let emergencyPlayer { return !emergencyPlayer.isPlaying }
+        if streamState.generation != nil {
+            _ = elapsed
+            return streamState.isFinished
+        }
         return elapsed >= totalDuration && totalDuration > 0
     }
 
     /// Schedule the composed chunks and start playing. Throws if audio setup fails.
     func play(_ composed: ComposedReadAloud) throws {
         stop()
-        guard let first = composed.chunks.first else {
+        try recovery.start(composed)
+        clockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard self?.recovery.composed != nil else { return }
+                self?.recovery.checkRecoveryClock()
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
+    }
+
+    private func scheduleComposed(_ composed: ComposedReadAloud, offset: TimeInterval, playing: Bool) throws {
+        guard composed.hasPlayableAudio, let first = composed.chunks.first else {
             Self.log.error("play failed: composed audio has no chunks")
             throw TTSError.providerReturnedNoAudio(provider: "ReadAloud")
         }
@@ -85,7 +133,16 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
         // on any converter failure, fall back to scheduling the source buffers directly
         // (the engine resamples downstream — the proven path).
         let outputRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        let prepared = makeScheduledBuffers(for: composed, sourceFormat: sourceFormat, outputRate: outputRate)
+        guard outputRate.isFinite, outputRate > 0,
+              engine.outputNode.outputFormat(forBus: 0).channelCount > 0 else {
+            throw TTSError.synthesisFailed("音频输出设备格式无效")
+        }
+        let chunks = ReadAloudConfigChange.remainingChunks(composed.chunks, after: offset)
+        guard composed.chunks.allSatisfy({ $0.sampleRate == first.sampleRate }) else {
+            throw TTSError.synthesisFailed("音频分段采样率不一致")
+        }
+        let remaining = ComposedReadAloud(chunks: chunks, timeline: [], totalDuration: composed.totalDuration - offset)
+        let prepared = try Self.makeScheduledBuffers(for: remaining, sourceFormat: sourceFormat, outputRate: outputRate)
         guard !prepared.buffers.isEmpty else {
             Self.log.error("play failed: no non-empty audio buffers scheduled")
             throw TTSError.providerReturnedNoAudio(provider: "ReadAloud")
@@ -99,30 +156,23 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
         node.volume = 1
         engine.mainMixerNode.outputVolume = 1
         engine.prepare()
-        try engine.start()
+        if playing { try engine.start() }
         let scheduled = prepared.buffers.count
         for buffer in prepared.buffers {
             node.scheduleBuffer(buffer, completionHandler: nil)
         }
-        currentComposed = composed   // 483: retained so a config change can re-schedule
-        isActive = true
-        node.play()
-        if let nodeTime = node.lastRenderTime,
-           let playerTime = node.playerTime(forNodeTime: nodeTime),
-           playerTime.sampleTime >= 0 {
-            startSampleTime = playerTime.sampleTime
-            Self.log.notice(
-                "play node started scheduled=\(scheduled, privacy: .public) anchor=\(playerTime.sampleTime, privacy: .public)"
-            )
-        } else {
-            startSampleTime = nil
-            Self.log.notice("play node started scheduled=\(scheduled, privacy: .public) anchor=pending")
-        }
+        // A newly scheduled player timeline starts at frame zero, including when
+        // the first render-time query arrives after playback has already advanced.
+        startSampleTime = 0
+        if playing { node.play() }
+        Self.log.notice("scheduled buffers=\(scheduled, privacy: .public)")
     }
 
     func waitForPlaybackAnchor(timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        let generation = recovery.generation
         while Date() < deadline {
+            guard !Task.isCancelled, generation == recovery.generation else { return false }
             if anchorIfAvailable() != nil { return true }
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -132,23 +182,30 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
 
     func pause() {
         if let emergencyPlayer { emergencyPlayer.pause(); return }  // 484
+        recovery.pause()
         node.pause()
     }
     func resume() {
         if let emergencyPlayer { emergencyPlayer.play(); return }  // 484
-        node.play()
+        if recovery.composed != nil {
+            guard recovery.intent == .paused else { return }
+            recovery.resume()
+            do { if !engine.isRunning { try engine.start() }; node.play() }
+            catch { recovery.stop(); onPlaybackFailure?(error) }
+            return
+        }
+        if streamFormat != nil { node.play() }
     }
 
     func stop() {
-        node.stop()
-        if engine.isRunning { engine.stop() }
+        clockTask?.cancel()
+        clockTask = nil
+        recovery.stop()
         emergencyPlayer?.stop()   // 484
         emergencyPlayer = nil
-        currentComposed = nil      // 483
-        isActive = false
         startSampleTime = nil
         totalDuration = 0
-        streaming = false
+        streamState.stop()
         streamFormat = nil
         accumulated = 0
     }
@@ -206,7 +263,7 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
 
     // MARK: - 197 incremental streaming playback
 
-    private var streaming = false
+    private var streamState = ReadAloudStreamState()
     private var accumulated: TimeInterval = 0
     private var streamFormat: AVAudioFormat?
 
@@ -215,6 +272,9 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
     /// chunks are appended (we don't know the full length up front).
     func beginStreaming(sampleRate: Double) throws {
         stop()
+        guard outputObserver?.isRegistered == true else {
+            throw TTSError.synthesisFailed("无法监听音频输出设备变化")
+        }
         self.sampleRate = sampleRate
         guard sampleRate.isFinite, sampleRate > 0 else {
             Self.log.error("streaming play failed: invalid sample rate")
@@ -227,35 +287,43 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
             Self.log.error("streaming play failed: could not create pcm format")
             throw TTSError.synthesisFailed("无法创建音频格式")
         }
+        let output = engine.outputNode.outputFormat(forBus: 0)
+        guard output.sampleRate.isFinite, output.sampleRate > 0, output.channelCount > 0 else {
+            throw TTSError.synthesisFailed("音频输出设备格式无效")
+        }
         streamFormat = format
         engine.connect(node, to: engine.mainMixerNode, format: format)
         node.volume = 1
         engine.mainMixerNode.outputVolume = 1
         engine.prepare()
-        try engine.start()
-        node.play()
-        if let nodeTime = node.lastRenderTime,
-           let playerTime = node.playerTime(forNodeTime: nodeTime) {
-            startSampleTime = playerTime.sampleTime
-            Self.log.notice("streaming node started anchor=\(playerTime.sampleTime, privacy: .public)")
-        } else {
-            startSampleTime = nil
-            Self.log.notice("streaming node started anchor=pending")
+        do { try engine.start() }
+        catch { stop(); throw error }
+        // Do not advance the player clock while waiting for the provider's first chunk.
+        startSampleTime = 0
+        streamState.begin(generation: recovery.generation)
+        clockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard self?.streamState.generation != nil else { return }
+                _ = self?.elapsed
+                try? await Task.sleep(for: .milliseconds(20))
+            }
         }
-        streaming = true
     }
 
     /// Schedule one streaming chunk on the player node; returns the new accumulated
     /// total duration. Buffers queue gaplessly behind whatever is already playing.
     @discardableResult
     func appendStreaming(_ speech: SynthesizedSpeech) -> TimeInterval {
-        guard streaming, let format = streamFormat,
+        guard streamState.acceptsAudio, let format = streamFormat,
               let buffer = Self.buffer(from: speech.samples, format: format) else {
             Self.log.error("streaming append skipped: no active stream or empty buffer")
             return accumulated
         }
+        let firstChunk = streamState.duration == 0
         node.scheduleBuffer(buffer, completionHandler: nil)
-        accumulated += speech.duration
+        if firstChunk { node.play() }
+        streamState.append(duration: speech.duration)
+        accumulated = streamState.duration
         totalDuration = accumulated
         Self.log.notice(
             "streaming chunk scheduled samples=\(speech.samples.count, privacy: .public) totalMs=\(Int(self.totalDuration * 1000), privacy: .public)"
@@ -264,114 +332,21 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
     }
 
     /// No more chunks will arrive — the accumulated duration is now final.
-    func endStreaming() { streaming = false }
+    func endStreaming() {
+        _ = elapsed
+        streamState.end()
+    }
 
-    // MARK: - 483 output-device / sample-rate change recovery
-
-    /// The engine stops when the output device or sample rate changes (AirPods ↔
-    /// built-in ↔ HDMI). Re-schedule the current utterance with a format rebuilt for the
-    /// new hardware. Streaming and emergency playback can't be re-scheduled, so they fall
-    /// through silently. Runs async off the notification — never tears the engine down in
-    /// the notification handler.
-    ///
-    /// ponytail: a sync re-entry flag, not a debounce window. A real hardware change is a
-    /// physical, infrequent event and our own reconnect doesn't re-post it; add a
-    /// time-window debounce only if a device is ever seen to flap.
-    private func handleConfigurationChange() {
-        guard !isReplayingForConfigChange else { return }
-        let outputRateBefore = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        guard ReadAloudConfigChange.shouldReplay(wasActive: isActive, hasUtterance: currentComposed != nil),
-              let composed = currentComposed else {
-            Self.log.notice(
-                "audioConfigurationChanged wasPlaying=\(self.isActive, privacy: .public) replayScheduled=false outputRateBefore=\(Int(outputRateBefore), privacy: .public)"
-            )
+    private func handleConfigurationChange(generation: UUID) {
+        guard generation == recovery.generation else { return }
+        if streamState.generation != nil {
+            _ = elapsed
+            guard streamState.configurationChanged(generation: generation) else { return }
+            stop()
+            onPlaybackFailure?(ReadAloudPlaybackFailure.outputChanged)
             return
         }
-        isReplayingForConfigChange = true
-        defer { isReplayingForConfigChange = false }
-        do {
-            try play(composed)   // stop()+reconnect rebuilds the format for the new hardware
-            let outputRateAfter = engine.outputNode.outputFormat(forBus: 0).sampleRate
-            Self.log.notice(
-                "audioConfigurationChanged wasPlaying=true replayScheduled=true outputRateBefore=\(Int(outputRateBefore), privacy: .public) outputRateAfter=\(Int(outputRateAfter), privacy: .public)"
-            )
-        } catch {
-            Self.log.error("audioConfigurationChanged replay failed: \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    // MARK: - 482 sample-rate / format conversion
-
-    private struct ScheduledBuffers {
-        let format: AVAudioFormat
-        let buffers: [AVAudioPCMBuffer]
-        let converted: Bool
-        let converterFailed: Bool
-        var totalFrames: Int { buffers.reduce(0) { $0 + Int($1.frameLength) } }
-    }
-
-    /// Convert the composed chunks to `outputRate` when it differs from the source rate,
-    /// else return the source buffers (the engine resamples downstream). Any converter
-    /// failure falls back to the source buffers so playback never breaks on conversion.
-    private func makeScheduledBuffers(
-        for composed: ComposedReadAloud,
-        sourceFormat: AVAudioFormat,
-        outputRate: Double
-    ) -> ScheduledBuffers {
-        let sourceBuffers = composed.chunks.compactMap { Self.buffer(from: $0.samples, format: sourceFormat) }
-        let sourceRate = sourceFormat.sampleRate
-        guard outputRate.isFinite, outputRate > 0, abs(outputRate - sourceRate) > 1,
-              let targetFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32, sampleRate: outputRate, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
-            return ScheduledBuffers(
-                format: sourceFormat, buffers: sourceBuffers, converted: false, converterFailed: false)
-        }
-        var converted: [AVAudioPCMBuffer] = []
-        for src in sourceBuffers {
-            guard let out = Self.convert(src, using: converter, to: targetFormat) else {
-                return ScheduledBuffers(
-                    format: sourceFormat, buffers: sourceBuffers, converted: false, converterFailed: true)
-            }
-            converted.append(out)
-        }
-        return ScheduledBuffers(
-            format: targetFormat, buffers: converted, converted: true, converterFailed: false)
-    }
-
-    private static func convert(
-        _ src: AVAudioPCMBuffer, using converter: AVAudioConverter, to target: AVAudioFormat
-    ) -> AVAudioPCMBuffer? {
-        let capacity = AVAudioFrameCount(ReadAloudResampling.outputFrameCount(
-            sourceFrames: Int(src.frameLength),
-            sourceRate: src.format.sampleRate,
-            targetRate: target.sampleRate)) + 1024
-        guard capacity > 0, let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
-        var fed = false
-        var error: NSError?
-        let status = converter.convert(to: out, error: &error) { _, inputStatus in
-            if fed { inputStatus.pointee = .noDataNow; return nil }
-            fed = true
-            inputStatus.pointee = .haveData
-            return src
-        }
-        guard status != .error, error == nil, out.frameLength > 0 else { return nil }
-        return out
-    }
-
-    private static func buffer(from samples: [Float], format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        guard !samples.isEmpty,
-              samples.allSatisfy(\.isFinite),
-              samples.contains(where: { $0 != 0 }),
-              let buffer = AVAudioPCMBuffer(
-                pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
-              let channel = buffer.floatChannelData else { return nil }
-        samples.withUnsafeBufferPointer { src in
-            channel[0].update(from: src.baseAddress!, count: samples.count)
-        }
-        buffer.frameLength = AVAudioFrameCount(samples.count)
-        guard buffer.frameLength > 0 else { return nil }
-        return buffer
+        recovery.recover(generation: generation)
     }
 
     private func anchorIfAvailable() -> AVAudioTime? {
@@ -385,5 +360,3 @@ final class AudioReadAloudPlayer: ReadAloudAudioPlaying {
         return playerTime
     }
 }
-// ReadAloudConfigChange (483) + ReadAloudResampling (482) — pure helpers — split into
-// ReadAloudConfigChange.swift / ReadAloudResampling.swift (one type per file; ≤400-line cap).

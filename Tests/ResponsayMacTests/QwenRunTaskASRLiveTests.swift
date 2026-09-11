@@ -19,7 +19,8 @@ private final class LivePCMFixtureRecorder: @unchecked Sendable, SpeechAudioReco
 
     func start(
         preferredUID _: String,
-        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+        onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure: @escaping @Sendable (String) -> Void
     ) throws {
         let pcm = self.pcm
         withLock {

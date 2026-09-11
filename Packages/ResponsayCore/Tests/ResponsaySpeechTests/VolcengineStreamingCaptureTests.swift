@@ -73,7 +73,8 @@ private final class VolcTestRecorder: SpeechAudioRecording {
     private var callback: (@Sendable (AVAudioPCMBuffer) -> Void)?
     var stops = 0
     var shouldFail = false
-    func start(preferredUID: String, onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
+    func start(preferredUID: String, onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure: @escaping @Sendable (String) -> Void) throws {
         if shouldFail { throw NSError(domain: "TestRecorder", code: 1) }
         callback = onBuffer
     }

@@ -23,7 +23,8 @@ private final class LocalQwenContextCaptureAdapter: @unchecked Sendable,
 
     func start(
         preferredUID _: String,
-        onBuffer _: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+        onBuffer _: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+        onFailure _: @escaping @Sendable (String) -> Void
     ) throws {}
 
     func stop() {}

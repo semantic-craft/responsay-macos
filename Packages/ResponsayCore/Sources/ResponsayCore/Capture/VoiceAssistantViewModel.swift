@@ -65,6 +65,7 @@ public final class VoiceAssistantViewModel {
     private var debateScript: DebateScript?
 
     private let speech: SpeechCaptureService
+    private var failureTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
     private var partialTask: Task<Void, Never>?
     private var responseTask: Task<Void, Never>?
@@ -153,6 +154,16 @@ public final class VoiceAssistantViewModel {
             try speech.start(locale: .chinese)
             // Only a successful recording takes ownership from the previous answer.
             responseTask?.cancel()
+            let failures = speech.captureFailures
+            failureTask = Task { [weak self] in
+                for await message in failures {
+                    guard !Task.isCancelled, let self, self.phase == .listening else { return }
+                    self.failureTask = nil
+                    await self.cancelCapture()
+                    self.errorMessage = message
+                    return
+                }
+            }
             startLevelMonitoring()
             startPartialMonitoring()
             startCaptureTimeout()
@@ -200,7 +211,7 @@ public final class VoiceAssistantViewModel {
         // Reserve the session while stop suspends; no second stop or new capture.
         phase = .thinking
         stopMonitoring()
-        _ = try? await speech.stop()
+        await speech.cancel()
         partialTranscript = ""
         errorMessage = nil
         phase = .idle
@@ -344,6 +355,8 @@ public final class VoiceAssistantViewModel {
     }
 
     private func stopMonitoring() {
+        failureTask?.cancel()
+        failureTask = nil
         captureTimeoutTask?.cancel()
         captureTimeoutTask = nil
         levelTask?.cancel()

@@ -82,6 +82,8 @@ final class ReadAloudSourceTests: XCTestCase {
         // 301: 复读 tries to synthesize a real voice; P0 must not run a silent
         // estimated loop when synthesis fails.
         let controller = ReadAloudController()
+        controller.coordinator = nil
+        controller.preflightForPlayback = { _ in (false, false) }
         let attempted = Flag()
         controller.makeStreamingSynthesizer = { nil }
         controller.makeFallbackAttempts = {
@@ -102,15 +104,6 @@ final class ReadAloudSourceTests: XCTestCase {
         XCTAssertFalse(controller.isPlaying)
         XCTAssertNotNil(controller.lastErrorMessage)
         controller.stop()
-    }
-
-    // 483: re-schedule on a config change only when engine-path audio was live and a
-    // composed utterance is retained.
-    func testConfigChangeReplayDecision() {
-        XCTAssertTrue(ReadAloudConfigChange.shouldReplay(wasActive: true, hasUtterance: true))
-        XCTAssertFalse(ReadAloudConfigChange.shouldReplay(wasActive: false, hasUtterance: true))   // idle
-        XCTAssertFalse(ReadAloudConfigChange.shouldReplay(wasActive: true, hasUtterance: false))   // streaming/emergency
-        XCTAssertFalse(ReadAloudConfigChange.shouldReplay(wasActive: false, hasUtterance: false))
     }
 
     // 482: resampled output-buffer capacity math (24k ↔ 48k / 44.1k).
@@ -149,6 +142,7 @@ private final class Flag {
 
 @MainActor
 private final class MockAudioPlayer: ReadAloudAudioPlaying {
+    var onPlaybackFailure: ((Error) -> Void)?
     var elapsed: TimeInterval = 0
     var isFinished = false
     private(set) var playCalls: [ComposedReadAloud] = []

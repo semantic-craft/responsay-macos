@@ -30,7 +30,11 @@ public final class AppleSpeechCaptureService: SpeechCaptureService {
 
     public init() {}
 
+    private let failureState = SpeechCaptureFailureState()
+    public var captureFailures: AsyncStream<String> { failureState.stream }
+
     public func start(locale: CaptureLocale) throws {
+        let generation = failureState.begin()
         switch SFSpeechRecognizer.authorizationStatus() {
         case .denied, .restricted:
             throw CoachAPIError.message("语音识别未授权。请到 系统设置 › 隐私与安全性 › 语音识别 开启。")
@@ -71,8 +75,18 @@ public final class AppleSpeechCaptureService: SpeechCaptureService {
         #if os(macOS)
         let recorder = AVCaptureAudioRecorder()
         self.recorder = recorder
-        try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID) { @Sendable buffer in
+        do {
+        try recorder.start(preferredUID: AudioInputDeviceSelector.preferredUID, onBuffer: { @Sendable buffer in
             session.append(buffer) { level in levelCont.yield(level) }
+        }, onFailure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.failureState.fail(message, generation: generation) { self.captureFailed() }
+                }
+            })
+        } catch {
+            captureFailed()
+            throw error
         }
         #else
         let input = engine.inputNode
@@ -89,14 +103,32 @@ public final class AppleSpeechCaptureService: SpeechCaptureService {
         log.info("Speech capture started for \(locale.rawValue, privacy: .public)")
     }
 
+    #if os(macOS)
+    public func cancel() async {
+        try? failureState.end()
+        captureFailed()
+    }
+
+    private func captureFailed() {
+        try? recorder?.stop(); recorder = nil
+        levelContinuation?.finish(); levelContinuation = nil
+        task?.cancel(); task = nil
+        session?.request.endAudio(); session = nil
+    }
+    #endif
+
     public func stop() async throws -> String {
         #if os(macOS)
-        recorder?.stop()
+        do { try recorder?.stop() } catch {
+            await cancel()
+            throw error
+        }
         recorder = nil
         #else
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         #endif
+        try failureState.end()
         levelContinuation?.finish()
         levelContinuation = nil
         session?.request.endAudio()

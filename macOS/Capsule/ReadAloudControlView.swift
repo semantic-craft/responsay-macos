@@ -42,7 +42,7 @@ struct ReadAloudControlView: View {
                 .help(notice ?? statusText)
             controlButton(
                 systemName: reader.phase == .playing ? "pause.fill" : "play.fill",
-                label: reader.phase == .playing ? "暂停朗读" : "继续朗读",
+                label: isError ? "重试朗读" : (reader.phase == .playing ? "暂停朗读" : "继续朗读"),
                 disabled: reader.phase == .preparing,
                 action: { reader.pauseOrResume() })
             controlButton(
